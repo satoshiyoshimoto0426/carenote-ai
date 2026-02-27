@@ -7,7 +7,6 @@ import FileUploader from "@/components/FileUploader";
 import LoadingProgress from "@/components/LoadingProgress";
 import EvaluationResults from "@/components/EvaluationResults";
 
-// AI評価フェーズのプログレスステップ（Blob upload完了後に開始）
 const AI_STEPS = [
   { t: 0,     v: 40, m: "📋 8カテゴリで評価を開始..." },
   { t: 3000,  v: 52, m: "✏️ 各項目を採点中..." },
@@ -17,6 +16,33 @@ const AI_STEPS = [
   { t: 30000, v: 88, m: "⏳ 大きなPDFのため時間がかかっています..." },
   { t: 45000, v: 93, m: "⏳ まもなく完了します..." },
 ];
+
+/** Vercel Blob が使えない環境（ローカル等）ではbase64でフォールバック */
+async function uploadPdf(
+  file: File,
+  onProgress: (p: number, msg: string) => void
+): Promise<{ blobUrl?: string; pdf?: string }> {
+  onProgress(5, "📤 PDFをアップロード中...");
+  try {
+    const blob = await upload(file.name, file, {
+      access: "public",
+      handleUploadUrl: "/api/blob-upload",
+    });
+    onProgress(32, "🔍 AIが書類を解析中...");
+    return { blobUrl: blob.url };
+  } catch {
+    // BLOB_READ_WRITE_TOKEN 未設定など → base64フォールバック
+    onProgress(20, "📄 PDFを読み込んでいます（ローカルモード）...");
+    const base64: string = await new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = () => res((reader.result as string).split(",")[1]);
+      reader.onerror = () => rej(new Error("ファイル読み込みエラー"));
+      reader.readAsDataURL(file);
+    });
+    onProgress(32, "🔍 AIが書類を解析中...");
+    return { pdf: base64 };
+  }
+}
 
 export default function EvaluatePage() {
   const [file, setFile] = useState<File | null>(null);
@@ -52,32 +78,24 @@ export default function EvaluatePage() {
     const aiTimers: ReturnType<typeof setTimeout>[] = [];
 
     try {
-      // ── Step 1: Vercel Blob に直接アップロード（APIボディ制限を回避）──
-      setProgress(5);
-      setStatusMsg("📤 PDFをアップロード中...");
-
-      const blob = await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: "/api/blob-upload",
+      // ── Step 1: アップロード（Blob優先、フォールバックあり） ──
+      const payload = await uploadPdf(file, (p, msg) => {
+        setProgress(p);
+        setStatusMsg(msg);
       });
 
-      setProgress(32);
-      setStatusMsg("🔍 AIが書類を解析中...");
-
-      // ── Step 2: AI評価フェーズのプログレスアニメーション ──
+      // ── Step 2: AIプログレスアニメーション ──
       AI_STEPS.forEach((s) => {
-        const t = setTimeout(() => {
-          setProgress(s.v);
-          setStatusMsg(s.m);
-        }, s.t);
-        aiTimers.push(t);
+        aiTimers.push(
+          setTimeout(() => { setProgress(s.v); setStatusMsg(s.m); }, s.t)
+        );
       });
 
-      // ── Step 3: 評価API呼び出し（blobUrlのみ送信・軽量） ──
+      // ── Step 3: 評価API呼び出し ──
       const resp = await fetch("/api/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blobUrl: blob.url, fileName: file.name }),
+        body: JSON.stringify({ ...payload, fileName: file.name }),
       });
 
       aiTimers.forEach(clearTimeout);
