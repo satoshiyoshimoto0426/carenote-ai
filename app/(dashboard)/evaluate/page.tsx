@@ -1,21 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { upload } from "@vercel/blob/client";
 import { EvaluationResult } from "@/types/evaluation";
 import FileUploader from "@/components/FileUploader";
 import LoadingProgress from "@/components/LoadingProgress";
 import EvaluationResults from "@/components/EvaluationResults";
 
-const PROGRESS_STEPS = [
-  { t: 800,   v: 10, m: "📄 PDFを読み込んでいます..." },
-  { t: 2500,  v: 25, m: "🔍 書類の内容を解析中..." },
-  { t: 5000,  v: 40, m: "📋 8カテゴリで評価を開始..." },
-  { t: 8000,  v: 55, m: "✏️ 各項目を採点中..." },
-  { t: 12000, v: 68, m: "💡 改善アドバイスを生成中..." },
-  { t: 18000, v: 78, m: "📊 評価レポートを組み立て中..." },
-  { t: 25000, v: 85, m: "⏳ もう少しお待ちください..." },
-  { t: 35000, v: 90, m: "⏳ 大きなPDFのため時間がかかっています..." },
-  { t: 50000, v: 93, m: "⏳ まもなく完了します..." },
+// AI評価フェーズのプログレスステップ（Blob upload完了後に開始）
+const AI_STEPS = [
+  { t: 0,     v: 40, m: "📋 8カテゴリで評価を開始..." },
+  { t: 3000,  v: 52, m: "✏️ 各項目を採点中..." },
+  { t: 7000,  v: 64, m: "💡 改善アドバイスを生成中..." },
+  { t: 13000, v: 74, m: "📊 評価レポートを組み立て中..." },
+  { t: 20000, v: 82, m: "⏳ もう少しお待ちください..." },
+  { t: 30000, v: 88, m: "⏳ 大きなPDFのため時間がかかっています..." },
+  { t: 45000, v: 93, m: "⏳ まもなく完了します..." },
 ];
 
 export default function EvaluatePage() {
@@ -27,15 +27,6 @@ export default function EvaluatePage() {
   const [progress, setProgress] = useState(0);
   const [statusMsg, setStatusMsg] = useState("");
 
-  useEffect(() => {
-    if (!loading) return;
-    setProgress(0);
-    const timers = PROGRESS_STEPS.map((s) =>
-      setTimeout(() => { setProgress(s.v); setStatusMsg(s.m); }, s.t)
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [loading]);
-
   const handleFileSelect = (f: File) => {
     if (f.type !== "application/pdf") {
       setError("PDFファイルのみアップロード可能です");
@@ -43,7 +34,7 @@ export default function EvaluatePage() {
     }
     const mb = f.size / 1024 / 1024;
     if (mb > 30) {
-      setError(`ファイルサイズが大きすぎます（${mb.toFixed(1)}MB）。30MB以下のPDFをアップロードしてください。`);
+      setError(`ファイルが大きすぎます（${mb.toFixed(1)}MB）。30MB以下のPDFをご使用ください。`);
       return;
     }
     setFile(f);
@@ -58,19 +49,38 @@ export default function EvaluatePage() {
     setError(null);
     setResult(null);
 
+    const aiTimers: ReturnType<typeof setTimeout>[] = [];
+
     try {
-      const base64: string = await new Promise((res, rej) => {
-        const reader = new FileReader();
-        reader.onload = () => res((reader.result as string).split(",")[1]);
-        reader.onerror = () => rej(new Error("ファイル読み込みエラー"));
-        reader.readAsDataURL(file);
+      // ── Step 1: Vercel Blob に直接アップロード（APIボディ制限を回避）──
+      setProgress(5);
+      setStatusMsg("📤 PDFをアップロード中...");
+
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/blob-upload",
       });
 
+      setProgress(32);
+      setStatusMsg("🔍 AIが書類を解析中...");
+
+      // ── Step 2: AI評価フェーズのプログレスアニメーション ──
+      AI_STEPS.forEach((s) => {
+        const t = setTimeout(() => {
+          setProgress(s.v);
+          setStatusMsg(s.m);
+        }, s.t);
+        aiTimers.push(t);
+      });
+
+      // ── Step 3: 評価API呼び出し（blobUrlのみ送信・軽量） ──
       const resp = await fetch("/api/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pdf: base64, fileName: file.name }),
+        body: JSON.stringify({ blobUrl: blob.url, fileName: file.name }),
       });
+
+      aiTimers.forEach(clearTimeout);
 
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
@@ -79,6 +89,7 @@ export default function EvaluatePage() {
       setStatusMsg("✨ 完了！");
       setTimeout(() => setResult(data), 500);
     } catch (e: unknown) {
+      aiTimers.forEach(clearTimeout);
       setError(e instanceof Error ? e.message : "不明なエラーが発生しました");
     } finally {
       setLoading(false);

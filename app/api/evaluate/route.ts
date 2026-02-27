@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { del } from "@vercel/blob";
 import { EVALUATION_CRITERIA } from "@/lib/evaluationCriteria";
 import { EvaluationResult } from "@/types/evaluation";
 
@@ -10,13 +11,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "APIキーが設定されていません。" }, { status: 500 });
   }
 
-  let base64: string;
+  let blobUrl: string;
   try {
     const body = await req.json();
-    base64 = body.pdf;
-    if (!base64) throw new Error("PDFデータがありません");
+    blobUrl = body.blobUrl;
+    if (!blobUrl) throw new Error("blobUrlがありません");
   } catch {
     return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
+  }
+
+  // ── Vercel Blob からPDFをダウンロード → base64変換 ──
+  let base64: string;
+  try {
+    const blobResp = await fetch(blobUrl);
+    if (!blobResp.ok) throw new Error(`Blob fetch failed: ${blobResp.status}`);
+    const arrayBuffer = await blobResp.arrayBuffer();
+    base64 = Buffer.from(arrayBuffer).toString("base64");
+  } catch (e) {
+    return NextResponse.json(
+      { error: "PDFの取得に失敗しました。再試行してください。" },
+      { status: 502 }
+    );
   }
 
   const controller = new AbortController();
@@ -52,6 +67,9 @@ export async function POST(req: NextRequest) {
     });
 
     clearTimeout(timeout);
+
+    // ── Blobを削除（個人情報保護）──
+    del(blobUrl).catch((e) => console.error("[evaluate] blob delete failed:", e));
 
     if (!resp.ok) {
       const errBody = await resp.text();
@@ -111,6 +129,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(parsed);
   } catch (e: unknown) {
     clearTimeout(timeout);
+    del(blobUrl).catch(() => {});
     if (e instanceof Error && e.name === "AbortError") {
       return NextResponse.json(
         { error: "処理がタイムアウトしました。ページ数の少ないPDFで試すか、少し時間をおいて再試行してください。" },
