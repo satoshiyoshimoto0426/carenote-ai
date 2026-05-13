@@ -7,7 +7,8 @@
 #
 # 前提:
 #   - リポジトリ Secrets に `ANTHROPIC_API_KEY` が設定済みであること
-#   - Issues / PRs の write 権限を持つこと（actions/permissions で付与）
+#   - id-token: write 権限が必須（OIDC 利用）
+#   - 補助として github_token も明示的に渡す
 # =============================================================================
 
 name: Claude AI Triage & Review
@@ -26,6 +27,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  id-token: write
 
 jobs:
   # =================================================================
@@ -46,6 +48,7 @@ jobs:
         uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             あなたは cortex-lite ハーネスの「Alert-Fix エージェント」です。
             次の Issue を調査し、根本原因の仮説と修正案をコメントしてください。
@@ -91,6 +94,7 @@ jobs:
         uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             あなたは cortex-lite ハーネスの「Auto Reviewer」です。
             この PR の差分を、以下4カテゴリで評価してください：
