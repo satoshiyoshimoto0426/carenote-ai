@@ -1,0 +1,90 @@
+# 共通 Issue Template — 本番アラート / バグ報告（Alert-Fix Phase 4 用）
+# /harness-init で各リポジトリの .github/ISSUE_TEMPLATE/ にコピーされる
+name: 🚨 本番アラート / バグ報告
+description: 本番環境の異常、または再現可能なバグ。AI トリアージ用のテンプレート。
+title: "[ALERT] "
+labels:
+  - alert-fix
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## このフォームについて
+
+        - 本番環境（Render / Cloudflare / Vercel 等）で発生した異常はここから報告してください。
+        - `alert-fix` ラベルが自動付与され、AI トリアージワークフローが起動します。
+        - ラベルを外すと AI トリアージはスキップされます。
+
+  - type: input
+    id: when
+    attributes:
+      label: いつ発生したか
+      description: 例：2026-05-13 14:30 JST
+      placeholder: YYYY-MM-DD HH:MM JST
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: 重大度
+      options:
+        - "🔴 Critical（ユーザー操作が完全に止まる）"
+        - "🟠 High（重要機能が動かない）"
+        - "🟡 Medium（一部機能の不調）"
+        - "🟢 Low（軽微・改善要望）"
+    validations:
+      required: true
+
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 症状
+      description: 何が起こったか。ユーザー視点でも、技術視点でもOK。
+      placeholder: |
+        例: ゲームが起動した直後にクラッシュする
+        例: /api/health/detailed が 503 を返している
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現手順
+      description: 可能なら手順を箇条書きで。再現できない場合は「再現性なし」と書いてください。
+      placeholder: |
+        1. ゲームをショートカットから起動
+        2. プレイヤー選択で「sunny」を選ぶ
+        3. メニュー → LINE連携 を押下
+        4. 何も反応しない
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: ログ / エラーメッセージ
+      description: 関連するログやエラーがあれば貼ってください。秘匿情報は伏せて。
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: env
+    attributes:
+      label: 環境
+      placeholder: |
+        OS: Windows 11
+        サーバー: Render maoucastle-server
+        クライアント: MaouCastle Debug build
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: ai-permission
+    attributes:
+      label: AI トリアージ
+      options:
+        - label: AI（Claude）に調査と修正提案をお願いする
+          required: false

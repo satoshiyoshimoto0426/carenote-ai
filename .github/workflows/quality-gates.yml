@@ -1,0 +1,95 @@
+# =============================================================================
+# Quality Gates — carenote-ai
+# =============================================================================
+# cortex-lite ハーネスの ② Lint / Quality Gates を CI で強制する。
+# =============================================================================
+
+name: Quality Gates
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  typescript-quality:
+    name: TypeScript ── biome / tsc / build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Biome check
+        run: npx biome check .
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: Next.js build
+        run: npm run build
+        env:
+          # 本番用シークレットはモックで通す（必要に応じてダミー設定を追加）
+          NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-key'
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_dummy'
+          CLERK_SECRET_KEY: 'sk_test_dummy'
+
+  harness-iron-rules:
+    name: Iron Rules ── any/TODO/disable 検出
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check forbidden patterns
+        run: |
+          set -e
+          violations=0
+
+          # 手書きの any
+          if grep -rEn '(:[[:space:]]*any|as[[:space:]]+any|<any[>,])' \
+              --include='*.ts' --include='*.tsx' \
+              app/ components/ lib/ \
+              2>/dev/null | grep -vE '(generated|\.d\.ts|//.*any|/\*.*any)'; then
+            echo "::error::Hand-written :any / as any detected"
+            violations=$((violations+1))
+          fi
+
+          # TODO/FIXME without URL
+          if grep -rEn '(TODO|FIXME|XXX)([:( ]|$)' \
+              --include='*.ts' --include='*.tsx' \
+              app/ components/ lib/ \
+              2>/dev/null | grep -vE '(TODO|FIXME|XXX).*https?://'; then
+            echo "::error::TODO/FIXME without issue URL"
+            violations=$((violations+1))
+          fi
+
+          # eslint-disable without reason
+          if grep -rEn '(eslint-disable|biome-ignore)' \
+              --include='*.ts' --include='*.tsx' \
+              app/ components/ lib/ \
+              2>/dev/null | grep -vE '(eslint-disable|biome-ignore).*(理由|reason|because|safe)'; then
+            echo "::error::eslint-disable / biome-ignore without reason"
+            violations=$((violations+1))
+          fi
+
+          if [ $violations -gt 0 ]; then
+            echo ""
+            echo "Iron Rules violations: $violations"
+            echo "See ~/.claude/CLAUDE.md Section 2 for details."
+            exit 1
+          fi
+
+          echo "✅ Iron Rules check passed"
