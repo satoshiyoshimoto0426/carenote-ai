@@ -3,7 +3,7 @@ import { del } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
 import { saveEvaluation } from "@/lib/db";
 import { EVALUATION_CRITERIA } from "@/lib/evaluationCriteria";
-import type { EvaluationResult } from "@/types/evaluation";
+import { parseEvaluationJson } from "@/lib/parseEvaluationJson";
 
 export const maxDuration = 120;
 
@@ -107,25 +107,15 @@ export async function POST(req: NextRequest) {
     const data = await resp.json();
     const text: string = data.content?.map((c: { text?: string }) => c.text || "").join("") || "";
 
-    let jsonStr = text;
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) jsonStr = jsonMatch[1];
-    jsonStr = jsonStr.trim();
-
-    const startIdx = jsonStr.indexOf("{");
-    const endIdx = jsonStr.lastIndexOf("}");
-    if (startIdx === -1 || endIdx === -1)
-      return NextResponse.json(
-        { error: "評価結果の解析に失敗しました。再試行してください。" },
-        { status: 500 },
-      );
-
-    const parsed: EvaluationResult = JSON.parse(jsonStr.substring(startIdx, endIdx + 1));
-    if (!parsed.categories || parsed.total_score === undefined)
-      return NextResponse.json(
-        { error: "評価結果のフォーマットが不正です。再試行してください。" },
-        { status: 500 },
-      );
+    const parseResult = parseEvaluationJson(text);
+    if (!parseResult.ok) {
+      const error =
+        parseResult.reason === "invalid_shape"
+          ? "評価結果のフォーマットが不正です。再試行してください。"
+          : "評価結果の解析に失敗しました。再試行してください。";
+      return NextResponse.json({ error }, { status: 500 });
+    }
+    const parsed = parseResult.data;
 
     // ── Supabaseに保存（ノンブロッキング） ──
     saveEvaluation({
