@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
 import { upload } from "@vercel/blob/client";
-import { EvaluationResult } from "@/types/evaluation";
+import { useState } from "react";
+import EvaluationResults from "@/components/EvaluationResults";
 import FileUploader from "@/components/FileUploader";
 import LoadingProgress from "@/components/LoadingProgress";
-import EvaluationResults from "@/components/EvaluationResults";
+import type { EvaluationResult } from "@/types/evaluation";
 
 const AI_STEPS = [
-  { t: 0,     v: 40, m: "📋 8カテゴリで評価を開始..." },
-  { t: 3000,  v: 52, m: "✏️ 各項目を採点中..." },
-  { t: 7000,  v: 64, m: "💡 改善アドバイスを生成中..." },
+  { t: 0, v: 40, m: "📋 8カテゴリで評価を開始..." },
+  { t: 3000, v: 52, m: "✏️ 各項目を採点中..." },
+  { t: 7000, v: 64, m: "💡 改善アドバイスを生成中..." },
   { t: 13000, v: 74, m: "📊 評価レポートを組み立て中..." },
   { t: 20000, v: 82, m: "⏳ もう少しお待ちください..." },
   { t: 30000, v: 88, m: "⏳ 大きなPDFのため時間がかかっています..." },
@@ -20,7 +20,7 @@ const AI_STEPS = [
 /** Vercel Blob が使えない環境（ローカル等）ではbase64でフォールバック */
 async function uploadPdf(
   file: File,
-  onProgress: (p: number, msg: string) => void
+  onProgress: (p: number, msg: string) => void,
 ): Promise<{ blobUrl?: string; pdf?: string }> {
   onProgress(5, "📤 PDFをアップロード中...");
   try {
@@ -87,7 +87,10 @@ export default function EvaluatePage() {
       // ── Step 2: AIプログレスアニメーション ──
       AI_STEPS.forEach((s) => {
         aiTimers.push(
-          setTimeout(() => { setProgress(s.v); setStatusMsg(s.m); }, s.t)
+          setTimeout(() => {
+            setProgress(s.v);
+            setStatusMsg(s.m);
+          }, s.t),
         );
       });
 
@@ -140,9 +143,16 @@ export default function EvaluatePage() {
             >
               <div className="text-red-300 text-sm mb-2.5">⚠️ {error}</div>
               <button
-                onClick={() => { setError(null); if (file) evaluate(); }}
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  if (file) evaluate();
+                }}
                 className="px-5 py-2 rounded-lg text-red-300 text-sm font-semibold cursor-pointer hover:opacity-80 transition-opacity"
-                style={{ border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.13)" }}
+                style={{
+                  border: "1px solid rgba(239,68,68,0.4)",
+                  background: "rgba(239,68,68,0.13)",
+                }}
               >
                 🔄 再試行する
               </button>
@@ -152,7 +162,12 @@ export default function EvaluatePage() {
       ) : (
         <EvaluationResults
           result={result}
-          onReset={() => { setResult(null); setFile(null); setProgress(0); setError(null); }}
+          onReset={() => {
+            setResult(null);
+            setFile(null);
+            setProgress(0);
+            setError(null);
+          }}
         />
       )}
     </div>

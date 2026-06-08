@@ -1,6 +1,6 @@
 "use client";
 
-import { EvaluationCategory } from "@/types/evaluation";
+import type { EvaluationCategory } from "@/types/evaluation";
 import MiniBar from "./MiniBar";
 
 const ICONS = ["📋", "📝", "🔍", "🤝", "📒", "📊", "📤", "🔒"];
@@ -21,12 +21,21 @@ export default function CategoryCard({ cat, index, expanded, onToggle }: Categor
       className="rounded-2xl overflow-hidden transition-all duration-300"
       style={{
         background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-        border: `1px solid ${expanded ? ringColor + "66" : "#334155"}`,
+        border: `1px solid ${expanded ? `${ringColor}66` : "#334155"}`,
         boxShadow: expanded ? `0 0 24px ${ringColor}22` : "none",
       }}
     >
       <div
         onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
         className="px-5 py-4 cursor-pointer flex items-center gap-4 select-none"
       >
         <span className="text-3xl">{ICONS[index] ?? "📌"}</span>
@@ -49,7 +58,10 @@ export default function CategoryCard({ cat, index, expanded, onToggle }: Categor
               <div className="mb-3.5">
                 <div className="text-emerald-400 font-bold text-xs mb-2">✓ 良い点</div>
                 {cat.good_points.map((p, i) => (
-                  <div key={i} className="text-slate-300 text-xs leading-relaxed pl-4 relative mb-1">
+                  <div
+                    key={i}
+                    className="text-slate-300 text-xs leading-relaxed pl-4 relative mb-1"
+                  >
                     <span className="absolute left-0 text-emerald-400">・</span>
                     {p}
                   </div>
@@ -61,7 +73,10 @@ export default function CategoryCard({ cat, index, expanded, onToggle }: Categor
               <div className="mb-3.5">
                 <div className="text-red-400 font-bold text-xs mb-2">✗ 課題点</div>
                 {cat.issues.map((p, i) => (
-                  <div key={i} className="text-slate-300 text-xs leading-relaxed pl-4 relative mb-1">
+                  <div
+                    key={i}
+                    className="text-slate-300 text-xs leading-relaxed pl-4 relative mb-1"
+                  >
                     <span className="absolute left-0 text-red-400">・</span>
                     {p}
                   </div>

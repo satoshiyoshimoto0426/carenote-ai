@@ -48,9 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex-1 md:ml-56 flex flex-col">
         <main className="flex-1 px-4 md:px-8 py-6 mt-14 md:mt-0">{children}</main>
         <footer className="text-center py-4 pb-6">
-          <p className="text-slate-700 text-xs">
-            CareNote AI — Powered by Claude API | Phase 2
-          </p>
+          <p className="text-slate-700 text-xs">CareNote AI — Powered by Claude API | Phase 2</p>
         </footer>
       </div>
     </div>
@@ -61,8 +59,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 function MobileNav() {
   return (
     <nav className="flex gap-2">
-      <a href="/dashboard" className="text-slate-400 text-sm px-2 py-1 rounded hover:text-slate-200">📊</a>
-      <a href="/evaluate"  className="text-slate-400 text-sm px-2 py-1 rounded hover:text-slate-200">🔍</a>
+      <a
+        href="/dashboard"
+        className="text-slate-400 text-sm px-2 py-1 rounded hover:text-slate-200"
+      >
+        📊
+      </a>
+      <a href="/evaluate" className="text-slate-400 text-sm px-2 py-1 rounded hover:text-slate-200">
+        🔍
+      </a>
     </nav>
   );
 }

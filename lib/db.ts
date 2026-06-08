@@ -1,5 +1,5 @@
+import type { EvaluationRecord, EvaluationResult } from "@/types/evaluation";
 import { createServerClient } from "./supabase/server";
-import { EvaluationRecord, EvaluationResult } from "@/types/evaluation";
 
 export async function saveEvaluation(params: {
   userId: string;
@@ -46,7 +46,7 @@ export async function getEvaluations(userId: string): Promise<EvaluationRecord[]
 
 export async function getEvaluationById(
   id: string,
-  userId: string
+  userId: string,
 ): Promise<EvaluationRecord | null> {
   const db = createServerClient();
   const { data, error } = await db

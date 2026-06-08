@@ -1,12 +1,12 @@
 "use client";
 
+import { UserButton, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserButton, useUser } from "@clerk/nextjs";
 
 const NAV = [
   { href: "/dashboard", label: "ダッシュボード", icon: "📊" },
-  { href: "/evaluate",  label: "評価する",       icon: "🔍" },
+  { href: "/evaluate", label: "評価する", icon: "🔍" },
 ];
 
 export default function Sidebar() {
@@ -51,9 +51,7 @@ export default function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1">
         {NAV.map(({ href, label, icon }) => {
-          const active =
-            pathname === href ||
-            (href !== "/dashboard" && pathname.startsWith(href));
+          const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
           return (
             <Link
               key={href}
@@ -62,9 +60,7 @@ export default function Sidebar() {
               style={{
                 background: active ? "rgba(59,130,246,0.15)" : "transparent",
                 color: active ? "#60a5fa" : "#94a3b8",
-                border: active
-                  ? "1px solid rgba(59,130,246,0.3)"
-                  : "1px solid transparent",
+                border: active ? "1px solid rgba(59,130,246,0.3)" : "1px solid transparent",
               }}
             >
               <span className="text-lg">{icon}</span>
@@ -75,10 +71,7 @@ export default function Sidebar() {
       </nav>
 
       {/* User */}
-      <div
-        className="flex items-center gap-3 px-4 py-4"
-        style={{ borderTop: "1px solid #334155" }}
-      >
+      <div className="flex items-center gap-3 px-4 py-4" style={{ borderTop: "1px solid #334155" }}>
         <UserButton
           appearance={{
             elements: { avatarBox: "w-8 h-8" },

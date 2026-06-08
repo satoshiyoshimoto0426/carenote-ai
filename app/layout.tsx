@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import type { Metadata } from "next";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -9,9 +9,7 @@ export const metadata: Metadata = {
   description: "ケアマネジャーが作成したケアプラン書類をAIが8カテゴリ27点満点で自動評価します",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <ClerkProvider>
       <html lang="ja">

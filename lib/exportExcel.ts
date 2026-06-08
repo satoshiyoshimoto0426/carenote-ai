@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { EvaluationResult } from "@/types/evaluation";
+import type { EvaluationResult } from "@/types/evaluation";
 
 export function exportToExcel(result: EvaluationResult, fileName?: string) {
   const wb = XLSX.utils.book_new();
@@ -10,7 +10,10 @@ export function exportToExcel(result: EvaluationResult, fileName?: string) {
     [],
     ["利用者名", result.client_name],
     ["総合スコア", `${result.total_score} / 27`],
-    ["総合判定", result.total_score >= 22 ? "優良" : result.total_score >= 16 ? "改善推奨" : "要改善"],
+    [
+      "総合判定",
+      result.total_score >= 22 ? "優良" : result.total_score >= 16 ? "改善推奨" : "要改善",
+    ],
     ["総合コメント", result.evaluator_comment],
     [],
     ["━━ カテゴリ別スコア ━━"],
@@ -48,9 +51,7 @@ export function exportToExcel(result: EvaluationResult, fileName?: string) {
     detailRows.push([]);
   }
   const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
-  wsDetail["!cols"] = [
-    { wch: 28 }, { wch: 6 }, { wch: 6 }, { wch: 40 }, { wch: 40 }, { wch: 50 },
-  ];
+  wsDetail["!cols"] = [{ wch: 28 }, { wch: 6 }, { wch: 6 }, { wch: 40 }, { wch: 40 }, { wch: 50 }];
   XLSX.utils.book_append_sheet(wb, wsDetail, "カテゴリ詳細");
 
   const safeName = (result.client_name || "評価結果").replace(/[\\/:*?"<>|]/g, "_");

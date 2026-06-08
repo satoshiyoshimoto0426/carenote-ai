@@ -1,5 +1,5 @@
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
-import { NextRequest, NextResponse } from "next/server";
+import { type HandleUploadBody, handleUpload } from "@vercel/blob/client";
+import { type NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = (await request.json()) as HandleUploadBody;
@@ -18,9 +18,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.json(jsonResponse);
   } catch (error) {
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
   }
 }

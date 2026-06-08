@@ -14,7 +14,13 @@ export default function ScoreRing({ score, maxScore, size = 130 }: ScoreRingProp
   const color = pct >= 80 ? "#10b981" : pct >= 60 ? "#f59e0b" : "#ef4444";
 
   return (
-    <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+    <svg
+      width={size}
+      height={size}
+      role="img"
+      aria-label={`評価スコア ${score} / ${maxScore}`}
+      style={{ transform: "rotate(-90deg)" }}
+    >
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1e293b" strokeWidth="8" />
       <circle
         cx={size / 2}

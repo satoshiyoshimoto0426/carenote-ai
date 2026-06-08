@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { EvaluationResult } from "@/types/evaluation";
-import ScoreRing from "./ScoreRing";
-import CategoryCard from "./CategoryCard";
 import { exportToExcel } from "@/lib/exportExcel";
+import type { EvaluationResult } from "@/types/evaluation";
+import CategoryCard from "./CategoryCard";
+import ScoreRing from "./ScoreRing";
 
 interface EvaluationResultsProps {
   result: EvaluationResult;
@@ -22,8 +22,8 @@ export default function EvaluationResults({ result, onReset }: EvaluationResults
     result.total_score >= 22
       ? "rgba(16,185,129,0.13)"
       : result.total_score >= 16
-      ? "rgba(245,158,11,0.13)"
-      : "rgba(239,68,68,0.13)";
+        ? "rgba(245,158,11,0.13)"
+        : "rgba(239,68,68,0.13)";
 
   return (
     <div className="animate-fadeIn">
@@ -39,15 +39,17 @@ export default function EvaluationResults({ result, onReset }: EvaluationResults
         <div className="text-slate-400 text-xs font-semibold tracking-[3px] mb-1 uppercase">
           Evaluation Report
         </div>
-        <div className="text-xl font-black mb-5">
-          {result.client_name || "利用者"}様
-        </div>
+        <div className="text-xl font-black mb-5">{result.client_name || "利用者"}様</div>
         <div className="flex justify-center mb-4">
           <ScoreRing score={result.total_score} maxScore={27} size={130} />
         </div>
         <div
           className="inline-block px-5 py-1.5 rounded-full text-sm font-bold mb-3"
-          style={{ background: judgementBg, color: judgementColor, border: `1px solid ${judgementColor}44` }}
+          style={{
+            background: judgementBg,
+            color: judgementColor,
+            border: `1px solid ${judgementColor}44`,
+          }}
         >
           {judgement}
         </div>
@@ -62,7 +64,7 @@ export default function EvaluationResults({ result, onReset }: EvaluationResults
       <div className="flex flex-col gap-2.5 mb-5">
         {result.categories?.map((cat, i) => (
           <CategoryCard
-            key={i}
+            key={cat.id}
             cat={cat}
             index={i}
             expanded={expandedIdx === i}
@@ -98,12 +100,14 @@ export default function EvaluationResults({ result, onReset }: EvaluationResults
       {/* Actions */}
       <div className="flex gap-2.5">
         <button
+          type="button"
           onClick={onReset}
           className="flex-1 py-3.5 rounded-2xl border border-slate-600 bg-transparent text-slate-100 text-sm font-bold cursor-pointer hover:bg-slate-800 transition-colors"
         >
           🔄 別の書類を評価
         </button>
         <button
+          type="button"
           onClick={() => exportToExcel(result)}
           className="flex-1 py-3.5 rounded-2xl border-none text-white text-sm font-bold cursor-pointer hover:opacity-90 transition-opacity"
           style={{ background: "linear-gradient(135deg, #059669, #0891b2)" }}

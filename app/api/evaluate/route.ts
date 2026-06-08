@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { del } from "@vercel/blob";
-import { EVALUATION_CRITERIA } from "@/lib/evaluationCriteria";
-import { EvaluationResult } from "@/types/evaluation";
+import { type NextRequest, NextResponse } from "next/server";
 import { saveEvaluation } from "@/lib/db";
+import { EVALUATION_CRITERIA } from "@/lib/evaluationCriteria";
+import type { EvaluationResult } from "@/types/evaluation";
 
 export const maxDuration = 120;
 
@@ -85,12 +85,20 @@ export async function POST(req: NextRequest) {
     if (!resp.ok) {
       const errBody = await resp.text();
       let errMsg = `API Error (${resp.status})`;
-      try { errMsg = JSON.parse(errBody).error?.message || errMsg; } catch {}
+      try {
+        errMsg = JSON.parse(errBody).error?.message || errMsg;
+      } catch {}
 
       if (resp.status === 413 || errMsg.includes("too large"))
-        return NextResponse.json({ error: "PDFのサイズが大きすぎます。ページ数の少ないPDFで試してください。" }, { status: 413 });
+        return NextResponse.json(
+          { error: "PDFのサイズが大きすぎます。ページ数の少ないPDFで試してください。" },
+          { status: 413 },
+        );
       if (resp.status === 529 || resp.status === 503)
-        return NextResponse.json({ error: "APIサーバーが混み合っています。少し時間をおいて再試行してください。" }, { status: 503 });
+        return NextResponse.json(
+          { error: "APIサーバーが混み合っています。少し時間をおいて再試行してください。" },
+          { status: 503 },
+        );
       if (resp.status === 401)
         return NextResponse.json({ error: "APIキーの認証に失敗しました。" }, { status: 401 });
       return NextResponse.json({ error: errMsg }, { status: resp.status });
@@ -107,11 +115,17 @@ export async function POST(req: NextRequest) {
     const startIdx = jsonStr.indexOf("{");
     const endIdx = jsonStr.lastIndexOf("}");
     if (startIdx === -1 || endIdx === -1)
-      return NextResponse.json({ error: "評価結果の解析に失敗しました。再試行してください。" }, { status: 500 });
+      return NextResponse.json(
+        { error: "評価結果の解析に失敗しました。再試行してください。" },
+        { status: 500 },
+      );
 
     const parsed: EvaluationResult = JSON.parse(jsonStr.substring(startIdx, endIdx + 1));
     if (!parsed.categories || parsed.total_score === undefined)
-      return NextResponse.json({ error: "評価結果のフォーマットが不正です。再試行してください。" }, { status: 500 });
+      return NextResponse.json(
+        { error: "評価結果のフォーマットが不正です。再試行してください。" },
+        { status: 500 },
+      );
 
     // ── Supabaseに保存（ノンブロッキング） ──
     saveEvaluation({
@@ -127,7 +141,16 @@ export async function POST(req: NextRequest) {
     clearTimeout(timeout);
     if (blobUrl) del(blobUrl).catch(() => {});
     if (e instanceof Error && e.name === "AbortError")
-      return NextResponse.json({ error: "処理がタイムアウトしました。ページ数の少ないPDFで試すか、少し時間をおいて再試行してください。" }, { status: 504 });
-    return NextResponse.json({ error: e instanceof Error ? e.message : "不明なエラーが発生しました" }, { status: 500 });
+      return NextResponse.json(
+        {
+          error:
+            "処理がタイムアウトしました。ページ数の少ないPDFで試すか、少し時間をおいて再試行してください。",
+        },
+        { status: 504 },
+      );
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "不明なエラーが発生しました" },
+      { status: 500 },
+    );
   }
 }

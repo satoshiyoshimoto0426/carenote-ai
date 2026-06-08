@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
-import { EvaluationRecord } from "@/types/evaluation";
+import type { EvaluationRecord } from "@/types/evaluation";
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -20,9 +26,11 @@ function formatDateFull(iso: string) {
 
 function ScoreBadge({ score }: { score: number }) {
   const [bg, color, label] =
-    score >= 22 ? ["rgba(16,185,129,0.15)", "#10b981", "優良"]
-    : score >= 16 ? ["rgba(245,158,11,0.15)", "#f59e0b", "改善推奨"]
-    : ["rgba(239,68,68,0.15)", "#ef4444", "要改善"];
+    score >= 22
+      ? ["rgba(16,185,129,0.15)", "#10b981", "優良"]
+      : score >= 16
+        ? ["rgba(245,158,11,0.15)", "#f59e0b", "改善推奨"]
+        : ["rgba(239,68,68,0.15)", "#ef4444", "要改善"];
   return (
     <span
       className="px-2 py-0.5 rounded-full text-xs font-bold"
@@ -40,7 +48,9 @@ export default function DashboardPage() {
   useEffect(() => {
     fetch("/api/history")
       .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setRecords(data); })
+      .then((data) => {
+        if (Array.isArray(data)) setRecords(data);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
@@ -51,10 +61,13 @@ export default function DashboardPage() {
     : 0;
   const highScoreCount = records.filter((r) => r.total_score >= 22).length;
 
-  const chartData = [...records].reverse().slice(-20).map((r) => ({
-    label: formatDate(r.created_at),
-    score: r.total_score,
-  }));
+  const chartData = [...records]
+    .reverse()
+    .slice(-20)
+    .map((r) => ({
+      label: formatDate(r.created_at),
+      score: r.total_score,
+    }));
 
   return (
     <div className="animate-fadeIn max-w-4xl mx-auto">
@@ -76,9 +89,9 @@ export default function DashboardPage() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-6">
         {[
-          { label: "総評価数",   value: totalEvals,       unit: "件" },
-          { label: "平均スコア", value: avgScore,          unit: "/27" },
-          { label: "優良評価",   value: highScoreCount,   unit: "件" },
+          { label: "総評価数", value: totalEvals, unit: "件" },
+          { label: "平均スコア", value: avgScore, unit: "/27" },
+          { label: "優良評価", value: highScoreCount, unit: "件" },
         ].map(({ label, value, unit }) => (
           <div
             key={label}
@@ -113,18 +126,34 @@ export default function DashboardPage() {
               <XAxis dataKey="label" tick={{ fill: "#64748b", fontSize: 11 }} />
               <YAxis domain={[0, 27]} tick={{ fill: "#64748b", fontSize: 11 }} />
               <Tooltip
-                contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
+                contentStyle={{
+                  background: "#1e293b",
+                  border: "1px solid #334155",
+                  borderRadius: 8,
+                }}
                 labelStyle={{ color: "#94a3b8" }}
                 itemStyle={{ color: "#60a5fa" }}
                 formatter={(v: number | undefined) => [`${v ?? ""} / 27`, "スコア"]}
               />
-              <ReferenceLine y={22} stroke="#10b98155" strokeDasharray="4 2"
-                label={{ value: "優良", fill: "#10b981", fontSize: 10 }} />
-              <ReferenceLine y={16} stroke="#f59e0b55" strokeDasharray="4 2"
-                label={{ value: "改善推奨", fill: "#f59e0b", fontSize: 10 }} />
+              <ReferenceLine
+                y={22}
+                stroke="#10b98155"
+                strokeDasharray="4 2"
+                label={{ value: "優良", fill: "#10b981", fontSize: 10 }}
+              />
+              <ReferenceLine
+                y={16}
+                stroke="#f59e0b55"
+                strokeDasharray="4 2"
+                label={{ value: "改善推奨", fill: "#f59e0b", fontSize: 10 }}
+              />
               <Line
-                type="monotone" dataKey="score" stroke="#60a5fa" strokeWidth={2.5}
-                dot={{ fill: "#3b82f6", r: 4 }} activeDot={{ r: 6, fill: "#60a5fa" }}
+                type="monotone"
+                dataKey="score"
+                stroke="#60a5fa"
+                strokeWidth={2.5}
+                dot={{ fill: "#3b82f6", r: 4 }}
+                activeDot={{ r: 6, fill: "#60a5fa" }}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -144,7 +173,9 @@ export default function DashboardPage() {
         </div>
 
         {loading ? (
-          <div className="text-center py-12 text-slate-500 text-sm animate-pulse">読み込み中...</div>
+          <div className="text-center py-12 text-slate-500 text-sm animate-pulse">
+            読み込み中...
+          </div>
         ) : records.length === 0 ? (
           <div className="text-center py-14">
             <div className="text-5xl mb-3">📁</div>
@@ -187,9 +218,12 @@ export default function DashboardPage() {
                   <span
                     className="font-black text-lg"
                     style={{
-                      color: rec.total_score >= 22 ? "#10b981"
-                        : rec.total_score >= 16 ? "#f59e0b"
-                        : "#ef4444",
+                      color:
+                        rec.total_score >= 22
+                          ? "#10b981"
+                          : rec.total_score >= 16
+                            ? "#f59e0b"
+                            : "#ef4444",
                     }}
                   >
                     {rec.total_score}
