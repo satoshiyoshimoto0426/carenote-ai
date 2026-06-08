@@ -27,10 +27,10 @@
 | 型チェック | `npx tsc --noEmit` |
 
 ## Test Strategy
-- 現状ユニットテスト未整備（**Phase 2 課題**）
-- 導入予定: `vitest` + `@testing-library/react`
-- E2E: `Playwright` 導入予定
-- カバレッジ目標: 80%（導入後）
+- `vitest` 導入済（`npm run test`）。純粋ロジックからテスト追加（例: `lib/parseEvaluationJson.test.ts`）
+- React コンポーネントテスト: `@testing-library/react` は必要時に追加
+- E2E: `Playwright` 導入予定（P2 のブラウザ拡張フローで）
+- カバレッジ目標: 80%
 
 ## Rules（carenote-ai 固有）
 - ✅ React Server Components を基本とし、`"use client"` は最小限
@@ -51,23 +51,24 @@
 
 | 要素 | 状態 | 内容 |
 |---|---|---|
-| ① Context Supply | ★★★☆☆ | CLAUDE.md 整備済、docs/ は未整備 |
-| ② Quality Gates | ★★★☆☆ | Biome + tsc + Hooks 配置済、テストなし |
+| ① Context Supply | ★★★★☆ | CLAUDE.md＋SPEC.md＋docs/CONTEXT-MAP 整備済 |
+| ② Quality Gates | ★★★★☆ | Biome(v2・稼働確認済) + tsc + vitest + Hooks |
 | ③ Auto Review | ★★★★☆ | `claude-triage.yml` 配置済（要 `ANTHROPIC_API_KEY`） |
 | ④ Alert-Fix | ★★☆☆☆ | Issue Template 配置済、監視は未連携 |
 
-次に強化すべきは **vitest 導入**, **Vercel エラー監視連携**。
+次に強化すべきは **SPEC.md P1 の実装（品質/生成エンジン）**, **Vercel エラー監視連携**。
 
 ## 次に取り組むべき改善
 
-1. **Biome の `noExplicitAny` を `warn` → `error` に昇格**
-2. **vitest 導入**（lib/ の関数からテスト追加）
-3. **GitHub Actions の Quality Gate ワークフロー稼働**
-4. **Playwright で主要フロー（ログイン → ダッシュボード閲覧）の E2E**
+1. **SPEC.md の P1 実装**（品質エンジン＝ルールベース、生成バックエンド）
+2. **`noExplicitAny` / `noArrayIndexKey` / `useSemanticElements` を warn → error へ再昇格**（レガシ評価UI整理時）
+3. **GitHub Actions の Quality Gate に `npm run test` を組み込む**
+4. **Playwright で E2E**（P2 のブラウザ拡張フロー）
 
 ## Steering Loop
 横断規約（`~/.claude/CLAUDE.md` Section 2.2）に従う。
 学習ログは `.claude/steering-log.md` に追記。
 
 ---
+*ver 1.1 / 2026-06-09 / 製品を作成補助へ再定義（SPEC.md）・P0 資産整理（Biome稼働化・vitest導入）*
 *ver 1.0 / 2026-05-13 / cortex-lite ハーネス導入*
