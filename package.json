@@ -10,9 +10,11 @@
     "format": "biome check --write .",
     "check": "biome check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.102.0",
     "@clerk/nextjs": "^6.38.3",
     "@supabase/supabase-js": "^2.98.0",
     "@vercel/blob": "^2.3.0",
