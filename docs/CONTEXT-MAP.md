@@ -44,24 +44,32 @@
 [評価結果画面]   ── lib/exportExcel ──> xlsx ダウンロード
 ```
 
-外部サービス: **Clerk**（認証）, **Supabase**（DB・RLS）, **Vercel Blob**（PDF一時保管）, **Claude API**（評価・※今後は生成も）。
+外部サービス: **Clerk**（認証）, **Supabase**（DB・RLS）, **Vercel Blob**（PDF一時保管）, **Claude API**（評価＋ケアプラン生成）。
 
-## 3. 再定義後に追加予定のモジュール（SPEC 準拠・計画）
+## 3. 作成補助（再定義の本体）── 実装状況
 
 > 詳細と段階フェーズは [`../SPEC.md`](../SPEC.md) を参照。製品の軸は「評価」から「作成補助」へ。
 
-| モジュール（計画） | 役割 | フェーズ |
+| モジュール | 役割 | 状況 |
 |---|---|---|
-| `lib/rules/` | **品質エンジン**：作成のコツ・守るべきルールを構造化。生成プロンプトへ注入 | P1 |
-| `lib/generation/` | 下書き生成ロジック（アセス／ケアプラン第1・2表／モニタリング） | P1 |
-| `app/api/generate/`（仮） | 入力＋ルール → 下書き生成 API | P1 |
-| `extension/` | **時短エンジン**：ブラウザ拡張(Manifest V3)。生成内容を既存の介護ソフト画面へ自動入力。`adapters/` でソフト別の欄対応を差し替え | P2 |
+| `lib/rules/carePlan.ts` | **品質エンジン**：ケアプラン作成のコツ・守るべきルールを構造化（※サンプル・要差し替え）。生成プロンプトへ注入 | P1実装済 |
+| `lib/anthropic.ts` | Anthropic SDK クライアント（既定 Opus 4.8、`ANTHROPIC_MODEL` で上書き可） | P1実装済 |
+| `lib/generation/carePlanPrompt.ts` | プロンプト構築（system＝役割＋ルール / user＝入力）。純粋関数 | P1実装済 |
+| `lib/generation/carePlan.ts` | 下書き生成本体。構造化出力(JSON Schema)＋adaptive thinking＋プロンプトキャッシュ | P1実装済 |
+| `app/api/generate/` | 認証＋入力検証＋生成呼び出し | P1実装済 |
+| `app/(dashboard)/create/` | 作成UI：メモ入力→下書き生成→確認・コピー（人が確認・修正前提） | P1実装済 |
+| `lib/generation/`（他帳票） | アセスメント／モニタリング等への拡張 | P1継続 |
+| `extension/` | **時短エンジン**：ブラウザ拡張(MV3)。生成内容を既存の介護ソフト画面へ自動入力。`adapters/` でソフト別対応 | P2計画 |
 | 評価（現行） | 独立機能として継続。開発時は生成物の品質回帰チェックにも転用 | 継続 |
 
-### 計画後のデータフロー（概念）
+### 生成のデータフロー（P1実装済）
 ```
-[入力: 面談メモ/音声/既存データ] ─> app/api/generate ─(lib/rules + lib/generation + Claude API)─> 下書き
-        └─> [ブラウザ拡張] ─(adapters)─> 既存の介護ソフトの欄へ自動入力（人が最終確認して確定）
+[作成ページ] ──(memo入力)──> POST /api/generate ──(Clerk認証)──
+   └─ lib/generation/carePlan.generateCarePlan
+        ├─ system = 役割 + lib/rules（品質ルール） ※プロンプトキャッシュ
+        ├─ Claude API（構造化出力で第1・2表JSONを生成）
+        └─> 下書き(CarePlanDraft) ──> 作成ページで確認・コピー（人が確定）
+[将来] 下書き ──> [ブラウザ拡張(P2)] ──> 既存介護ソフトへ自動入力
 ```
 
 ## 4. 更新トリガ（いつここを直すか）
@@ -71,4 +79,4 @@
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*最終更新: 2026-06-09 / 再定義(SPEC v0.1)に合わせて新規作成*
+*最終更新: 2026-06-09 / P1: ケアプラン生成プロトタイプ（第1・2表）実装を反映*

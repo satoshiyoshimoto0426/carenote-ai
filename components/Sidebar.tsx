@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 
 const NAV = [
   { href: "/dashboard", label: "ダッシュボード", icon: "📊" },
+  { href: "/create", label: "作成する", icon: "📝" },
   { href: "/evaluate", label: "評価する", icon: "🔍" },
 ];
 
@@ -44,7 +45,7 @@ export default function Sidebar() {
           >
             CareNote AI
           </div>
-          <div className="text-xs text-slate-500 truncate">ケアプラン自動評価</div>
+          <div className="text-xs text-slate-500 truncate">ケアプラン作成・評価</div>
         </div>
       </div>
 

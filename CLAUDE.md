@@ -60,7 +60,7 @@
 
 ## 次に取り組むべき改善
 
-1. **SPEC.md の P1 実装**（品質エンジン＝ルールベース、生成バックエンド）
+1. **P1 の深化**: `lib/rules/` のサンプルルールをコンサル先ベテランの実知見に差し替え、アセスメント／モニタリングへ帳票拡張（第1・2表の生成プロトタイプは実装済）
 2. **`noExplicitAny` / `noArrayIndexKey` / `useSemanticElements` を warn → error へ再昇格**（レガシ評価UI整理時）
 3. **GitHub Actions の Quality Gate に `npm run test` を組み込む**
 4. **Playwright で E2E**（P2 のブラウザ拡張フロー）
