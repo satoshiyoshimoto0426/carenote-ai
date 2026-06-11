@@ -46,8 +46,13 @@ describe("generateAssessment 統合テスト（実API）", () => {
     console.log("saved:", saveDraftArtifact("assessment", draft));
 
     expect(draft.clientName).toBeTruthy();
+    expect(draft.assessmentReason).toBeTruthy();
+    expect(draft.mainComplaints).toBeTruthy();
+    expect(draft.lifeHistory).toBeTruthy();
+    expect(draft.currentServices).toBeTruthy();
     expect(draft.overview).toBeTruthy();
-    expect(draft.domains.length).toBeGreaterThanOrEqual(3);
+    // 課題分析標準項目14項目すべての記載をルールで要求（多少の欠落は許容）
+    expect(draft.domains.length).toBeGreaterThanOrEqual(12);
     expect(draft.identifiedIssues.length).toBeGreaterThanOrEqual(1);
     expect(Array.isArray(draft.strengths)).toBe(true);
     expect(Array.isArray(draft.itemsToConfirm)).toBe(true);

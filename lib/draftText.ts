@@ -41,9 +41,17 @@ export function assessmentToText(d: AssessmentDraft): string {
   const lines: string[] = [];
   lines.push(`利用者名: ${d.clientName}`);
   lines.push("");
+  lines.push(`【今回のアセスメントの理由】\n${d.assessmentReason}`);
+  lines.push("");
+  lines.push(`【主訴・意向】\n${d.mainComplaints}`);
+  lines.push("");
+  lines.push(`【これまでの生活と現在の状況（生活歴）】\n${d.lifeHistory}`);
+  lines.push("");
+  lines.push(`【現在利用している支援・社会資源】\n${d.currentServices}`);
+  lines.push("");
   lines.push(`【全体像】\n${d.overview}`);
   lines.push("");
-  lines.push("【領域ごとの現状と分析】");
+  lines.push("【課題分析14項目（標準項目準拠）】");
   for (const dom of d.domains) {
     lines.push(`■ ${dom.domain}`);
     lines.push(`  現状: ${dom.currentStatus}`);

@@ -26,6 +26,10 @@ const carePlan: CarePlanDraft = {
 
 const assessment: AssessmentDraft = {
   clientName: "山田花子",
+  assessmentReason: "退院後の初回アセスメント",
+  mainComplaints: "本人「また友達とお茶会をしたい」/ 夫「介助の負担を減らしたい」",
+  lifeHistory: "半年前に骨折し退院後は自宅で夫と二人暮らし",
+  currentServices: "デイサービス週1回を利用中",
   overview: "骨折後の活動量低下が見られる",
   domains: [
     { domain: "ADL", currentStatus: "屋内は伝い歩き", analysis: "骨折後の筋力低下と転倒不安" },
@@ -66,9 +70,15 @@ describe("carePlanToText", () => {
 });
 
 describe("assessmentToText", () => {
-  it("全体像・領域・強み・課題候補・要確認を含む", () => {
+  it("基本情報・全体像・項目・強み・課題候補・要確認を含む", () => {
     const text = assessmentToText(assessment);
+    expect(text).toContain("【今回のアセスメントの理由】");
+    expect(text).toContain("【主訴・意向】");
+    expect(text).toContain("また友達とお茶会をしたい");
+    expect(text).toContain("【これまでの生活と現在の状況（生活歴）】");
+    expect(text).toContain("【現在利用している支援・社会資源】");
     expect(text).toContain("【全体像】");
+    expect(text).toContain("【課題分析14項目（標準項目準拠）】");
     expect(text).toContain("■ ADL");
     expect(text).toContain("現状: 屋内は伝い歩き");
     expect(text).toContain("【強み（ストレングス）】");

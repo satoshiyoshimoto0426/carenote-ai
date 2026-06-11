@@ -6,10 +6,16 @@ export default function AssessmentDraftView({ draft }: { draft: AssessmentDraft 
   return (
     <>
       <DraftSection title="利用者名" body={draft.clientName} />
+      <DraftSection title="今回のアセスメントの理由" body={draft.assessmentReason} />
+      <DraftSection title="主訴・意向" body={draft.mainComplaints} />
+      <DraftSection title="これまでの生活と現在の状況（生活歴）" body={draft.lifeHistory} />
+      <DraftSection title="現在利用している支援・社会資源" body={draft.currentServices} />
       <DraftSection title="全体像" body={draft.overview} />
 
       <div>
-        <div className="text-slate-300 font-bold text-sm mb-2">領域ごとの現状と分析</div>
+        <div className="text-slate-300 font-bold text-sm mb-2">
+          課題分析14項目（標準項目準拠）の現状と分析
+        </div>
         <div className="space-y-3">
           {draft.domains.map((d) => (
             <div
