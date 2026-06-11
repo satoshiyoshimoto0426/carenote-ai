@@ -2,6 +2,7 @@ import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import type { MonitoringDraft } from "@/types/monitoring";
+import type { SupportLogDraft } from "@/types/supportLog";
 
 /** 共通: 要確認事項のブロックを追記する */
 function pushItemsToConfirm(lines: string[], items: string[]): void {
@@ -96,6 +97,24 @@ export function meetingSummaryToText(d: MeetingSummaryDraft): string {
   lines.push(`【結論】\n${d.conclusion}`);
   lines.push("");
   lines.push(`【残された課題（次回の開催時期）】\n${d.remainingIssues}`);
+  pushItemsToConfirm(lines, d.itemsToConfirm);
+  return lines.join("\n");
+}
+
+/** 支援経過記録（第5表）下書きを、確認・コピーしやすいプレーンテキストに整形する */
+export function supportLogToText(d: SupportLogDraft): string {
+  const lines: string[] = [];
+  lines.push(`利用者名: ${d.clientName}`);
+  d.entries.forEach((e, i) => {
+    lines.push("");
+    lines.push(`■ ${e.date}（${e.category}）`);
+    lines.push(`【対応内容】${e.action}`);
+    lines.push(`【背景・理由】${e.background}`);
+    lines.push(`【事実・発言】${e.factsAndStatements}`);
+    lines.push(`【アセスメント・判断】${e.judgement}`);
+    lines.push(`【今後の対応】${e.nextAction}`);
+    if (i < d.entries.length - 1) lines.push("----");
+  });
   pushItemsToConfirm(lines, d.itemsToConfirm);
   return lines.join("\n");
 }

@@ -4,6 +4,7 @@ import { generateAssessment } from "@/lib/generation/assessment";
 import { generateCarePlan } from "@/lib/generation/carePlan";
 import { generateMeetingSummary } from "@/lib/generation/meetingSummary";
 import { generateMonitoring } from "@/lib/generation/monitoring";
+import { generateSupportLog } from "@/lib/generation/supportLog";
 
 // Opus + adaptive thinking は時間がかかるため余裕を持たせる
 export const maxDuration = 300;
@@ -89,6 +90,17 @@ export async function POST(req: NextRequest) {
           );
         }
         const draft = await generateMeetingSummary({ clientInfo, meetingNotes });
+        return NextResponse.json(draft);
+      }
+      case "supportLog": {
+        const supportNotes = str(body, "supportNotes");
+        if (!supportNotes) {
+          return NextResponse.json(
+            { error: "支援の対応メモを入力してください。" },
+            { status: 400 },
+          );
+        }
+        const draft = await generateSupportLog({ clientInfo, supportNotes });
         return NextResponse.json(draft);
       }
       default:

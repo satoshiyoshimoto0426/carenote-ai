@@ -3,11 +3,13 @@ import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import type { MonitoringDraft } from "@/types/monitoring";
+import type { SupportLogDraft } from "@/types/supportLog";
 import {
   assessmentToText,
   carePlanToText,
   meetingSummaryToText,
   monitoringToText,
+  supportLogToText,
 } from "./draftText";
 
 const carePlan: CarePlanDraft = {
@@ -136,6 +138,36 @@ describe("meetingSummaryToText", () => {
     expect(text).toContain("【結論】");
     expect(text).toContain("【残された課題（次回の開催時期）】");
     expect(text).toContain("・理学療法士の氏名");
+  });
+});
+
+const supportLog: SupportLogDraft = {
+  clientName: "山田花子",
+  entries: [
+    {
+      date: "2026年6月11日 10:00",
+      category: "電話連絡（家族）",
+      action: "長女より電話連絡あり。その後デイサービスへ当日の様子を確認した。",
+      background: "夜間の不眠と日中の傾眠について相談があったため。",
+      factsAndStatements:
+        "長女「夜中に何度も起きてしまうようです」。デイ相談員「活動中の居眠りが増えています」。",
+      judgement: "服薬や体調変化の影響が考えられ、要因の特定が必要と判断する。",
+      nextAction: "次回訪問時にお薬手帳を確認し、必要に応じて主治医への相談を家族へ提案する。",
+    },
+  ],
+  itemsToConfirm: ["直近の処方変更の有無"],
+};
+
+describe("supportLogToText", () => {
+  it("日付・種別・5項目・要確認を含む", () => {
+    const text = supportLogToText(supportLog);
+    expect(text).toContain("■ 2026年6月11日 10:00（電話連絡（家族））");
+    expect(text).toContain("【対応内容】長女より電話連絡あり");
+    expect(text).toContain("【背景・理由】");
+    expect(text).toContain("【事実・発言】長女「夜中に何度も起きてしまうようです」");
+    expect(text).toContain("【アセスメント・判断】");
+    expect(text).toContain("【今後の対応】");
+    expect(text).toContain("・直近の処方変更の有無");
   });
 });
 

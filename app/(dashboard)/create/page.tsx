@@ -6,24 +6,28 @@ import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import ItemsToConfirm from "@/components/drafts/ItemsToConfirm";
 import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
 import MonitoringDraftView from "@/components/drafts/MonitoringDraftView";
+import SupportLogDraftView from "@/components/drafts/SupportLogDraftView";
 import {
   assessmentToText,
   carePlanToText,
   meetingSummaryToText,
   monitoringToText,
+  supportLogToText,
 } from "@/lib/draftText";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import type { MonitoringDraft } from "@/types/monitoring";
+import type { SupportLogDraft } from "@/types/supportLog";
 
-type DocType = "carePlan" | "assessment" | "monitoring" | "meetingSummary";
+type DocType = "carePlan" | "assessment" | "monitoring" | "meetingSummary" | "supportLog";
 
 type GeneratedResult =
   | { type: "carePlan"; draft: CarePlanDraft }
   | { type: "assessment"; draft: AssessmentDraft }
   | { type: "monitoring"; draft: MonitoringDraft }
-  | { type: "meetingSummary"; draft: MeetingSummaryDraft };
+  | { type: "meetingSummary"; draft: MeetingSummaryDraft }
+  | { type: "supportLog"; draft: SupportLogDraft };
 
 const DOC_META: Record<DocType, { icon: string; label: string; description: string }> = {
   assessment: {
@@ -46,10 +50,21 @@ const DOC_META: Record<DocType, { icon: string; label: string; description: stri
     label: "担当者会議（第4表）",
     description: "会議メモから要点の下書き",
   },
+  supportLog: {
+    icon: "🗒️",
+    label: "支援経過（第5表）",
+    description: "対応メモから経過記録の下書き",
+  },
 };
 
 /** ケアマネジメントの流れ順に表示する */
-const DOC_ORDER: DocType[] = ["assessment", "carePlan", "meetingSummary", "monitoring"];
+const DOC_ORDER: DocType[] = [
+  "assessment",
+  "carePlan",
+  "meetingSummary",
+  "supportLog",
+  "monitoring",
+];
 
 function resultToText(result: GeneratedResult): string {
   switch (result.type) {
@@ -61,6 +76,8 @@ function resultToText(result: GeneratedResult): string {
       return monitoringToText(result.draft);
     case "meetingSummary":
       return meetingSummaryToText(result.draft);
+    case "supportLog":
+      return supportLogToText(result.draft);
   }
 }
 
@@ -71,6 +88,7 @@ export default function CreatePage() {
   const [previousPlanSummary, setPreviousPlanSummary] = useState("");
   const [monitoringNotes, setMonitoringNotes] = useState("");
   const [meetingNotes, setMeetingNotes] = useState("");
+  const [supportNotes, setSupportNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GeneratedResult | null>(null);
@@ -98,6 +116,11 @@ export default function CreatePage() {
         setError("サービス担当者会議のメモを入力してください。");
         return;
       }
+    } else if (docType === "supportLog") {
+      if (!supportNotes.trim()) {
+        setError("支援の対応メモを入力してください。");
+        return;
+      }
     } else if (!assessmentNotes.trim()) {
       setError(
         docType === "carePlan"
@@ -117,6 +140,8 @@ export default function CreatePage() {
         payload.monitoringNotes = monitoringNotes;
       } else if (docType === "meetingSummary") {
         payload.meetingNotes = meetingNotes;
+      } else if (docType === "supportLog") {
+        payload.supportNotes = supportNotes;
       } else {
         payload.assessmentNotes = assessmentNotes;
       }
@@ -239,6 +264,24 @@ export default function CreatePage() {
                 />
               </div>
             </>
+          ) : docType === "supportLog" ? (
+            <div>
+              <label
+                htmlFor="supportNotes"
+                className="block text-slate-300 text-sm font-semibold mb-1.5"
+              >
+                支援の対応メモ（訪問・電話・調整など） <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                id="supportNotes"
+                value={supportNotes}
+                onChange={(e) => setSupportNotes(e.target.value)}
+                rows={10}
+                placeholder="日付・相手・やり取りの内容などの殴り書きメモを貼り付けてください。複数日の対応が混ざっていてもOK（自動で分割します）。"
+                className="w-full px-4 py-3 rounded-xl bg-slate-900 text-slate-100 text-sm outline-none leading-relaxed resize-y"
+                style={{ border: "1px solid #334155" }}
+              />
+            </div>
           ) : docType === "meetingSummary" ? (
             <div>
               <label
@@ -318,6 +361,7 @@ export default function CreatePage() {
           {result.type === "assessment" && <AssessmentDraftView draft={result.draft} />}
           {result.type === "monitoring" && <MonitoringDraftView draft={result.draft} />}
           {result.type === "meetingSummary" && <MeetingSummaryDraftView draft={result.draft} />}
+          {result.type === "supportLog" && <SupportLogDraftView draft={result.draft} />}
 
           <ItemsToConfirm items={result.draft.itemsToConfirm} />
 
