@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
+import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import type { MonitoringDraft } from "@/types/monitoring";
-import { assessmentToText, carePlanToText, monitoringToText } from "./draftText";
+import {
+  assessmentToText,
+  carePlanToText,
+  meetingSummaryToText,
+  monitoringToText,
+} from "./draftText";
 
 const carePlan: CarePlanDraft = {
   clientName: "山田花子",
@@ -17,7 +23,13 @@ const carePlan: CarePlanDraft = {
       shortTermGoal: "伝い歩きで屋内を安全に移動できる",
       shortTermPeriod: "3か月",
       services: [
-        { content: "歩行訓練", serviceType: "通所リハビリ", frequency: "週2回", period: "3か月" },
+        {
+          content: "歩行訓練",
+          serviceType: "通所リハビリ",
+          frequency: "週2回",
+          period: "3か月",
+          provider: "通所リハビリ事業所（要確認）",
+        },
       ],
     },
   ],
@@ -63,7 +75,9 @@ describe("carePlanToText", () => {
     expect(text).toContain("移動の安定と交流機会の支援が必要");
     expect(text).toContain("1. また友人とお茶会に行きたい");
     expect(text).toContain("長期目標: 友人宅まで一人で外出できる（6か月）");
-    expect(text).toContain("歩行訓練 / 通所リハビリ / 週2回 / 3か月");
+    expect(text).toContain(
+      "歩行訓練 / 通所リハビリ / 週2回 / 3か月 / 担当: 通所リハビリ事業所（要確認）",
+    );
     expect(text).toContain("【要確認事項】");
     expect(text).toContain("・夜間のトイレ状況");
   });
@@ -89,6 +103,39 @@ describe("assessmentToText", () => {
   it("強みが空なら見出しを出さない", () => {
     const text = assessmentToText({ ...assessment, strengths: [] });
     expect(text).not.toContain("【強み（ストレングス）】");
+  });
+});
+
+const meetingSummary: MeetingSummaryDraft = {
+  clientName: "山田花子",
+  meetingDate: "2026年6月10日",
+  meetingPlace: "利用者自宅",
+  meetingTime: "14:00〜14:45",
+  attendees: [
+    { affiliation: "○○居宅介護支援事業所", role: "介護支援専門員", name: "吉本" },
+    { affiliation: "△△通所リハビリ", role: "理学療法士", name: "要確認" },
+  ],
+  discussions: [
+    {
+      item: "屋内移動の安定（短期目標の達成状況）",
+      details: "理学療法士より「下肢筋力は改善傾向」との報告。",
+    },
+  ],
+  conclusion: "通所リハビリを週2回で継続する。次回モニタリングで屋外歩行を再評価する。",
+  remainingIssues: "夜間の動線整備は次回会議で検討（次回: 3か月後を目安）。",
+  itemsToConfirm: ["理学療法士の氏名"],
+};
+
+describe("meetingSummaryToText", () => {
+  it("開催情報・出席者・検討・結論・残課題・要確認を含む", () => {
+    const text = meetingSummaryToText(meetingSummary);
+    expect(text).toContain("開催日: 2026年6月10日");
+    expect(text).toContain("【会議出席者】");
+    expect(text).toContain("・○○居宅介護支援事業所（介護支援専門員） 吉本");
+    expect(text).toContain("1. 屋内移動の安定（短期目標の達成状況）");
+    expect(text).toContain("【結論】");
+    expect(text).toContain("【残された課題（次回の開催時期）】");
+    expect(text).toContain("・理学療法士の氏名");
   });
 });
 

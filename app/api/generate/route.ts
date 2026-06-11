@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
 import { generateAssessment } from "@/lib/generation/assessment";
 import { generateCarePlan } from "@/lib/generation/carePlan";
+import { generateMeetingSummary } from "@/lib/generation/meetingSummary";
 import { generateMonitoring } from "@/lib/generation/monitoring";
 
 // Opus + adaptive thinking は時間がかかるため余裕を持たせる
@@ -77,6 +78,17 @@ export async function POST(req: NextRequest) {
           previousPlanSummary,
           monitoringNotes,
         });
+        return NextResponse.json(draft);
+      }
+      case "meetingSummary": {
+        const meetingNotes = str(body, "meetingNotes");
+        if (!meetingNotes) {
+          return NextResponse.json(
+            { error: "サービス担当者会議のメモを入力してください。" },
+            { status: 400 },
+          );
+        }
+        const draft = await generateMeetingSummary({ clientInfo, meetingNotes });
         return NextResponse.json(draft);
       }
       default:

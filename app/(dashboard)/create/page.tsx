@@ -4,18 +4,26 @@ import { useState } from "react";
 import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
 import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import ItemsToConfirm from "@/components/drafts/ItemsToConfirm";
+import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
 import MonitoringDraftView from "@/components/drafts/MonitoringDraftView";
-import { assessmentToText, carePlanToText, monitoringToText } from "@/lib/draftText";
+import {
+  assessmentToText,
+  carePlanToText,
+  meetingSummaryToText,
+  monitoringToText,
+} from "@/lib/draftText";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
+import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import type { MonitoringDraft } from "@/types/monitoring";
 
-type DocType = "carePlan" | "assessment" | "monitoring";
+type DocType = "carePlan" | "assessment" | "monitoring" | "meetingSummary";
 
 type GeneratedResult =
   | { type: "carePlan"; draft: CarePlanDraft }
   | { type: "assessment"; draft: AssessmentDraft }
-  | { type: "monitoring"; draft: MonitoringDraft };
+  | { type: "monitoring"; draft: MonitoringDraft }
+  | { type: "meetingSummary"; draft: MeetingSummaryDraft };
 
 const DOC_META: Record<DocType, { icon: string; label: string; description: string }> = {
   assessment: {
@@ -33,10 +41,15 @@ const DOC_META: Record<DocType, { icon: string; label: string; description: stri
     label: "モニタリング",
     description: "前回プラン＋最新状況から記録の下書き",
   },
+  meetingSummary: {
+    icon: "🤝",
+    label: "担当者会議（第4表）",
+    description: "会議メモから要点の下書き",
+  },
 };
 
 /** ケアマネジメントの流れ順に表示する */
-const DOC_ORDER: DocType[] = ["assessment", "carePlan", "monitoring"];
+const DOC_ORDER: DocType[] = ["assessment", "carePlan", "meetingSummary", "monitoring"];
 
 function resultToText(result: GeneratedResult): string {
   switch (result.type) {
@@ -46,6 +59,8 @@ function resultToText(result: GeneratedResult): string {
       return assessmentToText(result.draft);
     case "monitoring":
       return monitoringToText(result.draft);
+    case "meetingSummary":
+      return meetingSummaryToText(result.draft);
   }
 }
 
@@ -55,6 +70,7 @@ export default function CreatePage() {
   const [assessmentNotes, setAssessmentNotes] = useState("");
   const [previousPlanSummary, setPreviousPlanSummary] = useState("");
   const [monitoringNotes, setMonitoringNotes] = useState("");
+  const [meetingNotes, setMeetingNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GeneratedResult | null>(null);
@@ -77,6 +93,11 @@ export default function CreatePage() {
         setError("最新の状況・モニタリングメモを入力してください。");
         return;
       }
+    } else if (docType === "meetingSummary") {
+      if (!meetingNotes.trim()) {
+        setError("サービス担当者会議のメモを入力してください。");
+        return;
+      }
     } else if (!assessmentNotes.trim()) {
       setError(
         docType === "carePlan"
@@ -94,6 +115,8 @@ export default function CreatePage() {
       if (docType === "monitoring") {
         payload.previousPlanSummary = previousPlanSummary;
         payload.monitoringNotes = monitoringNotes;
+      } else if (docType === "meetingSummary") {
+        payload.meetingNotes = meetingNotes;
       } else {
         payload.assessmentNotes = assessmentNotes;
       }
@@ -130,7 +153,7 @@ export default function CreatePage() {
       </div>
 
       {/* 帳票セレクタ */}
-      <div className="grid grid-cols-3 gap-2 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
         {DOC_ORDER.map((t) => {
           const meta = DOC_META[t];
           const active = docType === t;
@@ -216,6 +239,24 @@ export default function CreatePage() {
                 />
               </div>
             </>
+          ) : docType === "meetingSummary" ? (
+            <div>
+              <label
+                htmlFor="meetingNotes"
+                className="block text-slate-300 text-sm font-semibold mb-1.5"
+              >
+                サービス担当者会議のメモ <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                id="meetingNotes"
+                value={meetingNotes}
+                onChange={(e) => setMeetingNotes(e.target.value)}
+                rows={10}
+                placeholder="開催日時・場所、出席者、会議で出た発言・報告・決定事項などのメモ（殴り書きでOK）を貼り付けてください。"
+                className="w-full px-4 py-3 rounded-xl bg-slate-900 text-slate-100 text-sm outline-none leading-relaxed resize-y"
+                style={{ border: "1px solid #334155" }}
+              />
+            </div>
           ) : (
             <div>
               <label
@@ -276,6 +317,7 @@ export default function CreatePage() {
           {result.type === "carePlan" && <CarePlanDraftView draft={result.draft} />}
           {result.type === "assessment" && <AssessmentDraftView draft={result.draft} />}
           {result.type === "monitoring" && <MonitoringDraftView draft={result.draft} />}
+          {result.type === "meetingSummary" && <MeetingSummaryDraftView draft={result.draft} />}
 
           <ItemsToConfirm items={result.draft.itemsToConfirm} />
 

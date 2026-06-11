@@ -1,5 +1,6 @@
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
+import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import type { MonitoringDraft } from "@/types/monitoring";
 
 /** 共通: 要確認事項のブロックを追記する */
@@ -29,7 +30,9 @@ export function carePlanToText(d: CarePlanDraft): string {
     lines.push(`   長期目標: ${n.longTermGoal}（${n.longTermPeriod}）`);
     lines.push(`   短期目標: ${n.shortTermGoal}（${n.shortTermPeriod}）`);
     for (const s of n.services) {
-      lines.push(`   - ${s.content} / ${s.serviceType} / ${s.frequency} / ${s.period}`);
+      lines.push(
+        `   - ${s.content} / ${s.serviceType} / ${s.frequency} / ${s.period} / 担当: ${s.provider}`,
+      );
     }
   });
   pushItemsToConfirm(lines, d.itemsToConfirm);
@@ -69,6 +72,30 @@ export function assessmentToText(d: AssessmentDraft): string {
   d.identifiedIssues.forEach((issue, i) => {
     lines.push(`${i + 1}. ${issue}`);
   });
+  pushItemsToConfirm(lines, d.itemsToConfirm);
+  return lines.join("\n");
+}
+
+/** 第4表（サービス担当者会議の要点）下書きを、確認・コピーしやすいプレーンテキストに整形する */
+export function meetingSummaryToText(d: MeetingSummaryDraft): string {
+  const lines: string[] = [];
+  lines.push(`利用者名: ${d.clientName}`);
+  lines.push(`開催日: ${d.meetingDate} / 場所: ${d.meetingPlace} / 時間: ${d.meetingTime}`);
+  lines.push("");
+  lines.push("【会議出席者】");
+  for (const a of d.attendees) {
+    lines.push(`・${a.affiliation}（${a.role}） ${a.name}`);
+  }
+  lines.push("");
+  lines.push("【検討した項目・検討内容】");
+  d.discussions.forEach((disc, i) => {
+    lines.push(`${i + 1}. ${disc.item}`);
+    lines.push(`   ${disc.details}`);
+  });
+  lines.push("");
+  lines.push(`【結論】\n${d.conclusion}`);
+  lines.push("");
+  lines.push(`【残された課題（次回の開催時期）】\n${d.remainingIssues}`);
   pushItemsToConfirm(lines, d.itemsToConfirm);
   return lines.join("\n");
 }
