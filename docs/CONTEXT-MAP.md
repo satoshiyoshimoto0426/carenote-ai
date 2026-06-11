@@ -59,7 +59,7 @@
 | `lib/draftText.ts` | 下書き→コピー用プレーンテキスト整形（純粋関数・テスト済） | P1実装済 |
 | `app/api/generate/` | 認証＋`documentType`分岐（carePlan/assessment/monitoring）＋入力検証 | P1実装済 |
 | `app/(dashboard)/create/` | 作成UI：帳票セレクタ→入力→下書き生成→確認・コピー（`components/drafts/` に表示部品） | P1実装済 |
-| `extension/` | **時短エンジン**：ブラウザ拡張(MV3)。生成内容を既存の介護ソフト画面へ自動入力。`adapters/` でソフト別対応 | P2計画 |
+| `extension/` | **時短エンジン**：ブラウザ拡張(MV3)。対象ソフトは**カイポケ**（一旦・吉本決定 2026-06-11）。Step1=DOM非依存の転記支援パネル→Step2=アダプタで半自動入力。調査メモ: [P2-KAIPOKE.md](P2-KAIPOKE.md) | P2調査済 |
 | 評価（現行） | 独立機能として継続。開発時は生成物の品質回帰チェックにも転用 | 継続 |
 
 ### 生成のデータフロー（P1実装済・3帳票）
