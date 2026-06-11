@@ -52,7 +52,7 @@
 
 | モジュール | 役割 | 状況 |
 |---|---|---|
-| `lib/rules/` | **品質エンジン**：帳票別の作成ルール（carePlan / assessment / monitoring。※サンプル・要差し替え）。生成プロンプトへ注入 | P1実装済 |
+| `lib/rules/` | **品質エンジン**：帳票別の作成ルール（carePlan / assessment / monitoring）。**v1=吉本（ケアマネ歴13年）の知見ベース**（意向形ニーズ/長期12か月・短期6か月/です・ます体/アセスメント連動・根拠の記録性を最重視）。生成プロンプトへ注入 | v1反映済 |
 | `lib/anthropic.ts` | Anthropic SDK クライアント（既定 Opus 4.8、`ANTHROPIC_MODEL` で上書き可） | P1実装済 |
 | `lib/generation/structured.ts` | 全帳票共通の生成コア（adaptive thinking＋構造化出力＋プロンプトキャッシュ） | P1実装済 |
 | `lib/generation/{carePlan,assessment,monitoring}.ts` | 帳票別の生成（スキーマ＋プロンプト構築。`*Prompt.ts` は純粋関数でテスト済） | P1実装済 |

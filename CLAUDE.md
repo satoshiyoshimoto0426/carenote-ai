@@ -60,7 +60,7 @@
 
 ## 次に取り組むべき改善
 
-1. **P1 の仕上げ**: ①実API検証（`.env.local` にキー設定→`npm run test:integration`）②`lib/rules/` のサンプルルールをコンサル先ベテランの実知見に差し替え（3帳票の生成は実装済。ヒアリングは `docs/HEARING-SHEET.md`）
+1. **品質エンジンの継続強化**: `lib/rules/` は v1（吉本=ケアマネ歴13年の知見）反映済。NG表現→言い換え集・新人がやりがちなミス等を随時追記。コンサル先固有の様式・運用は `docs/HEARING-SHEET.md` で確認（§5は主に社内で充足済）
 2. **`noExplicitAny` / `noArrayIndexKey` / `useSemanticElements` を warn → error へ再昇格**（レガシ評価UI整理時）
 3. **GitHub Actions の Quality Gate に `npm run test` を組み込む**
 4. **Playwright で E2E**（P2 のブラウザ拡張フロー）
