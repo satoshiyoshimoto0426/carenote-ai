@@ -8,6 +8,8 @@ export interface CarePlanService {
   frequency: string;
   /** 期間（例: 6か月） */
   period: string;
+  /** 担当者（事業所名・家族・本人など。未定なら「要確認」） */
+  provider: string;
 }
 
 /** 第2表の「生活全般の解決すべき課題（ニーズ）」1件と、その目標・サービス */

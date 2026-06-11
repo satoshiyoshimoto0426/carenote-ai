@@ -43,7 +43,7 @@ export default function CarePlanDraftView({ draft }: { draft: CarePlanDraft }) {
                     <div key={s.content} className="text-slate-300 text-xs">
                       ・{s.content}
                       <span className="text-slate-500">
-                        （{s.serviceType} / {s.frequency} / {s.period}）
+                        （{s.serviceType} / {s.frequency} / {s.period} / 担当: {s.provider}）
                       </span>
                     </div>
                   ))}
