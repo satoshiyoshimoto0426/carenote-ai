@@ -47,6 +47,32 @@
 | domains（14項目） | P4〜P9 の各観点欄に分散 | 完全自動は過剰。**Step2の現実解: P1主訴系＋P10まとめ＋P7援助希望/計画のテキスト欄を自動入力し、チェック群は転記支援パネルで人が確認** |
 | itemsToConfirm | （対応欄なし） | 拡張のサイドパネルに表示して人が処理 |
 
+## ケアプラン・モジュール（パス: `/business/care_plan/care/...`）
+
+### 第1表（居宅サービス計画書(1)） MEM091701.do
+| 欄 | プログラム名 | 型 | CareNote AI 対応 |
+|---|---|---|---|
+| 作成年月日 | `makeYmd*` ＋ `firstTimeFlag`/`introductionFlag`/`continuationFlag`(初回/紹介/継続chk) | sel×4+chk | — |
+| 被保険者適用期間 | `lsLedInsuranceProof` | sel | — |
+| 計画作成者氏名 | `staffMemberId` | text | — |
+| 計画作成(変更)日 | `inHomeServicePlanMakeYmd*` | sel×4 | — |
+| 初回計画作成日 | `firstTimeInHomeServicePlanMakeYmd*` | sel×4 | — |
+| **利用者及び家族の意向を踏まえた課題分析の結果** | **`userLifeSubject`** | textarea | **`assessmentSummary`** ✅ |
+| 介護認定審査会の意見及びサービスの種類の指定 | （textarea・name難読化） | textarea | （対象外。初期値「特になし」） |
+| **総合的な援助の方針** | （textarea・name難読化） | textarea | **`comprehensivePolicy`** ✅ |
+| 生活援助中心型の算定理由 | （chk×3＋text・name難読化） | chk+text | — |
+| 説明・同意日 | `descriptionAgreementDayYmd*` | sel×4 | — |
+
+- ⭐ **重要発見**: 各テキスト欄の隣に**カイポケ純正の「難形・例文選択」「難形登録」ボタン**がある
+  ＝定型文の差し込み機能を製品自身が持つ＝**外部からの自動入力に文化的抵抗が小さい**。
+- 一部の textarea/chk は `name` が Base64 難読化されていた（同一画面でも難読化されない `userLifeSubject` 等と混在）。
+  → アダプタは **name優先・ダメなら見出しラベル（th文言）からの近接探索** の二段構えにする。
+
+### 第2表（居宅サービス計画書(2)） — 未取得
+- 第1表画面内のタブ「居宅サービス計画書(2)」はクリックで切替不可。
+  **第1表を登録(保存)してからでないと第2表が開けない**仕様と推定（アセスメントの管理情報→各ページと同じパターン）。
+- 次回、第1表を保存した状態で第2表（ニーズ/長期・短期目標/期間/サービス内容/サービス種別/頻度/担当者）の構造を取得する。
+
 ## アダプタ設計への示唆
 
 1. **テキストエリア中心の半自動入力が最有効**（主訴・経過・まとめ・援助希望/計画）。チェック/ラジオの海（P5,P6,P8,P9）は人の判断領域として残す。
