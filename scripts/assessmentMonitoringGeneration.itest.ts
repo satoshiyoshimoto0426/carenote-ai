@@ -42,8 +42,8 @@ describe("generateAssessment 統合テスト（実API）", () => {
       assessmentNotes: SAMPLE_NOTES,
     });
 
-    console.log("=== 生成されたアセスメント下書き ===");
-    console.log(JSON.stringify(draft, null, 2));
+    const { saveDraftArtifact } = await import("./draftArtifacts");
+    console.log("saved:", saveDraftArtifact("assessment", draft));
 
     expect(draft.clientName).toBeTruthy();
     expect(draft.overview).toBeTruthy();
@@ -74,8 +74,8 @@ describe("generateMonitoring 統合テスト（実API）", () => {
 通所リハビリは週2回継続中で、リハビリ職からは「下肢筋力は改善傾向」と報告あり。`,
     });
 
-    console.log("=== 生成されたモニタリング下書き ===");
-    console.log(JSON.stringify(draft, null, 2));
+    const { saveDraftArtifact } = await import("./draftArtifacts");
+    console.log("saved:", saveDraftArtifact("monitoring", draft));
 
     expect(draft.clientName).toBeTruthy();
     expect(draft.overallSummary).toBeTruthy();

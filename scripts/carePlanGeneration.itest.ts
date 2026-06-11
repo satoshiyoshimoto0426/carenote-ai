@@ -47,9 +47,9 @@ describe("generateCarePlan 統合テスト（実API）", () => {
       assessmentNotes: SAMPLE_NOTES,
     });
 
-    // 人間レビュー用に生成結果全体を出力する（架空事例のみ）
-    console.log("=== 生成されたケアプラン下書き ===");
-    console.log(JSON.stringify(draft, null, 2));
+    // 人間レビュー用に成果物を保存（架空事例のみ。vitestは成功時のconsoleを省略するため）
+    const { saveDraftArtifact } = await import("./draftArtifacts");
+    console.log("saved:", saveDraftArtifact("carePlan", draft));
 
     expect(draft.clientName).toBeTruthy();
     expect(draft.intentions).toBeTruthy();
