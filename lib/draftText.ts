@@ -19,6 +19,8 @@ export function carePlanToText(d: CarePlanDraft): string {
   lines.push("");
   lines.push(`【利用者及び家族の意向】\n${d.intentions}`);
   lines.push("");
+  lines.push(`【意向を踏まえた課題分析の結果】\n${d.assessmentSummary}`);
+  lines.push("");
   lines.push(`【総合的な援助の方針】\n${d.comprehensivePolicy}`);
   lines.push("");
   lines.push("【生活全般の解決すべき課題（ニーズ）】");

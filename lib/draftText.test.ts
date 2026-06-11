@@ -7,6 +7,7 @@ import { assessmentToText, carePlanToText, monitoringToText } from "./draftText"
 const carePlan: CarePlanDraft = {
   clientName: "山田花子",
   intentions: "自宅での生活を続けたい",
+  assessmentSummary: "骨折後の歩行不安定により外出が減っており、移動の安定と交流機会の支援が必要",
   comprehensivePolicy: "転倒予防と外出機会の確保を支援する",
   needs: [
     {
@@ -54,6 +55,8 @@ describe("carePlanToText", () => {
     const text = carePlanToText(carePlan);
     expect(text).toContain("【利用者及び家族の意向】");
     expect(text).toContain("自宅での生活を続けたい");
+    expect(text).toContain("【意向を踏まえた課題分析の結果】");
+    expect(text).toContain("移動の安定と交流機会の支援が必要");
     expect(text).toContain("1. また友人とお茶会に行きたい");
     expect(text).toContain("長期目標: 友人宅まで一人で外出できる（6か月）");
     expect(text).toContain("歩行訓練 / 通所リハビリ / 週2回 / 3か月");

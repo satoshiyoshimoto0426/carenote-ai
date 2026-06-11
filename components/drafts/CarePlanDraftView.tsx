@@ -7,6 +7,7 @@ export default function CarePlanDraftView({ draft }: { draft: CarePlanDraft }) {
     <>
       <DraftSection title="利用者名" body={draft.clientName} />
       <DraftSection title="利用者及び家族の意向（第1表）" body={draft.intentions} />
+      <DraftSection title="意向を踏まえた課題分析の結果（第1表）" body={draft.assessmentSummary} />
       <DraftSection title="総合的な援助の方針（第1表）" body={draft.comprehensivePolicy} />
 
       <div>

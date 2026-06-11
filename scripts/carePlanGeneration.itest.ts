@@ -53,6 +53,7 @@ describe("generateCarePlan 統合テスト（実API）", () => {
 
     expect(draft.clientName).toBeTruthy();
     expect(draft.intentions).toBeTruthy();
+    expect(draft.assessmentSummary).toBeTruthy();
     expect(draft.comprehensivePolicy).toBeTruthy();
     expect(draft.needs.length).toBeGreaterThanOrEqual(1);
     for (const n of draft.needs) {

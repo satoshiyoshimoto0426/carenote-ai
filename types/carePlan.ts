@@ -32,6 +32,8 @@ export interface CarePlanDraft {
   clientName: string;
   /** 第1表: 利用者及び家族の生活に対する意向 */
   intentions: string;
+  /** 第1表: 意向を踏まえた課題分析の結果（なぜ・どのような支援が必要か） */
+  assessmentSummary: string;
   /** 第1表: 総合的な援助の方針 */
   comprehensivePolicy: string;
   /** 第2表: 解決すべき課題（ニーズ）と目標・サービス */

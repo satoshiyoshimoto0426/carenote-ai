@@ -8,6 +8,7 @@ const CARE_PLAN_JSON_SCHEMA = {
   properties: {
     clientName: { type: "string" },
     intentions: { type: "string" },
+    assessmentSummary: { type: "string" },
     comprehensivePolicy: { type: "string" },
     needs: {
       type: "array",
@@ -47,7 +48,14 @@ const CARE_PLAN_JSON_SCHEMA = {
     },
     itemsToConfirm: { type: "array", items: { type: "string" } },
   },
-  required: ["clientName", "intentions", "comprehensivePolicy", "needs", "itemsToConfirm"],
+  required: [
+    "clientName",
+    "intentions",
+    "assessmentSummary",
+    "comprehensivePolicy",
+    "needs",
+    "itemsToConfirm",
+  ],
   additionalProperties: false,
 };
 
