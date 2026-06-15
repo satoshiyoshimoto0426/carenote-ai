@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "CareNote AI — カイポケ連携",
+  "version": "0.1.0",
+  "description": "面談メモからケアプラン等の下書きをAI生成し、カイポケの帳票画面へ流し込みます。",
+  "permissions": ["sidePanel", "storage", "activeTab", "scripting", "tabs"],
+  "host_permissions": ["https://r.kaipoke.biz/*"],
+  "background": { "service_worker": "src/background.js" },
+  "side_panel": { "default_path": "src/panel.html" },
+  "action": { "default_title": "CareNote AI パネルを開く" },
+  "options_page": "src/options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://r.kaipoke.biz/*"],
+      "js": ["src/adapters/kaipoke.js", "src/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
