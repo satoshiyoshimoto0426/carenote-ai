@@ -1,5 +1,6 @@
+import { RESCUE_SYSTEM_OVERRIDE } from "@/lib/rules/rescue";
 import type { SupportLogDraft, SupportLogInput } from "@/types/supportLog";
-import { generateStructuredDraft } from "./structured";
+import { type GenerateOptions, generateStructuredDraft } from "./structured";
 import { buildSupportLogUserMessage, SUPPORT_LOG_SYSTEM_PROMPT } from "./supportLogPrompt";
 
 /** 構造化出力(JSON Schema)。SupportLogDraft と一致させること。 */
@@ -39,9 +40,14 @@ const SUPPORT_LOG_JSON_SCHEMA = {
 };
 
 /** 対応メモから、支援経過記録（第5表）の下書きを生成する。 */
-export async function generateSupportLog(input: SupportLogInput): Promise<SupportLogDraft> {
+export async function generateSupportLog(
+  input: SupportLogInput,
+  options: GenerateOptions = {},
+): Promise<SupportLogDraft> {
   return generateStructuredDraft<SupportLogDraft>({
-    systemPrompt: SUPPORT_LOG_SYSTEM_PROMPT,
+    systemPrompt: options.rescue
+      ? `${SUPPORT_LOG_SYSTEM_PROMPT}\n\n${RESCUE_SYSTEM_OVERRIDE}`
+      : SUPPORT_LOG_SYSTEM_PROMPT,
     userMessage: buildSupportLogUserMessage(input),
     schema: SUPPORT_LOG_JSON_SCHEMA,
   });
