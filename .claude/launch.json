@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "carenote-dev",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd C:\\Users\\vivid\\OneDrive\\デスクトップ\\MaouCastle\\carenote-ai && npm run dev"],
+      "port": 3000
+    }
+  ]
+}
