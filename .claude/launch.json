@@ -4,7 +4,10 @@
     {
       "name": "carenote-dev",
       "runtimeExecutable": "cmd",
-      "runtimeArgs": ["/c", "cd C:\\Users\\vivid\\OneDrive\\デスクトップ\\MaouCastle\\carenote-ai && npm run dev"],
+      "runtimeArgs": [
+        "/c",
+        "cd C:\\Users\\vivid\\OneDrive\\デスクトップ\\MaouCastle\\carenote-ai && npm run dev"
+      ],
       "port": 3000
     }
   ]
