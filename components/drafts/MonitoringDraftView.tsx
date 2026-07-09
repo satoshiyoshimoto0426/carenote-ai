@@ -1,3 +1,4 @@
+import { Card, SectionTitle } from "@/components/ui/primitives";
 import type { MonitoringDraft } from "@/types/monitoring";
 import DraftSection from "./DraftSection";
 
@@ -9,32 +10,25 @@ export default function MonitoringDraftView({ draft }: { draft: MonitoringDraft 
       <DraftSection title="総合所見" body={draft.overallSummary} />
 
       <div>
-        <div className="text-slate-300 font-bold text-sm mb-2">目標ごとの達成状況</div>
+        <SectionTitle className="mb-2">目標ごとの達成状況</SectionTitle>
         <div className="space-y-3">
           {draft.goalEvaluations.map((g, i) => (
-            <div
-              key={g.goal}
-              className="rounded-xl p-4"
-              style={{
-                background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-                border: "1px solid #334155",
-              }}
-            >
-              <div className="text-slate-100 font-bold text-sm mb-2">
+            <Card key={g.goal} className="p-4">
+              <div className="mb-2 text-sm font-medium text-[var(--ink)]">
                 {i + 1}. {g.goal}
               </div>
-              <div className="text-slate-300 text-xs leading-relaxed space-y-1">
+              <div className="space-y-1 text-xs leading-relaxed text-[var(--ink)]">
                 <div>
-                  <span className="text-amber-300">達成状況:</span> {g.achievement}
+                  <span className="font-medium text-[#7A5B1E]">達成状況:</span> {g.achievement}
                 </div>
                 <div>
-                  <span className="text-sky-400">根拠:</span> {g.evidence}
+                  <span className="font-medium text-[var(--green)]">根拠:</span> {g.evidence}
                 </div>
                 <div>
-                  <span className="text-emerald-300">提案:</span> {g.proposal}
+                  <span className="font-medium text-[var(--green)]">提案:</span> {g.proposal}
                 </div>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       </div>

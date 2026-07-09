@@ -8,19 +8,16 @@ interface LoadingProgressProps {
 export default function LoadingProgress({ progress, statusMsg }: LoadingProgressProps) {
   return (
     <div className="animate-fadeIn mt-1">
-      <div className="w-full h-2 rounded bg-slate-800 overflow-hidden mb-3.5">
+      <div className="mb-3.5 h-2 w-full overflow-hidden rounded-full bg-[var(--line-soft)]">
         <div
-          className="h-full rounded transition-all duration-500"
-          style={{
-            width: `${progress}%`,
-            background: "linear-gradient(90deg, #3b82f6, #8b5cf6)",
-          }}
+          className="h-full rounded-full bg-[var(--green)] transition-all duration-500"
+          style={{ width: `${progress}%` }}
         />
       </div>
-      <div className="text-center text-slate-400 text-sm">
+      <div className="text-center text-sm text-[var(--muted)]">
         <span className="animate-pulse">{statusMsg}</span>
       </div>
-      <div className="text-center text-slate-500 text-xs mt-2">
+      <div className="mt-2 text-center text-xs text-[var(--faint)]">
         ※ページ数が多いPDFは1〜2分かかることがあります
       </div>
     </div>

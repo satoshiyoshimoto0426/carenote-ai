@@ -1,12 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
 import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
 import MonitoringDraftView from "@/components/drafts/MonitoringDraftView";
 import SupportLogDraftView from "@/components/drafts/SupportLogDraftView";
+import {
+  IconAlert,
+  IconArrowRight,
+  IconCheck,
+  IconCopy,
+  IconLayers,
+  IconLoader,
+} from "@/components/ui/icons";
+import {
+  btnPrimary,
+  btnSecondary,
+  Card,
+  Field,
+  inputClass,
+  PageHeader,
+  SectionTitle,
+  textareaClass,
+} from "@/components/ui/primitives";
 import {
   assessmentToText,
   carePlanToText,
@@ -20,13 +38,19 @@ import type { ClientRecord } from "@/types/client";
 type DocKey = keyof RescueBundle;
 
 /** 表示順とラベル（ケアマネジメントの流れ順）。 */
-const DOC_ORDER: { key: DocKey; icon: string; label: string }[] = [
-  { key: "assessment", icon: "🔍", label: "アセスメント（課題分析）" },
-  { key: "carePlan", icon: "📋", label: "ケアプラン 第1・2表" },
-  { key: "meetingSummary", icon: "🤝", label: "第4表 サービス担当者会議の要点" },
-  { key: "supportLog", icon: "🗒️", label: "第5表 支援経過" },
-  { key: "monitoring", icon: "📈", label: "モニタリング" },
+const DOC_ORDER: { key: DocKey; label: string }[] = [
+  { key: "assessment", label: "アセスメント（課題分析）" },
+  { key: "carePlan", label: "ケアプラン 第1・2表" },
+  { key: "meetingSummary", label: "第4表 サービス担当者会議の要点" },
+  { key: "supportLog", label: "第5表 支援経過" },
+  { key: "monitoring", label: "モニタリング" },
 ];
+
+/** 帳票カード内のコピー用・小さめのセカンダリボタン（primitives の小サイズ版）。 */
+const btnSecondarySmall =
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border " +
+  "border-[#E0DBD2] bg-white px-3 py-1.5 text-xs font-medium text-[var(--ink)] " +
+  "transition-colors hover:bg-[var(--paper)]";
 
 /** 人物像フォームの状態。RescuePersona（lib/generation/rescue.ts）と対応。 */
 type PersonaForm = {
@@ -140,6 +164,25 @@ function DocView({ docKey, bundle }: { docKey: DocKey; bundle: RescueBundle }) {
   }
 }
 
+/** 救済モード共通の注意書き。amber の左ボーダー帯（下書き・要事実照合の明示）。 */
+function AmberNotice({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-r-[10px] border-l-4 border-[var(--amber)] bg-[var(--amber-soft)] px-4 py-3">
+      <p className="text-xs leading-relaxed text-[#7A5B1E]">{children}</p>
+    </div>
+  );
+}
+
+/** エラー表示帯。clay の枠＋アイコンで明瞭に。 */
+function ErrorNotice({ message }: { message: string }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-[10px] border border-[var(--clay)] bg-white px-4 py-3">
+      <IconAlert size={16} className="mt-0.5 shrink-0 text-[var(--clay)]" />
+      <p className="text-sm leading-relaxed text-[var(--clay)]">{message}</p>
+    </div>
+  );
+}
+
 export default function RescuePage() {
   const [persona, setPersona] = useState<PersonaForm>(EMPTY_PERSONA);
   const [loading, setLoading] = useState(false);
@@ -247,199 +290,193 @@ export default function RescuePage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-black text-slate-100 mb-1">🛟 救済モード（書類一式）</h1>
-        <p className="text-slate-400 text-sm">
-          利用者の人物像・診療情報などを入力すると、人物像・利用サービス・目標が一貫した
-          書類一式（アセス／第1・2表／第4表／第5表／モニタリング）をまとめて下書きします。
-        </p>
-      </div>
+    <div className="mx-auto max-w-2xl">
+      <PageHeader
+        kicker="救済モード"
+        title="書類一式をつくる"
+        description="利用者の人物像・診療情報などを入力すると、アセスメントからモニタリングまで5帳票の下書きを一括で作成します。"
+      />
 
       {!bundle ? (
-        <div className="animate-fadeIn space-y-4">
-          <div>
-            <label
-              htmlFor="clientInfo"
-              className="block text-slate-300 text-sm font-semibold mb-1.5"
-            >
-              利用者の基本情報（任意）
-            </label>
+        <div className="animate-fadeIn space-y-6">
+          <AmberNotice>
+            救済モードは、情報が不足する部分もAIが想定して
+            <strong className="font-semibold">完成形まで仕上げます</strong>
+            。生成物は下書きです。
+            <strong className="font-semibold">
+              必ず事実と照合し、ケアマネジャーが確認・修正のうえ
+            </strong>
+            ご使用ください。
+          </AmberNotice>
+
+          <Field label="利用者の基本情報（任意）" htmlFor="clientInfo">
             <input
               id="clientInfo"
               type="text"
               value={persona.clientInfo}
               onChange={(e) => setField("clientInfo", e.target.value)}
               placeholder="例: 85歳 女性 要介護2 独居"
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-900 text-slate-100 text-sm outline-none"
-              style={{ border: "1px solid #334155" }}
+              className={inputClass}
             />
+          </Field>
+
+          <div className="border-t border-[var(--line-soft)] pt-5">
+            <SectionTitle>分かる項目だけでOK（1つ以上）</SectionTitle>
+            <p className="mt-1.5 text-xs text-[var(--faint)]">
+              空欄はAIが人物像から想定して補います。
+            </p>
           </div>
 
-          <p className="text-slate-500 text-xs">
-            分かる項目だけで構いません（1つ以上）。空欄はAIが人物像から想定して補います。
-          </p>
-
           {PERSONA_FIELDS.map((field) => (
-            <div key={field.key}>
-              <label
-                htmlFor={`f-${field.key}`}
-                className="block text-slate-300 text-sm font-semibold mb-1.5"
-              >
-                {field.label}
-              </label>
+            <Field key={field.key} label={field.label} htmlFor={`f-${field.key}`}>
               <textarea
                 id={`f-${field.key}`}
                 value={persona[field.key]}
                 onChange={(e) => setField(field.key, e.target.value)}
                 rows={field.rows}
                 placeholder={field.placeholder}
-                className="w-full px-4 py-3 rounded-xl bg-slate-900 text-slate-100 text-sm outline-none leading-relaxed resize-y"
-                style={{ border: "1px solid #334155" }}
+                className={`${textareaClass} resize-y`}
               />
-            </div>
+            </Field>
           ))}
 
-          <div
-            className="rounded-xl p-3.5"
-            style={{ background: "rgba(120,53,15,0.18)", border: "1px solid #f59e0b" }}
-          >
-            <div className="text-amber-300 text-xs leading-relaxed">
-              ⚠️ 救済モードは、情報が不足する部分もAIが想定して
-              <strong>完成形まで埋めます</strong>。 生成物は下書きです。
-              <strong>必ず事実と照合し、ケアマネジャーが確認・修正のうえ</strong>
-              ご使用ください。
-            </div>
+          {error && <ErrorNotice message={error} />}
+
+          <div className="flex flex-wrap items-center gap-4 pt-1">
+            <button type="button" onClick={generate} disabled={loading} className={btnPrimary}>
+              {loading ? (
+                <>
+                  <IconLoader size={16} className="animate-spin" />
+                  一式を作成中です…
+                </>
+              ) : (
+                <>
+                  <IconLayers size={16} />
+                  書類一式を生成する
+                </>
+              )}
+            </button>
+            <p className="text-xs text-[var(--faint)]">5帳票・30秒〜2分ほど</p>
           </div>
-
-          {error && (
-            <div
-              className="rounded-xl p-4"
-              style={{ background: "rgba(127,29,29,0.2)", border: "1px solid #ef4444" }}
-            >
-              <div className="text-red-300 text-sm">⚠️ {error}</div>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={generate}
-            disabled={loading}
-            className="w-full py-4 rounded-2xl border-none text-white text-lg font-black cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              background: "linear-gradient(135deg, #f59e0b, #ef4444)",
-              boxShadow: "0 4px 24px rgba(239,68,68,0.27)",
-            }}
-          >
-            {loading ? "🧠 一式を作成中です…（1〜2分ほどかかります）" : "🛟 書類一式を生成する"}
-          </button>
         </div>
       ) : (
-        <div className="animate-fadeIn space-y-4">
-          <div
-            className="rounded-xl p-3.5"
-            style={{ background: "rgba(120,53,15,0.18)", border: "1px solid #f59e0b" }}
-          >
-            <div className="text-amber-300 text-sm font-semibold">
-              ⚠️ これは人物像から生成した下書き一式です。AIが想定で補った内容を含みます。
-              必ず事実と照合し、確認・修正のうえでご使用ください。
-            </div>
-          </div>
+        <div className="animate-fadeIn space-y-5">
+          <AmberNotice>
+            これは人物像から生成した下書き一式です。AIが想定で補った内容を含みます。
+            <strong className="font-semibold">必ず事実と照合し、確認・修正のうえ</strong>
+            でご使用ください。
+          </AmberNotice>
 
           {/* 利用者に保存 */}
           {savedClientId ? (
-            <div
-              className="rounded-2xl p-4"
-              style={{ background: "rgba(6,78,59,0.18)", border: "1px solid rgba(16,185,129,0.4)" }}
-            >
-              <div className="text-emerald-300 text-sm font-bold mb-1">✓ 利用者に保存しました</div>
-              <Link href={`/clients/${savedClientId}`} className="text-sky-400 text-sm underline">
-                利用者ページで見る →
+            <div className="rounded-2xl border border-[var(--green-line)] bg-[var(--green-soft)] p-5">
+              <p className="flex items-center gap-2 text-sm font-semibold text-[var(--green)]">
+                <IconCheck size={16} />
+                利用者に保存しました
+              </p>
+              <Link
+                href={`/clients/${savedClientId}`}
+                className="mt-2 inline-flex items-center gap-1.5 text-sm text-[var(--green)] underline underline-offset-4 transition-colors hover:text-[#0F4A3B]"
+              >
+                利用者ページで見る
+                <IconArrowRight size={14} />
               </Link>
             </div>
           ) : (
-            <div
-              className="rounded-2xl p-4 space-y-3"
-              style={{ background: "rgba(15,23,42,0.5)", border: "1px solid #334155" }}
-            >
-              <div className="text-slate-200 font-bold text-sm">利用者に保存</div>
-              <select
-                value={targetClientId}
-                onChange={(e) => setTargetClientId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-900 text-slate-100 text-sm outline-none"
-                style={{ border: "1px solid #334155" }}
-              >
-                <option value="">＋ 新しい利用者として保存</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.code}様
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-4 rounded-2xl border border-[var(--green-line)] bg-[var(--green-soft)] p-5">
+              <SectionTitle>利用者に保存</SectionTitle>
+              <Field label="保存先の利用者" htmlFor="save-client">
+                <select
+                  id="save-client"
+                  value={targetClientId}
+                  onChange={(e) => setTargetClientId(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">新しい利用者として保存</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.code}様
+                    </option>
+                  ))}
+                </select>
+              </Field>
               {!targetClientId && (
-                <input
-                  value={newClientName}
-                  onChange={(e) => setNewClientName(e.target.value)}
-                  placeholder="氏名（任意・暗号化して保存／画面は記号で表示）"
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 text-slate-100 text-sm outline-none"
-                  style={{ border: "1px solid #334155" }}
-                />
+                <Field
+                  label="氏名（任意）"
+                  htmlFor="new-client-name"
+                  hint="暗号化して保存し、画面には記号で表示されます"
+                >
+                  <input
+                    id="new-client-name"
+                    value={newClientName}
+                    onChange={(e) => setNewClientName(e.target.value)}
+                    placeholder="例: 山田 花子"
+                    className={inputClass}
+                  />
+                </Field>
               )}
-              <button
-                type="button"
-                onClick={saveBundle}
-                disabled={saving}
-                className="px-4 py-2 rounded-xl text-white text-sm font-bold cursor-pointer hover:opacity-90 disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg, #059669, #0891b2)" }}
-              >
-                {saving ? "保存中…" : "この利用者に5帳票を保存"}
+              {error && <ErrorNotice message={error} />}
+              <button type="button" onClick={saveBundle} disabled={saving} className={btnPrimary}>
+                {saving ? (
+                  <>
+                    <IconLoader size={16} className="animate-spin" />
+                    保存中…
+                  </>
+                ) : (
+                  "この利用者に5帳票を保存"
+                )}
               </button>
             </div>
           )}
 
-          <div className="flex gap-2.5">
+          <div className="flex flex-wrap gap-3">
             <button
               type="button"
               onClick={() => {
                 setBundle(null);
                 setError(null);
               }}
-              className="flex-1 py-3.5 rounded-2xl border border-slate-600 bg-transparent text-slate-100 text-sm font-bold cursor-pointer hover:bg-slate-800 transition-colors"
+              className={btnSecondary}
             >
-              ✏️ 別の人物像で作り直す
+              別の人物像で作り直す
             </button>
-            <button
-              type="button"
-              onClick={copyAll}
-              className="flex-1 py-3.5 rounded-2xl border-none text-white text-sm font-bold cursor-pointer hover:opacity-90 transition-opacity"
-              style={{ background: "linear-gradient(135deg, #059669, #0891b2)" }}
-            >
-              {copiedKey === "all" ? "✓ コピーしました" : "📋 一式をまとめてコピー"}
+            <button type="button" onClick={copyAll} className={btnSecondary}>
+              {copiedKey === "all" ? (
+                <>
+                  <IconCheck size={15} className="text-[var(--green)]" />
+                  コピーしました
+                </>
+              ) : (
+                <>
+                  <IconCopy size={15} />
+                  一式をまとめてコピー
+                </>
+              )}
             </button>
           </div>
 
-          {DOC_ORDER.map(({ key, icon, label }) => (
-            <section
-              key={key}
-              className="rounded-2xl p-4 space-y-3"
-              style={{ background: "rgba(15,23,42,0.5)", border: "1px solid #334155" }}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-slate-100 font-black text-base">
-                  {icon} {label}
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => copyDoc(key)}
-                  className="px-3 py-1.5 rounded-lg border border-slate-600 bg-transparent text-slate-200 text-xs font-bold cursor-pointer hover:bg-slate-800 transition-colors whitespace-nowrap"
-                >
-                  {copiedKey === key ? "✓ コピー済" : "📋 コピー"}
+          {DOC_ORDER.map(({ key, label }) => (
+            <Card key={key} className="space-y-4 p-6">
+              <div className="flex items-center justify-between gap-3">
+                <SectionTitle>{label}</SectionTitle>
+                <button type="button" onClick={() => copyDoc(key)} className={btnSecondarySmall}>
+                  {copiedKey === key ? (
+                    <>
+                      <IconCheck size={14} className="text-[var(--green)]" />
+                      コピー済
+                    </>
+                  ) : (
+                    <>
+                      <IconCopy size={14} />
+                      コピー
+                    </>
+                  )}
                 </button>
               </div>
               <div className="space-y-3">
                 <DocView docKey={key} bundle={bundle} />
               </div>
-            </section>
+            </Card>
           ))}
         </div>
       )}

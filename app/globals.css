@@ -1,5 +1,29 @@
 @import "tailwindcss";
 
+/*
+ * CareNote AI design tokens (design system v0, approved 2026-07).
+ * Light "paper" editorial theme: warm off-white surfaces, deep-green accent,
+ * mincho (serif) headings + gothic (sans) body. Consumed by
+ * components/ui/primitives.tsx and page-level styles via var(--token).
+ */
+:root {
+  --paper: #f7f5f1;
+  --card: #ffffff;
+  --ink: #1c1b19;
+  --muted: #6b6862;
+  --faint: #9a968d;
+  --line: #e7e3dc;
+  --line-soft: #ece8e1;
+  --green: #15604d;
+  --green-soft: #eef4f1;
+  --green-line: #cde0d8;
+  --clay: #c0492b;
+  --amber: #b08227;
+  --amber-soft: #fbf6ec;
+  --serif: "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --sans: "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -7,8 +31,18 @@
 }
 
 body {
-  background: #020617;
-  color: #f1f5f9;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+}
+
+/* Shared focus ring for form controls: green border + soft green halo. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(21, 96, 77, 0.15);
 }
 
 @keyframes fadeIn {

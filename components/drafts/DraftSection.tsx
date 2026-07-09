@@ -1,15 +1,16 @@
-/** 下書きの1セクション（見出し＋本文）を表示する共通カード */
+import { Card } from "@/components/ui/primitives";
+
+/** 下書きの1セクション（明朝の小見出し＋本文）を表示する白カード */
 export default function DraftSection({ title, body }: { title: string; body: string }) {
   return (
-    <div
-      className="rounded-xl p-4"
-      style={{
-        background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-        border: "1px solid #334155",
-      }}
-    >
-      <div className="text-slate-400 text-xs font-semibold mb-1.5">{title}</div>
-      <div className="text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">{body}</div>
-    </div>
+    <Card className="p-4">
+      <h3
+        className="mb-1.5 text-[13px] font-medium text-[var(--muted)]"
+        style={{ fontFamily: "var(--serif)" }}
+      >
+        {title}
+      </h3>
+      <div className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--ink)]">{body}</div>
+    </Card>
   );
 }

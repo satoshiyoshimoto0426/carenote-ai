@@ -2,6 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { IconAlert, IconChevronRight, IconLoader, IconPlus } from "@/components/ui/icons";
+import {
+  btnPrimary,
+  btnSecondary,
+  Card,
+  Field,
+  inputClass,
+  PageHeader,
+  SectionTitle,
+} from "@/components/ui/primitives";
 import type { ClientRecord } from "@/types/client";
 
 /** 利用者の属性サマリ（年齢・性別・要介護度・世帯）を1行に。 */
@@ -65,111 +75,138 @@ export default function ClientsPage() {
     }
   };
 
-  const inputCls = "w-full px-3 py-2 rounded-lg bg-slate-900 text-slate-100 text-sm outline-none";
-  const inputStyle = { border: "1px solid #334155" };
-
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-black text-slate-100 mb-1">利用者</h1>
-          <p className="text-slate-400 text-sm">利用者ごとに書類が貯まります（氏名は記号で表示）</p>
-        </div>
+    <div className="mx-auto max-w-2xl">
+      <div className="flex items-start justify-between gap-4">
+        <PageHeader
+          kicker="Clients"
+          title="利用者"
+          description="利用者ごとに書類が貯まります（氏名は記号で表示）"
+        />
         <button
           type="button"
           onClick={() => setCreating((v) => !v)}
-          className="px-4 py-2 rounded-xl text-white text-sm font-bold cursor-pointer hover:opacity-90"
-          style={{ background: "linear-gradient(135deg, #3b82f6, #8b5cf6)" }}
+          className={`${creating ? btnSecondary : btnPrimary} mt-1 shrink-0 whitespace-nowrap`}
         >
-          {creating ? "閉じる" : "＋ 新規"}
+          {creating ? (
+            "閉じる"
+          ) : (
+            <>
+              <IconPlus size={15} />
+              新規
+            </>
+          )}
         </button>
       </div>
 
       {creating && (
-        <div
-          className="rounded-2xl p-4 mb-6 space-y-3"
-          style={{ background: "rgba(15,23,42,0.5)", border: "1px solid #334155" }}
-        >
-          <div>
-            <label htmlFor="c-name" className="block text-slate-300 text-xs font-semibold mb-1">
-              氏名（任意・暗号化して保存し、画面では記号で表示）
-            </label>
-            <input
-              id="c-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className={inputCls}
-              style={inputStyle}
-              placeholder="例: 山田 花子"
-            />
+        <Card className="mb-8 p-6">
+          <SectionTitle>新しい利用者</SectionTitle>
+          <div className="mt-5 space-y-5">
+            <Field
+              label="氏名（任意）"
+              htmlFor="c-name"
+              hint="氏名は暗号化して保存し、画面では記号で表示します"
+            >
+              <input
+                id="c-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className={inputClass}
+                placeholder="例: 山田 花子"
+              />
+            </Field>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field label="年齢" htmlFor="c-age">
+                <input
+                  id="c-age"
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  className={inputClass}
+                  placeholder="例: 85歳"
+                />
+              </Field>
+              <Field label="性別" htmlFor="c-gender">
+                <input
+                  id="c-gender"
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className={inputClass}
+                  placeholder="例: 女性"
+                />
+              </Field>
+              <Field label="要介護度" htmlFor="c-care-level">
+                <input
+                  id="c-care-level"
+                  value={careLevel}
+                  onChange={(e) => setCareLevel(e.target.value)}
+                  className={inputClass}
+                  placeholder="例: 要介護2"
+                />
+              </Field>
+              <Field label="世帯" htmlFor="c-household">
+                <input
+                  id="c-household"
+                  value={household}
+                  onChange={(e) => setHousehold(e.target.value)}
+                  className={inputClass}
+                  placeholder="例: 独居"
+                />
+              </Field>
+            </div>
+            <div className="pt-1">
+              <button type="button" onClick={create} disabled={saving} className={btnPrimary}>
+                {saving ? (
+                  <>
+                    <IconLoader size={15} className="animate-spin" />
+                    作成中…
+                  </>
+                ) : (
+                  "利用者を作成"
+                )}
+              </button>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-              className={inputCls}
-              style={inputStyle}
-              placeholder="年齢（例: 85歳）"
-            />
-            <input
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
-              className={inputCls}
-              style={inputStyle}
-              placeholder="性別"
-            />
-            <input
-              value={careLevel}
-              onChange={(e) => setCareLevel(e.target.value)}
-              className={inputCls}
-              style={inputStyle}
-              placeholder="要介護度（例: 要介護2）"
-            />
-            <input
-              value={household}
-              onChange={(e) => setHousehold(e.target.value)}
-              className={inputCls}
-              style={inputStyle}
-              placeholder="世帯（例: 独居）"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={create}
-            disabled={saving}
-            className="px-4 py-2 rounded-xl text-white text-sm font-bold cursor-pointer hover:opacity-90 disabled:opacity-50"
-            style={{ background: "linear-gradient(135deg, #059669, #0891b2)" }}
-          >
-            {saving ? "作成中…" : "利用者を作成"}
-          </button>
+        </Card>
+      )}
+
+      {error && (
+        <div className="mb-4 flex items-center gap-2 text-sm text-[var(--clay)]">
+          <IconAlert size={15} className="shrink-0" />
+          {error}
         </div>
       )}
 
-      {error && <div className="text-red-300 text-sm mb-4">⚠️ {error}</div>}
-
       {loading ? (
-        <div className="text-slate-500 text-sm">読み込み中…</div>
+        <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
+          <IconLoader size={15} className="animate-spin" />
+          読み込み中…
+        </div>
       ) : clients.length === 0 ? (
-        <div className="text-slate-500 text-sm">
-          まだ利用者がいません。「＋ 新規」から作成してください。
-        </div>
+        <p className="text-sm text-[var(--muted)]">
+          まだ利用者がいません。右上の「新規」から作成してください。
+        </p>
       ) : (
-        <div className="space-y-2">
-          {clients.map((c) => (
-            <Link
-              key={c.id}
-              href={`/clients/${c.id}`}
-              className="flex items-center justify-between rounded-xl px-4 py-3 transition-colors hover:bg-slate-800"
-              style={{ background: "rgba(15,23,42,0.5)", border: "1px solid #334155" }}
-            >
-              <div>
-                <div className="text-slate-100 font-bold text-sm">{c.code}様</div>
-                <div className="text-slate-400 text-xs">{attrLine(c) || "（属性未設定）"}</div>
-              </div>
-              <span className="text-slate-600 text-xs">›</span>
-            </Link>
-          ))}
-        </div>
+        <Card className="overflow-hidden">
+          <ul className="divide-y divide-[var(--line-soft)]">
+            {clients.map((c) => (
+              <li key={c.id}>
+                <Link
+                  href={`/clients/${c.id}`}
+                  className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--paper)]"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-[var(--ink)]">{c.code}様</div>
+                    <div className="mt-0.5 truncate text-xs text-[var(--muted)]">
+                      {attrLine(c) || "（属性未設定）"}
+                    </div>
+                  </div>
+                  <IconChevronRight size={16} className="shrink-0 text-[var(--faint)]" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </div>
   );

@@ -3,6 +3,17 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import {
+  IconAlert,
+  IconCheck,
+  IconChevronRight,
+  IconFileText,
+  IconLayers,
+  IconLoader,
+  IconLock,
+  IconPlus,
+} from "@/components/ui/icons";
+import { btnPrimary, Card, SectionTitle } from "@/components/ui/primitives";
 import type { ClientRecord } from "@/types/client";
 import type { CareDocumentRecord, CareDocumentType } from "@/types/document";
 
@@ -43,61 +54,122 @@ export default function ClientDetailPage() {
     })();
   }, [params.id]);
 
-  if (loading) return <div className="text-slate-500 text-sm">読み込み中…</div>;
+  if (loading)
+    return (
+      <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
+        <IconLoader size={15} className="animate-spin" />
+        読み込み中…
+      </div>
+    );
   if (error || !client)
     return (
-      <div className="max-w-2xl mx-auto">
-        <div className="text-red-300 text-sm">⚠️ {error || "利用者が見つかりません"}</div>
-        <Link href="/clients" className="text-sky-400 text-sm underline">
-          ← 利用者一覧へ
+      <div className="mx-auto max-w-2xl">
+        <div className="flex items-center gap-2 text-sm text-[var(--clay)]">
+          <IconAlert size={15} className="shrink-0" />
+          {error || "利用者が見つかりません"}
+        </div>
+        <Link
+          href="/clients"
+          className="mt-3 inline-block text-sm text-[var(--green)] hover:underline"
+        >
+          利用者一覧へ
         </Link>
       </div>
     );
 
-  return (
-    <div className="max-w-2xl mx-auto">
-      <Link href="/clients" className="text-slate-500 text-xs hover:text-slate-300">
-        ← 利用者一覧
-      </Link>
+  // 表示用の派生値: 標準5帳票のうち、まだ書類が無い種別（「＋つくる」行に使う）
+  const missingTypes = (Object.keys(DOC_LABELS) as CareDocumentType[]).filter(
+    (t) => !documents.some((d) => d.docType === t),
+  );
 
-      <div className="flex items-start justify-between mt-2 mb-6">
-        <div>
-          <h1 className="text-xl font-black text-slate-100">
-            {client.code}様 <span className="text-slate-500 text-sm font-normal">（仮名）</span>
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">{attrLine(client) || "（属性未設定）"}</p>
-        </div>
+  return (
+    <div className="mx-auto max-w-2xl">
+      <nav aria-label="パンくず" className="mb-5 flex items-center gap-1.5 text-xs">
         <Link
-          href="/rescue"
-          className="px-4 py-2 rounded-xl text-white text-sm font-bold cursor-pointer hover:opacity-90 whitespace-nowrap"
-          style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)" }}
+          href="/clients"
+          className="text-[var(--muted)] transition-colors hover:text-[var(--green)]"
         >
-          🛟 救済モードで一式
+          利用者
+        </Link>
+        <IconChevronRight size={13} className="text-[var(--faint)]" />
+        <span className="text-[var(--ink)]">{client.code}様</span>
+      </nav>
+
+      <header className="mb-8">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h1
+            className="text-[26px] font-medium leading-snug text-[var(--ink)]"
+            style={{ fontFamily: "var(--serif)" }}
+          >
+            {client.code}様<span className="text-base text-[var(--muted)]">（仮名）</span>
+          </h1>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--green-line)] bg-[var(--green-soft)] px-3 py-1 text-xs text-[var(--green)]">
+            <IconLock size={13} />
+            仮名表示中
+          </span>
+        </div>
+        <p className="mt-2 text-sm text-[var(--muted)]">{attrLine(client) || "（属性未設定）"}</p>
+      </header>
+
+      <div className="mb-10 flex items-center gap-5">
+        <Link href="/rescue" className={`${btnPrimary} whitespace-nowrap`}>
+          <IconLayers size={16} />
+          救済モードで一式
         </Link>
       </div>
 
-      <div className="text-slate-300 font-bold text-sm mb-2">この方の書類</div>
-      {documents.length === 0 ? (
-        <div className="text-slate-500 text-sm">
+      <SectionTitle className="mb-3">この方の書類</SectionTitle>
+      {documents.length === 0 && (
+        <p className="mb-3 text-sm text-[var(--muted)]">
           まだ書類がありません。「救済モードで一式」から作成して保存できます。
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {documents.map((d) => (
-            <div
-              key={d.id}
-              className="flex items-center justify-between rounded-xl px-4 py-3"
-              style={{ background: "rgba(15,23,42,0.5)", border: "1px solid #334155" }}
-            >
-              <span className="text-slate-100 text-sm">{DOC_LABELS[d.docType] ?? d.docType}</span>
-              <span className="text-slate-400 text-xs">
-                {d.status === "complete" ? "完成" : "下書き"} ・{" "}
-                {new Date(d.createdAt).toLocaleDateString("ja-JP")}
-              </span>
-            </div>
-          ))}
-        </div>
+        </p>
       )}
+      <Card className="overflow-hidden">
+        <ul className="divide-y divide-[var(--line-soft)]">
+          {documents.map((d) => (
+            <li key={d.id} className="flex items-center justify-between gap-4 px-5 py-4">
+              <span className="flex min-w-0 items-center gap-2.5">
+                <IconFileText size={16} className="shrink-0 text-[var(--faint)]" />
+                <span className="truncate text-sm text-[var(--ink)]">
+                  {DOC_LABELS[d.docType] ?? d.docType}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2.5">
+                {d.status === "complete" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-0.5 text-xs text-[var(--green)]">
+                    <IconCheck size={12} />
+                    完成
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center rounded-full bg-[var(--amber-soft)] px-2.5 py-0.5 text-xs text-[#7A5B1E]">
+                    下書き
+                  </span>
+                )}
+                <span className="text-xs text-[var(--faint)]">
+                  {new Date(d.createdAt).toLocaleDateString("ja-JP")}
+                </span>
+              </span>
+            </li>
+          ))}
+          {missingTypes.map((t) => (
+            <li key={t}>
+              <Link
+                href="/create"
+                className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--paper)]"
+              >
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <IconFileText size={16} className="shrink-0 text-[var(--faint)]" />
+                  <span className="truncate text-sm text-[var(--faint)]">{DOC_LABELS[t]}</span>
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--faint)]">
+                  <IconPlus size={13} />
+                  つくる
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Card>
     </div>
   );
 }
