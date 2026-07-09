@@ -2,33 +2,23 @@ import Sidebar from "@/components/Sidebar";
 import { IconHome, IconSearch } from "@/components/ui/icons";
 
 /**
- * Dashboard shell (design system v0): paper background, fixed 220px sidebar on
- * md+, white top bar with hairline border on mobile. Wraps every signed-in page
- * under app/(dashboard)/.
+ * Dashboard shell (design system v0): paper background, sticky 220px sidebar on
+ * md+, white top bar with hairline border on mobile.
+ *
+ * レイアウトは globals.css の .app-* クラス（素のCSS）で組む。Tailwind の
+ * クラス生成に頼らない理由: (dashboard) 配下のスキャン取りこぼしで
+ * md:ml-[220px] 等が本番CSSに入らず、サイドバーが本文に重なった（2026-07-09）。
  */
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className="flex min-h-screen"
-      style={{
-        background: "var(--paper)",
-        fontFamily: "var(--sans)",
-        color: "var(--ink)",
-      }}
-    >
-      {/* Sidebar — hidden on mobile, visible md+ */}
-      <div className="hidden md:flex md:w-[220px] md:flex-col md:fixed md:inset-y-0">
+    <div className="app-shell">
+      {/* Sidebar — hidden on mobile, sticky md+（幅・表示切替は globals.css） */}
+      <div className="app-sidebar">
         <Sidebar />
       </div>
 
       {/* Mobile top bar */}
-      <div
-        className="md:hidden flex items-center justify-between px-4 py-3 fixed top-0 left-0 right-0 z-20"
-        style={{
-          background: "#FCFBF9",
-          borderBottom: "1px solid var(--line)",
-        }}
-      >
+      <div className="app-topbar">
         <div className="min-w-0">
           <div
             className="text-base leading-tight text-[var(--ink)]"
@@ -42,8 +32,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
 
       {/* Main content */}
-      <div className="flex-1 md:ml-[220px] flex flex-col">
-        <main className="flex-1 px-4 md:px-8 py-6 mt-14 md:mt-0">{children}</main>
+      <div className="app-main">
+        <main className="app-main-inner">{children}</main>
         <footer className="text-center py-4 pb-6">
           <p className="text-xs text-[var(--faint)]">CareNote — Powered by Claude API</p>
         </footer>
