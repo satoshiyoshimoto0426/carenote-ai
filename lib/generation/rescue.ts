@@ -32,6 +32,8 @@ export interface RescuePersona {
   currentServices?: string;
   /** 本人・家族の意向・希望 */
   intentions?: string;
+  /** 関わりの経過・時系列（開始時期・出来事。1行1出来事の自由記述） */
+  timeline?: string;
   /** その他・補足（自由記述） */
   additionalNotes?: string;
 }
@@ -45,6 +47,7 @@ const PERSONA_SECTIONS: { key: keyof RescuePersona; label: string }[] = [
   { key: "familyHousing", label: "家族構成・住環境" },
   { key: "currentServices", label: "現在利用しているサービス" },
   { key: "intentions", label: "本人・家族の意向・希望" },
+  { key: "timeline", label: "関わりの経過・時系列（開始時期・出来事）" },
   { key: "additionalNotes", label: "その他・補足" },
 ];
 
@@ -59,6 +62,19 @@ export function composePersonaNotes(persona: RescuePersona): string {
   })
     .filter(Boolean)
     .join("\n\n");
+}
+
+/**
+ * 人物像メモの先頭に「提供書類のAI統合読解サマリ」を連結する（純粋関数・テスト対象）。
+ * サマリは lib/generation/rescueIntake.generateIntake の出力（出典＝書類名付き）。
+ * 手打ちとの優先順位は RESCUE_SYSTEM_OVERRIDE 側で「手打ち優先」を指示する。
+ */
+export function composeRescueNotes(persona: RescuePersona, intakeSummary?: string): string {
+  const personaNotes = composePersonaNotes(persona);
+  const summary = intakeSummary?.trim();
+  if (!summary) return personaNotes;
+  const intakeSection = `## 提供書類の読み取り（AIによる統合・出典付き）\n${summary}`;
+  return personaNotes ? `${intakeSection}\n\n${personaNotes}` : intakeSection;
 }
 
 /** 救済モードの出力。人物像と一貫した書類一式（第6表＝給付管理は対象外）。 */
@@ -117,11 +133,17 @@ export function buildMonitoringNotes(personaNotes: string, assessment: Assessmen
  * 依存と並列化:
  *   アセス → ケアプラン（アセス結果を引き継ぐ）→ {会議・経過・モニタリング}（ケアプラン確定後は
  *   互いに独立なので並列実行）。Opus×5回ぶんの所要時間を抑えるための構成。
+ *
+ * @param intakeSummary 提供書類(PDF)のAI統合読解サマリ（rescueIntake.generateIntake の出力）。
+ *   与えられた場合は人物像メモの先頭に連結し、全帳票の入力に含める（Stage0→統合）。
  */
-export async function generateRescueBundle(persona: RescuePersona): Promise<RescueBundle> {
+export async function generateRescueBundle(
+  persona: RescuePersona,
+  intakeSummary?: string,
+): Promise<RescueBundle> {
   const opts = { rescue: true };
   const clientInfo = persona.clientInfo?.trim() || undefined;
-  const personaNotes = composePersonaNotes(persona);
+  const personaNotes = composeRescueNotes(persona, intakeSummary);
 
   const assessment = await generateAssessment({ clientInfo, assessmentNotes: personaNotes }, opts);
 

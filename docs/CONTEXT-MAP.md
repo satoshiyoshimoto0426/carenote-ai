@@ -57,10 +57,11 @@
 | `lib/generation/structured.ts` | 全帳票共通の生成コア（adaptive thinking＋構造化出力＋プロンプトキャッシュ） | P1実装済 |
 | `lib/generation/{carePlan,assessment,monitoring,meetingSummary,supportLog}.ts` | 帳票別の生成（スキーマ＋プロンプト構築。`*Prompt.ts` は純粋関数でテスト済）。第4表=担当者会議の要点、第5表=支援経過も対応。各 generate に `options.rescue` を追加（救済モードで完成形まで埋める） | P1実装済 |
 | `lib/rules/rescue.ts` | 救済モードのプロンプト上書き（「創作しない」を限定緩和。吉本承認・§2.7-C）。各 generate が options.rescue 時に末尾追記 | 実装済 |
-| `lib/generation/rescue.ts` | **救済モード**：人物像から書類一式を依存順生成（アセス→第1/2表→{会議・経過・モニタリング}を並列）。上流出力を `lib/draftText` で文字列化し下流入力へ。メモ組立は純粋関数・テスト済 | 実装済 |
+| `lib/generation/rescue.ts` | **救済モード**：人物像（＋時系列 `timeline`）から書類一式を依存順生成（アセス→第1/2表→{会議・経過・モニタリング}を並列）。上流出力を `lib/draftText` で文字列化し下流入力へ。メモ組立は純粋関数・テスト済 | 実装済 |
+| `lib/generation/rescueIntake.ts` | **救済モード Stage0**：PDF資料（最大5件・documentブロック）＋手打ち人物像を1回のAI読解で「出典付きサマリ＋要注意点」に統合（`generateIntake`）。氏名等は転記せず一般表現へ。プロンプトは純粋関数・テスト済 | 実装済 |
 | `lib/draftText.ts` | 下書き→コピー用プレーンテキスト整形（純粋関数・テスト済）。救済モードの帳票連結にも使用 | P1実装済 |
 | `app/api/generate/` | 認証＋`documentType`分岐（carePlan/assessment/monitoring）＋入力検証 | P1実装済 |
-| `app/api/rescue/` | 救済モードAPI（Clerk認証）。人物像→`generateRescueBundle`→一式JSON。maxDuration=300 | 実装済 |
+| `app/api/rescue/` | 救済モードAPI（Clerk認証）。人物像（＋timeline／sourceDocs=Blob上のPDF最大5件）→（資料あれば Stage0 `generateIntake`）→`generateRescueBundle`→一式JSON＋`intake`。PDFは finally で必ず del()（非保持原則）。maxDuration=300 | 実装済 |
 | `app/(dashboard)/create/` | 作成UI：帳票セレクタ→入力→下書き生成→確認・コピー（`components/drafts/` に表示部品） | P1実装済 |
 | `app/(dashboard)/rescue/` | 救済モードUI：人物像の**構造化フォーム**（性格/生活歴/既往・診断/心身/家族・住環境/サービス/意向/補足）→一式生成→全帳票表示＋コピー。完成形まで埋める旨のバナー表示 | 実装済 |
 | `extension/` | **時短エンジン**：ブラウザ拡張(MV3)。対象=**カイポケ**。サイドパネルで下書き生成→セクション単位コピー(Step1)＋カイポケ画面へ流し込み(Step2)。`src/adapters/kaipoke.js`＝CareNote→カイポケ欄マッピング(出典[KAIPOKE-DOM.md](KAIPOKE-DOM.md))。調査: [P2-KAIPOKE.md](P2-KAIPOKE.md) | **P2 Step1+Step2 実装済**（テキスト欄の半自動入力。第2表等はDOM追加取得後） |
@@ -94,14 +95,16 @@
 
 ### 救済モードのデータフロー（実装済・SPEC §6.5 F9）
 ```
-[救済ページ /rescue] ──(人物像の構造化フォーム)──> POST /api/rescue ──(Clerk認証)──
-   └─ composePersonaNotes（構造化フィールド→ラベル付きメモに合成・純粋関数）
+[救済ページ /rescue] ──(人物像フォーム＋時系列 timeline＋PDF sourceDocs≦5)──> POST /api/rescue ──(Clerk認証)──
+   └─ Stage0（sourceDocs があるときのみ）: Blob取得→base64→rescueIntake.generateIntake
+        （documentブロックで統合読解→出典付き summary＋cautions。処理後 finally で必ず del()）
+   └─ composeRescueNotes（Stage0サマリを人物像メモの先頭に連結・純粋関数。手打ち優先はルール側で指示）
    └─ lib/generation/rescue.generateRescueBundle（依存順オーケストレーション・全帳票 rescue=true）
         1) generateAssessment(persona)
         2) generateCarePlan(persona + アセス結果)            ← assessmentToText で連結
         3) Promise.all[ generateMeetingSummary / generateSupportLog / generateMonitoring ]
                                                             ← carePlanToText で連結（並列）
-        └─> {assessment, carePlan, meetingSummary, supportLog, monitoring}
+        └─> {assessment, carePlan, meetingSummary, supportLog, monitoring, intake?}
              └─ components/drafts/<帳票>View で一括表示＋コピー（モードバナーで「下書き・要事実照合」明示）
 ```
 品質緩和（救済モードのみ）: `lib/rules/rescue.RESCUE_SYSTEM_OVERRIDE` を各 generate の system 末尾に追記し、

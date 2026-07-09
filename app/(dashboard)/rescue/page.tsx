@@ -1,7 +1,16 @@
 "use client";
 
+import { upload } from "@vercel/blob/client";
 import Link from "next/link";
-import { type ReactNode, useEffect, useState } from "react";
+import {
+  type ChangeEvent,
+  type DragEvent,
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
 import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
@@ -11,9 +20,13 @@ import {
   IconAlert,
   IconArrowRight,
   IconCheck,
+  IconClock,
   IconCopy,
+  IconFileText,
   IconLayers,
   IconLoader,
+  IconTrash,
+  IconUpload,
 } from "@/components/ui/icons";
 import {
   btnPrimary,
@@ -33,9 +46,29 @@ import {
   supportLogToText,
 } from "@/lib/draftText";
 import type { RescueBundle } from "@/lib/generation/rescue";
+import type { IntakeResult } from "@/lib/generation/rescueIntake";
 import type { ClientRecord } from "@/types/client";
 
 type DocKey = keyof RescueBundle;
+
+/**
+ * /api/rescue 契約の追加分。sourceDocs = Vercel Blob にアップロード済みPDF、
+ * intake = 提供書類のAI統合読解（lib/generation/rescueIntake の IntakeResult）。
+ */
+type SourceDoc = { name: string; url: string };
+type RescueResponse = RescueBundle & { intake?: IntakeResult };
+
+/** 参考資料PDFのクライアント側上限（API契約: sourceDocs 最大5件・1件10MB目安）。 */
+const MAX_SOURCE_DOCS = 5;
+const MAX_SOURCE_DOC_MB = 10;
+
+/** 時系列入力の記入例（1行1出来事）。 */
+const TIMELINE_PLACEHOLDER = [
+  "2026/4 長女より電話相談（退院がきっかけ）",
+  "4/10 初回訪問・契約",
+  "4/15 サービス担当者会議",
+  "5月 自宅で転倒、通所を週2に増回",
+].join("\n");
 
 /** 表示順とラベル（ケアマネジメントの流れ順）。 */
 const DOC_ORDER: { key: DocKey; label: string }[] = [
@@ -185,9 +218,15 @@ function ErrorNotice({ message }: { message: string }) {
 
 export default function RescuePage() {
   const [persona, setPersona] = useState<PersonaForm>(EMPTY_PERSONA);
+  const [timeline, setTimeline] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState("一式を作成中です…");
   const [error, setError] = useState<string | null>(null);
   const [bundle, setBundle] = useState<RescueBundle | null>(null);
+  const [intake, setIntake] = useState<IntakeResult | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [targetClientId, setTargetClientId] = useState("");
@@ -211,24 +250,94 @@ export default function RescuePage() {
   const setField = (key: keyof PersonaForm, value: string) =>
     setPersona((p) => ({ ...p, [key]: value }));
 
+  // 参考資料PDFの選択（クリック・ドロップ共通）。PDF以外/10MB超/6件目以降は弾く
+  const addFiles = (incoming: File[]) => {
+    setError(null);
+    const next = [...files];
+    for (const f of incoming) {
+      if (f.type !== "application/pdf") {
+        setError("参考資料はPDFファイルのみ追加できます。");
+        continue;
+      }
+      const mb = f.size / 1024 / 1024;
+      if (mb > MAX_SOURCE_DOC_MB) {
+        setError(
+          `「${f.name}」が大きすぎます（${mb.toFixed(1)}MB）。1件${MAX_SOURCE_DOC_MB}MB以下を目安にしてください。`,
+        );
+        continue;
+      }
+      if (next.some((x) => x.name === f.name && x.size === f.size)) continue;
+      if (next.length >= MAX_SOURCE_DOCS) {
+        setError(`参考資料は最大${MAX_SOURCE_DOCS}件までです。`);
+        break;
+      }
+      next.push(f);
+    }
+    setFiles(next);
+  };
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) addFiles(Array.from(e.target.files));
+    e.target.value = ""; // 同じファイルの再選択を許可
+  };
+
+  const handleFileDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    addFiles(Array.from(e.dataTransfer.files));
+  };
+
+  const removeFile = (index: number) => setFiles((prev) => prev.filter((_, i) => i !== index));
+
   const generate = async () => {
     const hasContent = PERSONA_FIELDS.some((f) => persona[f.key].trim() !== "");
-    if (!hasContent) {
-      setError("性格・生活歴・診断など、利用者の人物像を1つ以上入力してください。");
+    // 契約どおり「人物像1項目以上 or 資料1件以上」で生成可（資料だけでも生成できる）
+    if (!hasContent && files.length === 0) {
+      setError("利用者の人物像を1つ以上入力するか、参考資料（PDF）を1件以上追加してください。");
       return;
     }
     setLoading(true);
     setError(null);
     setBundle(null);
+    setIntake(null);
     try {
+      // ── Step 1: 参考資料を Vercel Blob へアップロード（evaluate と同じ経路） ──
+      let sourceDocs: SourceDoc[] | undefined;
+      if (files.length > 0) {
+        setLoadingMsg("資料を読み取り中…");
+        try {
+          const uploaded: SourceDoc[] = [];
+          for (const f of files) {
+            const blob = await upload(f.name, f, {
+              access: "public",
+              handleUploadUrl: "/api/blob-upload",
+            });
+            uploaded.push({ name: f.name, url: blob.url });
+          }
+          sourceDocs = uploaded;
+        } catch {
+          throw new Error(
+            "資料のアップロードに失敗しました。通信環境を確認して再度お試しください。",
+          );
+        }
+      }
+
+      // ── Step 2: 一式生成（timeline / sourceDocs を人物像に添えて送る） ──
+      setLoadingMsg("一式を作成中です…");
       const resp = await fetch("/api/rescue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(persona),
+        body: JSON.stringify({
+          ...persona,
+          timeline: timeline.trim() !== "" ? timeline : undefined,
+          sourceDocs,
+        }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
-      setBundle(data as RescueBundle);
+      const result = data as RescueResponse;
+      setIntake(result.intake ?? null);
+      setBundle(result);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "不明なエラーが発生しました");
     } finally {
@@ -328,17 +437,124 @@ export default function RescuePage() {
           </div>
 
           {PERSONA_FIELDS.map((field) => (
-            <Field key={field.key} label={field.label} htmlFor={`f-${field.key}`}>
-              <textarea
-                id={`f-${field.key}`}
-                value={persona[field.key]}
-                onChange={(e) => setField(field.key, e.target.value)}
-                rows={field.rows}
-                placeholder={field.placeholder}
-                className={`${textareaClass} resize-y`}
-              />
-            </Field>
+            <Fragment key={field.key}>
+              <Field label={field.label} htmlFor={`f-${field.key}`}>
+                <textarea
+                  id={`f-${field.key}`}
+                  value={persona[field.key]}
+                  onChange={(e) => setField(field.key, e.target.value)}
+                  rows={field.rows}
+                  placeholder={field.placeholder}
+                  className={`${textareaClass} resize-y`}
+                />
+              </Field>
+              {field.key === "intentions" && (
+                <div>
+                  <label
+                    htmlFor="f-timeline"
+                    className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-[var(--muted)]"
+                  >
+                    <IconClock size={13} />
+                    関わりの経過・時系列（任意）
+                  </label>
+                  <textarea
+                    id="f-timeline"
+                    value={timeline}
+                    onChange={(e) => setTimeline(e.target.value)}
+                    rows={4}
+                    placeholder={TIMELINE_PLACEHOLDER}
+                    className={`${textareaClass} resize-y`}
+                  />
+                  <p className="mt-1.5 text-xs text-[var(--faint)]">
+                    1行に1つの出来事を、日付から書いてください。支援経過・モニタリングの下書きに反映されます。
+                  </p>
+                </div>
+              )}
+            </Fragment>
           ))}
+
+          <div className="space-y-4 border-t border-[var(--line-soft)] pt-5">
+            <div>
+              <SectionTitle>参考資料（PDF・任意）</SectionTitle>
+              <p className="mt-1.5 text-xs text-[var(--faint)]">
+                主治医意見書・診療情報提供書などのPDFを最大{MAX_SOURCE_DOCS}件（1件
+                {MAX_SOURCE_DOC_MB}MB目安）。AIが内容を統合して下書きに反映します。
+              </p>
+            </div>
+
+            <AmberNotice>
+              契約前は実在の方の書類はアップロードしないでください（
+              <strong className="font-semibold">テスト用・マスキング済みのみ</strong>
+              ）。書類は生成後すぐ削除されます。
+            </AmberNotice>
+
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleFileDrop}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label="参考資料のPDFを選択、またはドラッグ＆ドロップ"
+              className={`cursor-pointer rounded-2xl border-2 border-dashed p-6 text-center transition-colors duration-300 ${
+                dragOver
+                  ? "border-[var(--green)] bg-[var(--green-soft)]"
+                  : "border-[#CFC9BE] bg-white hover:border-[var(--green)]"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                multiple
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <div className="mb-2 flex justify-center text-[var(--faint)]">
+                <IconUpload size={26} />
+              </div>
+              <div className="text-sm font-semibold text-[var(--ink)]">PDFをドラッグ＆ドロップ</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
+                またはクリックしてファイルを選択（複数可）
+              </div>
+            </div>
+
+            {files.length > 0 && (
+              <ul className="space-y-2">
+                {files.map((f, i) => (
+                  <li
+                    key={`${f.name}-${f.size}`}
+                    className="flex items-center gap-2.5 rounded-[10px] border border-[var(--line)] bg-white px-3.5 py-2.5"
+                  >
+                    <IconFileText size={16} className="shrink-0 text-[var(--green)]" />
+                    <span className="min-w-0 flex-1 truncate text-sm text-[var(--ink)]">
+                      {f.name}
+                    </span>
+                    <span className="shrink-0 text-xs text-[var(--faint)]">
+                      {(f.size / 1024 / 1024).toFixed(1)} MB
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      aria-label={`${f.name} を削除`}
+                      className="shrink-0 rounded-md p-1 text-[var(--muted)] transition-colors hover:bg-[var(--paper)] hover:text-[var(--clay)]"
+                    >
+                      <IconTrash size={15} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
           {error && <ErrorNotice message={error} />}
 
@@ -347,7 +563,7 @@ export default function RescuePage() {
               {loading ? (
                 <>
                   <IconLoader size={16} className="animate-spin" />
-                  一式を作成中です…
+                  {loadingMsg}
                 </>
               ) : (
                 <>
@@ -361,6 +577,31 @@ export default function RescuePage() {
         </div>
       ) : (
         <div className="animate-fadeIn space-y-5">
+          {intake && (
+            <Card className="space-y-3 p-6">
+              <SectionTitle>提供書類の読み取り（AI統合）</SectionTitle>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--ink)]">
+                {intake.summary}
+              </p>
+              {intake.cautions.length > 0 && (
+                <div className="rounded-r-[10px] border-l-4 border-[var(--amber)] bg-[var(--amber-soft)] px-4 py-3">
+                  <p className="text-xs font-semibold text-[#7A5B1E]">要注意点</p>
+                  <ul className="mt-1.5 space-y-1">
+                    {intake.cautions.map((c) => (
+                      <li
+                        key={c}
+                        className="flex items-start gap-1.5 text-xs leading-relaxed text-[#7A5B1E]"
+                      >
+                        <IconAlert size={13} className="mt-0.5 shrink-0" />
+                        <span>{c}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Card>
+          )}
+
           <AmberNotice>
             これは人物像から生成した下書き一式です。AIが想定で補った内容を含みます。
             <strong className="font-semibold">必ず事実と照合し、確認・修正のうえ</strong>
@@ -434,6 +675,7 @@ export default function RescuePage() {
               type="button"
               onClick={() => {
                 setBundle(null);
+                setIntake(null);
                 setError(null);
               }}
               className={btnSecondary}
