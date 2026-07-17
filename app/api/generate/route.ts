@@ -26,8 +26,12 @@ export async function POST(req: NextRequest) {
     if (e instanceof GenerateRequestError) {
       return NextResponse.json({ error: e.message }, { status: e.status });
     }
-    const message = e instanceof Error ? e.message : "不明なエラーが発生しました";
-    console.error("[generate] error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    // 内部エラー詳細はクライアントに返さない（情報漏えい対策）。詳細はサーバログのみ。
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error("[generate] error:", detail);
+    return NextResponse.json(
+      { error: "生成に失敗しました。しばらくして再度お試しください。" },
+      { status: 500 },
+    );
   }
 }

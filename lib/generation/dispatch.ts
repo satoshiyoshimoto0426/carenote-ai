@@ -22,11 +22,35 @@ function str(body: Record<string, unknown>, key: string): string {
 }
 
 /**
+ * 入力サイズの上限（コスト暴走・DoS対策・G3/R7 監査 High#1）。
+ * 介護のメモは通常数千字。1フィールド4万字・合計6万字あれば実運用に十分で、
+ * かつ Opus 最大課金を狙う巨大入力（数十万字）を止められる。超過は 413。
+ */
+const MAX_FIELD_CHARS = 40_000;
+const MAX_TOTAL_CHARS = 60_000;
+
+/** body 内の全文字列フィールドの長さを検査し、上限超過なら 413 を投げる。 */
+function assertInputSize(body: Record<string, unknown>): void {
+  let total = 0;
+  for (const value of Object.values(body)) {
+    if (typeof value !== "string") continue;
+    if (value.length > MAX_FIELD_CHARS) {
+      throw new GenerateRequestError(413, "入力が大きすぎます。文章を短くしてお試しください。");
+    }
+    total += value.length;
+  }
+  if (total > MAX_TOTAL_CHARS) {
+    throw new GenerateRequestError(413, "入力全体が大きすぎます。文章を短くしてお試しください。");
+  }
+}
+
+/**
  * リクエストボディから documentType を判定し、対応する帳票の下書きを生成する。
  * Clerk認証ルート（/api/generate）と拡張トークン認証ルート（/api/extension/generate）の
  * 両方から使う共通ディスパッチャ。認証は呼び出し側の責務。
  */
 export async function generateFromBody(body: Record<string, unknown>): Promise<unknown> {
+  assertInputSize(body);
   // 既存クライアント互換のため documentType 未指定はケアプラン扱い
   const documentType = str(body, "documentType") || "carePlan";
   const clientInfo = str(body, "clientInfo") || undefined;

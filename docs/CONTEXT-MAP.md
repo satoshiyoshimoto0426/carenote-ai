@@ -80,7 +80,7 @@
 ### 拡張のデータフロー（P2実装済・カイポケ）
 ```
 [サイドパネル extension/src/panel.js]
-   ├─ 生成: POST {baseUrl}/api/extension/generate（Bearer = CARENOTE_EXTENSION_TOKEN）
+   ├─ 生成: POST {baseUrl}/api/extension/generate（Bearer = 利用者別トークン。認可=lib/extensionAuth・G3）
    │        └─ lib/generation/dispatch.generateFromBody（Web版と共通コア）→ 下書きJSON
    │   ※JSON貼付での読込もフォールバックで可（API未設定でも転記支援は使える）
    ├─ 表示: 帳票をセクション単位で表示・ワンクリックコピー（Step1・どのソフトでも使える）
