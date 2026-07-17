@@ -1,6 +1,7 @@
+import { RESCUE_SYSTEM_OVERRIDE } from "@/lib/rules/rescue";
 import type { CarePlanDraft, CarePlanInput } from "@/types/carePlan";
 import { buildCarePlanUserMessage, CARE_PLAN_SYSTEM_PROMPT } from "./carePlanPrompt";
-import { generateStructuredDraft } from "./structured";
+import { type GenerateOptions, generateStructuredDraft } from "./structured";
 
 /** 構造化出力(JSON Schema)。CarePlanDraft と一致させること。 */
 const CARE_PLAN_JSON_SCHEMA = {
@@ -63,9 +64,14 @@ const CARE_PLAN_JSON_SCHEMA = {
 /**
  * アセスメントメモ等の入力から、ルールに従ったケアプラン下書き(第1・2表)を生成する。
  */
-export async function generateCarePlan(input: CarePlanInput): Promise<CarePlanDraft> {
+export async function generateCarePlan(
+  input: CarePlanInput,
+  options: GenerateOptions = {},
+): Promise<CarePlanDraft> {
   return generateStructuredDraft<CarePlanDraft>({
-    systemPrompt: CARE_PLAN_SYSTEM_PROMPT,
+    systemPrompt: options.rescue
+      ? `${CARE_PLAN_SYSTEM_PROMPT}\n\n${RESCUE_SYSTEM_OVERRIDE}`
+      : CARE_PLAN_SYSTEM_PROMPT,
     userMessage: buildCarePlanUserMessage(input),
     schema: CARE_PLAN_JSON_SCHEMA,
   });

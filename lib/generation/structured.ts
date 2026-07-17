@@ -1,5 +1,11 @@
 import { CLAUDE_MODEL, getAnthropic } from "@/lib/anthropic";
 
+/** 各帳票の generate 関数に渡す共通オプション。 */
+export interface GenerateOptions {
+  /** 救済モード（人物像から完成形まで埋める）。既定 false で従来の「創作しない」挙動。 */
+  rescue?: boolean;
+}
+
 interface StructuredDraftRequest {
   /** 役割定義＋品質ルール。安定内容なのでプロンプトキャッシュに乗せる */
   systemPrompt: string;

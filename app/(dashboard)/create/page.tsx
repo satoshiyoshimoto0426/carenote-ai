@@ -1,12 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { type ComponentType, useState } from "react";
 import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
 import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import ItemsToConfirm from "@/components/drafts/ItemsToConfirm";
 import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
 import MonitoringDraftView from "@/components/drafts/MonitoringDraftView";
 import SupportLogDraftView from "@/components/drafts/SupportLogDraftView";
+import {
+  IconAlert,
+  IconCheck,
+  IconCopy,
+  IconFileText,
+  IconLayers,
+  IconLoader,
+  type IconProps,
+  IconSearch,
+  IconUsers,
+} from "@/components/ui/icons";
+import {
+  btnPrimary,
+  btnSecondary,
+  Card,
+  inputClass,
+  PageHeader,
+  textareaClass,
+} from "@/components/ui/primitives";
 import {
   assessmentToText,
   carePlanToText,
@@ -29,29 +48,32 @@ type GeneratedResult =
   | { type: "meetingSummary"; draft: MeetingSummaryDraft }
   | { type: "supportLog"; draft: SupportLogDraft };
 
-const DOC_META: Record<DocType, { icon: string; label: string; description: string }> = {
+const DOC_META: Record<
+  DocType,
+  { icon: ComponentType<IconProps>; label: string; description: string }
+> = {
   assessment: {
-    icon: "🔍",
+    icon: IconSearch,
     label: "アセスメント",
     description: "面談メモから課題分析の下書き",
   },
   carePlan: {
-    icon: "📋",
+    icon: IconFileText,
     label: "ケアプラン（第1・2表）",
     description: "アセス結果から計画書の下書き",
   },
   monitoring: {
-    icon: "📈",
+    icon: IconCheck,
     label: "モニタリング",
     description: "前回プラン＋最新状況から記録の下書き",
   },
   meetingSummary: {
-    icon: "🤝",
+    icon: IconUsers,
     label: "担当者会議（第4表）",
     description: "会議メモから要点の下書き",
   },
   supportLog: {
-    icon: "🗒️",
+    icon: IconLayers,
     label: "支援経過（第5表）",
     description: "対応メモから経過記録の下書き",
   },
@@ -65,6 +87,14 @@ const DOC_ORDER: DocType[] = [
   "supportLog",
   "monitoring",
 ];
+
+/** ラベルは常に入力の上・12px・muted（Field と同じ見た目。必須マーク併用のため手書き） */
+const labelClass = "mb-1.5 block text-xs font-medium text-[var(--muted)]";
+
+/** 必須マーク（clay） */
+function Req() {
+  return <span className="text-[var(--clay)]"> *</span>;
+}
 
 function resultToText(result: GeneratedResult): string {
   switch (result.type) {
@@ -169,51 +199,45 @@ export default function CreatePage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-black text-slate-100 mb-1">帳票作成（下書き）</h1>
-        <p className="text-slate-400 text-sm">
-          メモを入力すると、AIがルールに沿って帳票の下書きを作成します
-        </p>
-      </div>
+    <div className="mx-auto max-w-2xl">
+      <PageHeader
+        kicker="Create"
+        title="帳票作成（下書き）"
+        description="メモを入力すると、AIがルールに沿って帳票の下書きを作成します"
+      />
 
-      {/* 帳票セレクタ */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
-        {DOC_ORDER.map((t) => {
-          const meta = DOC_META[t];
-          const active = docType === t;
-          return (
-            <button
-              key={t}
-              type="button"
-              onClick={() => switchDocType(t)}
-              className="rounded-xl px-2 py-3 text-center cursor-pointer transition-all"
-              style={{
-                background: active ? "rgba(59,130,246,0.15)" : "rgba(30,41,59,0.4)",
-                border: active ? "1px solid rgba(59,130,246,0.5)" : "1px solid #334155",
-              }}
-            >
-              <div className="text-2xl mb-1">{meta.icon}</div>
-              <div
-                className="text-xs font-bold leading-tight"
-                style={{ color: active ? "#60a5fa" : "#94a3b8" }}
+      {/* 帳票セレクタ（白カードのセグメント） */}
+      <Card className="mb-6 p-1.5">
+        <div className="grid grid-cols-2 gap-1 sm:grid-cols-5">
+          {DOC_ORDER.map((t) => {
+            const meta = DOC_META[t];
+            const Icon = meta.icon;
+            const active = docType === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => switchDocType(t)}
+                className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-[10px] px-2 py-3 text-center transition-colors ${
+                  active
+                    ? "bg-[var(--green-soft)] text-[var(--green)]"
+                    : "text-[var(--muted)] hover:bg-[var(--paper)]"
+                }`}
               >
-                {meta.label}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+                <Icon size={18} />
+                <span className="text-xs font-medium leading-tight">{meta.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
 
       {!result ? (
         <div className="animate-fadeIn space-y-4">
-          <p className="text-slate-500 text-xs -mt-2">{DOC_META[docType].description}</p>
+          <p className="-mt-2 text-xs text-[var(--faint)]">{DOC_META[docType].description}</p>
 
           <div>
-            <label
-              htmlFor="clientInfo"
-              className="block text-slate-300 text-sm font-semibold mb-1.5"
-            >
+            <label htmlFor="clientInfo" className={labelClass}>
               利用者の基本情報（任意）
             </label>
             <input
@@ -222,19 +246,16 @@ export default function CreatePage() {
               value={clientInfo}
               onChange={(e) => setClientInfo(e.target.value)}
               placeholder="例: 85歳 女性 要介護2 独居"
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-900 text-slate-100 text-sm outline-none"
-              style={{ border: "1px solid #334155" }}
+              className={inputClass}
             />
           </div>
 
           {docType === "monitoring" ? (
             <>
               <div>
-                <label
-                  htmlFor="previousPlanSummary"
-                  className="block text-slate-300 text-sm font-semibold mb-1.5"
-                >
-                  前回のケアプラン（目標・サービスの要約） <span className="text-red-400">*</span>
+                <label htmlFor="previousPlanSummary" className={labelClass}>
+                  前回のケアプラン（目標・サービスの要約）
+                  <Req />
                 </label>
                 <textarea
                   id="previousPlanSummary"
@@ -242,16 +263,13 @@ export default function CreatePage() {
                   onChange={(e) => setPreviousPlanSummary(e.target.value)}
                   rows={6}
                   placeholder="前回プランの短期目標・長期目標・サービス内容を貼り付けるか、要約して入力してください。"
-                  className="w-full px-4 py-3 rounded-xl bg-slate-900 text-slate-100 text-sm outline-none leading-relaxed resize-y"
-                  style={{ border: "1px solid #334155" }}
+                  className={`${textareaClass} resize-y`}
                 />
               </div>
               <div>
-                <label
-                  htmlFor="monitoringNotes"
-                  className="block text-slate-300 text-sm font-semibold mb-1.5"
-                >
-                  最新の状況・モニタリングメモ <span className="text-red-400">*</span>
+                <label htmlFor="monitoringNotes" className={labelClass}>
+                  最新の状況・モニタリングメモ
+                  <Req />
                 </label>
                 <textarea
                   id="monitoringNotes"
@@ -259,18 +277,15 @@ export default function CreatePage() {
                   onChange={(e) => setMonitoringNotes(e.target.value)}
                   rows={8}
                   placeholder="訪問・電話で確認した最新の様子、本人や家族・事業所からの聞き取り内容を入力してください。"
-                  className="w-full px-4 py-3 rounded-xl bg-slate-900 text-slate-100 text-sm outline-none leading-relaxed resize-y"
-                  style={{ border: "1px solid #334155" }}
+                  className={`${textareaClass} resize-y`}
                 />
               </div>
             </>
           ) : docType === "supportLog" ? (
             <div>
-              <label
-                htmlFor="supportNotes"
-                className="block text-slate-300 text-sm font-semibold mb-1.5"
-              >
-                支援の対応メモ（訪問・電話・調整など） <span className="text-red-400">*</span>
+              <label htmlFor="supportNotes" className={labelClass}>
+                支援の対応メモ（訪問・電話・調整など）
+                <Req />
               </label>
               <textarea
                 id="supportNotes"
@@ -278,17 +293,14 @@ export default function CreatePage() {
                 onChange={(e) => setSupportNotes(e.target.value)}
                 rows={10}
                 placeholder="日付・相手・やり取りの内容などの殴り書きメモを貼り付けてください。複数日の対応が混ざっていてもOK（自動で分割します）。"
-                className="w-full px-4 py-3 rounded-xl bg-slate-900 text-slate-100 text-sm outline-none leading-relaxed resize-y"
-                style={{ border: "1px solid #334155" }}
+                className={`${textareaClass} resize-y`}
               />
             </div>
           ) : docType === "meetingSummary" ? (
             <div>
-              <label
-                htmlFor="meetingNotes"
-                className="block text-slate-300 text-sm font-semibold mb-1.5"
-              >
-                サービス担当者会議のメモ <span className="text-red-400">*</span>
+              <label htmlFor="meetingNotes" className={labelClass}>
+                サービス担当者会議のメモ
+                <Req />
               </label>
               <textarea
                 id="meetingNotes"
@@ -296,18 +308,14 @@ export default function CreatePage() {
                 onChange={(e) => setMeetingNotes(e.target.value)}
                 rows={10}
                 placeholder="開催日時・場所、出席者、会議で出た発言・報告・決定事項などのメモ（殴り書きでOK）を貼り付けてください。"
-                className="w-full px-4 py-3 rounded-xl bg-slate-900 text-slate-100 text-sm outline-none leading-relaxed resize-y"
-                style={{ border: "1px solid #334155" }}
+                className={`${textareaClass} resize-y`}
               />
             </div>
           ) : (
             <div>
-              <label
-                htmlFor="assessmentNotes"
-                className="block text-slate-300 text-sm font-semibold mb-1.5"
-              >
-                {docType === "carePlan" ? "アセスメント・面談メモ" : "面談メモ・収集した情報"}{" "}
-                <span className="text-red-400">*</span>
+              <label htmlFor="assessmentNotes" className={labelClass}>
+                {docType === "carePlan" ? "アセスメント・面談メモ" : "面談メモ・収集した情報"}
+                <Req />
               </label>
               <textarea
                 id="assessmentNotes"
@@ -315,18 +323,15 @@ export default function CreatePage() {
                 onChange={(e) => setAssessmentNotes(e.target.value)}
                 rows={10}
                 placeholder="利用者・家族との面談で得た情報、生活状況、困りごと、本人の希望などを自由に入力してください。"
-                className="w-full px-4 py-3 rounded-xl bg-slate-900 text-slate-100 text-sm outline-none leading-relaxed resize-y"
-                style={{ border: "1px solid #334155" }}
+                className={`${textareaClass} resize-y`}
               />
             </div>
           )}
 
           {error && (
-            <div
-              className="rounded-xl p-4"
-              style={{ background: "rgba(127,29,29,0.2)", border: "1px solid #ef4444" }}
-            >
-              <div className="text-red-300 text-sm">⚠️ {error}</div>
+            <div className="flex items-start gap-2.5 rounded-[12px] border border-[var(--clay)] bg-white p-4">
+              <IconAlert size={16} className="mt-0.5 shrink-0 text-[var(--clay)]" />
+              <p className="text-sm text-[var(--clay)]">{error}</p>
             </div>
           )}
 
@@ -334,27 +339,26 @@ export default function CreatePage() {
             type="button"
             onClick={generate}
             disabled={loading}
-            className="w-full py-4 rounded-2xl border-none text-white text-lg font-black cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
-              boxShadow: "0 4px 24px rgba(59,130,246,0.27)",
-            }}
+            className={`${btnPrimary} w-full`}
           >
-            {loading
-              ? "🧠 AIが作成中です…（30秒〜1分ほど）"
-              : `📝 ${DOC_META[docType].label}の下書きを生成する`}
+            {loading ? (
+              <>
+                <IconLoader size={16} className="animate-spin" />
+                AIが作成中です…（30秒〜1分ほど）
+              </>
+            ) : (
+              `${DOC_META[docType].label}の下書きを生成する`
+            )}
           </button>
         </div>
       ) : (
         <div className="animate-fadeIn space-y-4">
           {/* 下書き注意 */}
-          <div
-            className="rounded-xl p-3.5"
-            style={{ background: "rgba(120,53,15,0.18)", border: "1px solid #f59e0b" }}
-          >
-            <div className="text-amber-300 text-sm font-semibold">
-              ⚠️ これはAIの下書きです。必ず内容を確認・修正のうえでご使用ください。
-            </div>
+          <div className="flex items-start gap-2.5 rounded-[12px] border border-[var(--amber)] bg-[var(--amber-soft)] p-3.5">
+            <IconAlert size={16} className="mt-0.5 shrink-0 text-[#7A5B1E]" />
+            <p className="text-sm font-medium text-[#7A5B1E]">
+              これはAIの下書きです。必ず内容を確認・修正のうえでご使用ください。
+            </p>
           </div>
 
           {result.type === "carePlan" && <CarePlanDraftView draft={result.draft} />}
@@ -373,17 +377,22 @@ export default function CreatePage() {
                 setResult(null);
                 setError(null);
               }}
-              className="flex-1 py-3.5 rounded-2xl border border-slate-600 bg-transparent text-slate-100 text-sm font-bold cursor-pointer hover:bg-slate-800 transition-colors"
+              className={`${btnSecondary} flex-1`}
             >
-              ✏️ 別の下書きを作る
+              別の下書きを作る
             </button>
-            <button
-              type="button"
-              onClick={copyDraft}
-              className="flex-1 py-3.5 rounded-2xl border-none text-white text-sm font-bold cursor-pointer hover:opacity-90 transition-opacity"
-              style={{ background: "linear-gradient(135deg, #059669, #0891b2)" }}
-            >
-              {copied ? "✓ コピーしました" : "📋 下書きをコピー"}
+            <button type="button" onClick={copyDraft} className={`${btnPrimary} flex-1`}>
+              {copied ? (
+                <>
+                  <IconCheck size={16} />
+                  コピーしました
+                </>
+              ) : (
+                <>
+                  <IconCopy size={16} />
+                  下書きをコピー
+                </>
+              )}
             </button>
           </div>
         </div>

@@ -1,9 +1,10 @@
+import { RESCUE_SYSTEM_OVERRIDE } from "@/lib/rules/rescue";
 import type { MeetingSummaryDraft, MeetingSummaryInput } from "@/types/meetingSummary";
 import {
   buildMeetingSummaryUserMessage,
   MEETING_SUMMARY_SYSTEM_PROMPT,
 } from "./meetingSummaryPrompt";
-import { generateStructuredDraft } from "./structured";
+import { type GenerateOptions, generateStructuredDraft } from "./structured";
 
 /** 構造化出力(JSON Schema)。MeetingSummaryDraft と一致させること。 */
 const MEETING_SUMMARY_JSON_SCHEMA = {
@@ -59,9 +60,12 @@ const MEETING_SUMMARY_JSON_SCHEMA = {
 /** 会議メモから、第4表（サービス担当者会議の要点）の下書きを生成する。 */
 export async function generateMeetingSummary(
   input: MeetingSummaryInput,
+  options: GenerateOptions = {},
 ): Promise<MeetingSummaryDraft> {
   return generateStructuredDraft<MeetingSummaryDraft>({
-    systemPrompt: MEETING_SUMMARY_SYSTEM_PROMPT,
+    systemPrompt: options.rescue
+      ? `${MEETING_SUMMARY_SYSTEM_PROMPT}\n\n${RESCUE_SYSTEM_OVERRIDE}`
+      : MEETING_SUMMARY_SYSTEM_PROMPT,
     userMessage: buildMeetingSummaryUserMessage(input),
     schema: MEETING_SUMMARY_JSON_SCHEMA,
   });

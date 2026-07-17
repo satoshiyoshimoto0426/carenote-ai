@@ -1,3 +1,4 @@
+import { Card, SectionTitle } from "@/components/ui/primitives";
 import type { CarePlanDraft } from "@/types/carePlan";
 import DraftSection from "./DraftSection";
 
@@ -11,45 +12,38 @@ export default function CarePlanDraftView({ draft }: { draft: CarePlanDraft }) {
       <DraftSection title="総合的な援助の方針（第1表）" body={draft.comprehensivePolicy} />
 
       <div>
-        <div className="text-slate-300 font-bold text-sm mb-2">
+        <SectionTitle className="mb-2">
           生活全般の解決すべき課題と目標・サービス（第2表）
-        </div>
+        </SectionTitle>
         <div className="space-y-3">
           {draft.needs.map((n, i) => (
-            <div
-              key={n.need}
-              className="rounded-xl p-4"
-              style={{
-                background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-                border: "1px solid #334155",
-              }}
-            >
-              <div className="text-slate-100 font-bold text-sm mb-2">
+            <Card key={n.need} className="p-4">
+              <div className="mb-2 text-sm font-medium text-[var(--ink)]">
                 {i + 1}. {n.need}
               </div>
-              <div className="text-slate-300 text-xs leading-relaxed space-y-1">
+              <div className="space-y-1 text-xs leading-relaxed text-[var(--ink)]">
                 <div>
-                  <span className="text-sky-400">長期目標:</span> {n.longTermGoal}（
-                  {n.longTermPeriod}）
+                  <span className="font-medium text-[var(--green)]">長期目標:</span>{" "}
+                  {n.longTermGoal}（{n.longTermPeriod}）
                 </div>
                 <div>
-                  <span className="text-sky-400">短期目標:</span> {n.shortTermGoal}（
-                  {n.shortTermPeriod}）
+                  <span className="font-medium text-[var(--green)]">短期目標:</span>{" "}
+                  {n.shortTermGoal}（{n.shortTermPeriod}）
                 </div>
               </div>
               {n.services.length > 0 && (
-                <div className="mt-2.5 border-t border-slate-700 pt-2.5 space-y-1">
+                <div className="mt-2.5 space-y-1 border-t border-[var(--line-soft)] pt-2.5">
                   {n.services.map((s) => (
-                    <div key={s.content} className="text-slate-300 text-xs">
+                    <div key={s.content} className="text-xs text-[var(--ink)]">
                       ・{s.content}
-                      <span className="text-slate-500">
+                      <span className="text-[var(--faint)]">
                         （{s.serviceType} / {s.frequency} / {s.period} / 担当: {s.provider}）
                       </span>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
+            </Card>
           ))}
         </div>
       </div>

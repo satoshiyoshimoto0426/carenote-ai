@@ -1,3 +1,4 @@
+import { Card } from "@/components/ui/primitives";
 import type { SupportLogDraft } from "@/types/supportLog";
 import DraftSection from "./DraftSection";
 
@@ -17,36 +18,22 @@ export default function SupportLogDraftView({ draft }: { draft: SupportLogDraft 
 
       <div className="space-y-3">
         {draft.entries.map((e) => (
-          <div
-            key={`${e.date}-${e.action}`}
-            className="rounded-xl p-4"
-            style={{
-              background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-              border: "1px solid #334155",
-            }}
-          >
-            <div className="flex items-center justify-between mb-2.5">
-              <div className="text-slate-100 font-bold text-sm">{e.date}</div>
-              <div
-                className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                style={{
-                  background: "rgba(59,130,246,0.15)",
-                  color: "#60a5fa",
-                  border: "1px solid rgba(59,130,246,0.3)",
-                }}
-              >
+          <Card key={`${e.date}-${e.action}`} className="p-4">
+            <div className="mb-2.5 flex items-center justify-between">
+              <div className="text-sm font-medium text-[var(--ink)]">{e.date}</div>
+              <div className="rounded-full border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--green)]">
                 {e.category}
               </div>
             </div>
             <div className="space-y-1.5">
               {FIELD_LABELS.map(([key, label]) => (
                 <div key={key} className="text-xs leading-relaxed">
-                  <span className="text-sky-400 font-semibold">【{label}】</span>
-                  <span className="text-slate-200 whitespace-pre-wrap">{e[key]}</span>
+                  <span className="font-medium text-[var(--green)]">【{label}】</span>
+                  <span className="whitespace-pre-wrap text-[var(--ink)]">{e[key]}</span>
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         ))}
       </div>
     </>

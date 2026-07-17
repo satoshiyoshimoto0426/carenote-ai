@@ -1,3 +1,4 @@
+import { Card, SectionTitle } from "@/components/ui/primitives";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import DraftSection from "./DraftSection";
 
@@ -12,44 +13,36 @@ export default function MeetingSummaryDraftView({ draft }: { draft: MeetingSumma
       />
 
       {/* 出席者 */}
-      <div
-        className="rounded-xl p-4"
-        style={{
-          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-          border: "1px solid #334155",
-        }}
-      >
-        <div className="text-slate-400 text-xs font-semibold mb-2">会議出席者</div>
+      <Card className="p-4">
+        <h3
+          className="mb-2 text-[13px] font-medium text-[var(--muted)]"
+          style={{ fontFamily: "var(--serif)" }}
+        >
+          会議出席者
+        </h3>
         <div className="space-y-1">
           {draft.attendees.map((a) => (
-            <div key={`${a.affiliation}-${a.name}`} className="text-slate-100 text-sm">
+            <div key={`${a.affiliation}-${a.name}`} className="text-sm text-[var(--ink)]">
               {a.affiliation}
-              <span className="text-slate-500">（{a.role}）</span> {a.name}
+              <span className="text-[var(--faint)]">（{a.role}）</span> {a.name}
             </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* 検討項目と内容 */}
       <div>
-        <div className="text-slate-300 font-bold text-sm mb-2">検討した項目と検討内容</div>
+        <SectionTitle className="mb-2">検討した項目と検討内容</SectionTitle>
         <div className="space-y-3">
           {draft.discussions.map((d, i) => (
-            <div
-              key={d.item}
-              className="rounded-xl p-4"
-              style={{
-                background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-                border: "1px solid #334155",
-              }}
-            >
-              <div className="text-slate-100 font-bold text-sm mb-2">
+            <Card key={d.item} className="p-4">
+              <div className="mb-2 text-sm font-medium text-[var(--ink)]">
                 {i + 1}. {d.item}
               </div>
-              <div className="text-slate-300 text-xs leading-relaxed whitespace-pre-wrap">
+              <div className="whitespace-pre-wrap text-xs leading-relaxed text-[var(--ink)]">
                 {d.details}
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       </div>

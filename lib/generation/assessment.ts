@@ -1,6 +1,7 @@
+import { RESCUE_SYSTEM_OVERRIDE } from "@/lib/rules/rescue";
 import type { AssessmentDraft, AssessmentInput } from "@/types/assessment";
 import { ASSESSMENT_SYSTEM_PROMPT, buildAssessmentUserMessage } from "./assessmentPrompt";
-import { generateStructuredDraft } from "./structured";
+import { type GenerateOptions, generateStructuredDraft } from "./structured";
 
 /** 課題分析標準項目（2023年改定）の課題分析14項目の正式名称。enumで出力を強制する。 */
 export const ASSESSMENT_DOMAIN_NAMES = [
@@ -63,9 +64,14 @@ const ASSESSMENT_JSON_SCHEMA = {
 };
 
 /** 面談メモ等の入力から、課題分析標準項目に準拠したアセスメント下書きを生成する。 */
-export async function generateAssessment(input: AssessmentInput): Promise<AssessmentDraft> {
+export async function generateAssessment(
+  input: AssessmentInput,
+  options: GenerateOptions = {},
+): Promise<AssessmentDraft> {
   return generateStructuredDraft<AssessmentDraft>({
-    systemPrompt: ASSESSMENT_SYSTEM_PROMPT,
+    systemPrompt: options.rescue
+      ? `${ASSESSMENT_SYSTEM_PROMPT}\n\n${RESCUE_SYSTEM_OVERRIDE}`
+      : ASSESSMENT_SYSTEM_PROMPT,
     userMessage: buildAssessmentUserMessage(input),
     schema: ASSESSMENT_JSON_SCHEMA,
   });

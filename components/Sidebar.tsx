@@ -3,13 +3,32 @@
 import { UserButton, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  IconFileText,
+  IconHome,
+  IconLayers,
+  type IconProps,
+  IconSearch,
+  IconUsers,
+} from "@/components/ui/icons";
 
-const NAV = [
-  { href: "/dashboard", label: "ダッシュボード", icon: "📊" },
-  { href: "/create", label: "作成する", icon: "📝" },
-  { href: "/evaluate", label: "評価する", icon: "🔍" },
+/**
+ * Primary navigation entries. Icons are the shared line-icon set
+ * (components/ui/icons.tsx) — emoji are banned in UI by design system v0.
+ */
+const NAV: { href: string; label: string; icon: (props: IconProps) => React.JSX.Element }[] = [
+  { href: "/dashboard", label: "ダッシュボード", icon: IconHome },
+  { href: "/clients", label: "利用者", icon: IconUsers },
+  { href: "/create", label: "作成する", icon: IconFileText },
+  { href: "/rescue", label: "救済モード", icon: IconLayers },
+  { href: "/evaluate", label: "評価する", icon: IconSearch },
 ];
 
+/**
+ * App sidebar (md+ only; the mobile top bar lives in app/(dashboard)/layout.tsx).
+ * Warm off-white surface with hairline right border, mincho logo, and a
+ * Clerk UserButton block pinned to the bottom.
+ */
 export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useUser();
@@ -18,53 +37,37 @@ export default function Sidebar() {
     <aside
       className="flex flex-col h-full"
       style={{
-        background: "linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%)",
-        borderRight: "1px solid #334155",
+        background: "#FCFBF9",
+        borderRight: "1px solid var(--line)",
         width: "100%",
       }}
     >
       {/* Logo */}
-      <div
-        className="flex items-center gap-3 px-5 py-5"
-        style={{ borderBottom: "1px solid #334155" }}
-      >
+      <div className="px-5 py-5" style={{ borderBottom: "1px solid var(--line-soft)" }}>
         <div
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-lg font-black text-white flex-shrink-0"
-          style={{ background: "linear-gradient(135deg, #3b82f6, #8b5cf6)" }}
+          className="text-lg leading-tight text-[var(--ink)]"
+          style={{ fontFamily: "var(--serif)" }}
         >
-          C
+          CareNote
         </div>
-        <div className="min-w-0">
-          <div
-            className="text-base font-black leading-tight"
-            style={{
-              background: "linear-gradient(135deg, #60a5fa, #a78bfa)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
-          >
-            CareNote AI
-          </div>
-          <div className="text-xs text-slate-500 truncate">ケアプラン作成・評価</div>
-        </div>
+        <div className="mt-0.5 text-[11px] tracking-[0.12em] text-[var(--faint)]">ケア記録支援</div>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {NAV.map(({ href, label, icon }) => {
+        {NAV.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
           return (
             <Link
               key={href}
               href={href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
-              style={{
-                background: active ? "rgba(59,130,246,0.15)" : "transparent",
-                color: active ? "#60a5fa" : "#94a3b8",
-                border: active ? "1px solid rgba(59,130,246,0.3)" : "1px solid transparent",
-              }}
+              className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm transition-colors ${
+                active
+                  ? "bg-[#EEF4F1] font-semibold text-[#15604D]"
+                  : "text-[#6B6862] hover:bg-[#F2F0EA] hover:text-[var(--ink)]"
+              }`}
             >
-              <span className="text-lg">{icon}</span>
+              <Icon className="flex-shrink-0" />
               {label}
             </Link>
           );
@@ -72,17 +75,20 @@ export default function Sidebar() {
       </nav>
 
       {/* User */}
-      <div className="flex items-center gap-3 px-4 py-4" style={{ borderTop: "1px solid #334155" }}>
+      <div
+        className="flex items-center gap-3 px-4 py-4"
+        style={{ borderTop: "1px solid var(--line-soft)" }}
+      >
         <UserButton
           appearance={{
             elements: { avatarBox: "w-8 h-8" },
           }}
         />
         <div className="min-w-0">
-          <div className="text-xs text-slate-300 font-medium truncate">
+          <div className="text-xs font-medium text-[var(--ink)] truncate">
             {user?.firstName ?? user?.emailAddresses[0]?.emailAddress ?? ""}
           </div>
-          <div className="text-xs text-slate-600 truncate">
+          <div className="text-xs text-[var(--faint)] truncate">
             {user?.emailAddresses[0]?.emailAddress ?? ""}
           </div>
         </div>
