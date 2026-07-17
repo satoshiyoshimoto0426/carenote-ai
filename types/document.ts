@@ -6,8 +6,11 @@ export type CareDocumentType =
   | "supportLog"
   | "monitoring";
 
-/** 帳票の状態。 */
-export type CareDocumentStatus = "draft" | "complete";
+/**
+ * 帳票の状態（G4 承認モデル）。保存直後は常に draft。
+ * approved は PATCH /api/documents/[id] の人間操作でのみ付く（AIが承認済みにはできない）。
+ */
+export type CareDocumentStatus = "draft" | "approved";
 
 /** 帳票の生成元。 */
 export type CareDocumentSource = "rescue" | "create";
@@ -24,16 +27,19 @@ export interface CareDocumentRecord {
   source: CareDocumentSource;
   /** 保持期限（ISO日付）。created_at + 5年。 */
   retentionUntil: string;
+  /** 承認日時（ISO）。未承認は null（G4 監査証跡）。 */
+  approvedAt: string | null;
+  /** 承認者（Clerk userId）。未承認は null（G4 監査証跡）。 */
+  approvedBy: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
 }
 
-/** 帳票保存の入力。 */
+/** 帳票保存の入力。status は持たない＝保存は常に draft（G4: 承認は保存後の人間操作のみ）。 */
 export interface CareDocumentInput {
   clientId: string;
   docType: CareDocumentType;
   content: unknown;
   source: CareDocumentSource;
-  status?: CareDocumentStatus;
 }

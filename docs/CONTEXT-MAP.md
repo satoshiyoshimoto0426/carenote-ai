@@ -118,12 +118,17 @@
 | `lib/privacy/crypto.ts` | 実名のアプリ層暗号化（AES-256-GCM・鍵=`CARENOTE_PII_KEY`） | 実装・テスト済 |
 | `lib/privacy/pseudonymize.ts` | 氏名⇄記号の置換＋利用者コード採番（純粋・テスト済） | 実装・テスト済 |
 | `lib/privacy/retention.ts` | 保持期限算出（5年） | 実装・テスト済 |
-| `lib/db/{clients,documents}.ts` | 利用者・帳票のデータアクセス（service role＋アプリ層 created_by スコープ。実名は client_identities に暗号化） | 実装済 |
-| `app/api/clients/`・`app/api/clients/[id]/`・`app/api/documents/` | 利用者CRUD（一覧/作成/詳細＋帳票）・帳票保存（Clerk認証） | 実装済 |
+| `lib/db/{clients,documents}.ts` | 利用者・帳票のデータアクセス（service role＋アプリ層 created_by スコープ。実名は client_identities に暗号化）。approve/unapproveDocument（G4） | 実装済 |
+| `app/api/clients/`・`app/api/clients/[id]/`・`app/api/documents/`・`app/api/documents/[id]/` | 利用者CRUD（一覧/作成/詳細＋帳票）・帳票保存・帳票承認 PATCH（Clerk認証） | 実装済 |
 | `types/{client,document}.ts` | 利用者・帳票の型 | 実装済 |
-| `supabase/clients_documents.sql` | clients / client_identities / documents ＋ RLS（多層防御） | 要適用（SQL Editor） |
+| `supabase/clients_documents.sql`・`supabase/approval_migration.sql` | clients / client_identities / documents ＋ RLS（多層防御）。approval_migration は既存DBへの G4 列追加（冪等） | 要適用（SQL Editor） |
 
-実行の前提: ①`supabase/clients_documents.sql` を Supabase で実行 ②`CARENOTE_PII_KEY`(base64 32B) を設定。
+**承認モデル（G4・2026-07-09）**: documents.status は `draft|approved` の2状態。保存（POST /api/documents）は
+**常に draft**（クライアントの status 指定は無視）。承認は `PATCH /api/documents/[id] {action:"approve"|"unapprove"}`
+の人間操作のみ（approved_at/approved_by を監査証跡に記録・created_by スコープ）。**未承認の保存書類はコピー不可**
+（UI 側で disabled。生成直後・保存前のコピーは従来どおり可）。コピー整形は `lib/draftText.documentContentToText`。
+
+実行の前提: ①`supabase/clients_documents.sql`（既存DBは `approval_migration.sql` も）を Supabase で実行 ②`CARENOTE_PII_KEY`(base64 32B) を設定。
 
 **B（現行ダークのまま機能追加）完了**: `app/(dashboard)/clients/`（一覧＋新規作成）・`clients/[id]/`（詳細＋保存帳票）、
 Sidebar に「👥 利用者」、救済結果を選択/新規の利用者に5帳票一括保存（`/rescue` の保存パネル）。compile/build 検証済（実行は上記前提が必要・UI見た目はAで刷新）。

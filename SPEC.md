@@ -211,6 +211,10 @@ carenote-ai/
   - **A案＝要配慮個人情報をDB保存**するため、**仮名化（DBも記号＋対応表分離）・RLS（Clerk org）・保持期間・
     データ処理委託契約**と一体（ロードマップR2）。**実データ投入は委託契約／同意の締結後**（§12 Never）。
   - Claude API へは**記号のみ**送信（実名・対応表は送らない）。保持期間は**5年**（吉本決定 2026-06-16）。
+  - **承認モデル（G4・2026-07-09 追加）**：documents.status は `draft | approved` の2状態。保存は**常に draft**
+    （API が status 指定を受理しない）。承認は `PATCH /api/documents/[id] {action:"approve"|"unapprove"}` の
+    人間操作のみで、approved_at / approved_by を監査証跡として記録する。**未承認の保存書類はコピー不可**
+    （生成直後・保存前の下書きコピーは従来どおり可＝人が確認・編集中のため）。
 
 ---
 

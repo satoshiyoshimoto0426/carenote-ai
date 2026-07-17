@@ -1,5 +1,6 @@
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
+import type { CareDocumentType } from "@/types/document";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import type { MonitoringDraft } from "@/types/monitoring";
 import type { SupportLogDraft } from "@/types/supportLog";
@@ -137,4 +138,26 @@ export function monitoringToText(d: MonitoringDraft): string {
   lines.push(`【プラン全体の判断】\n${d.planRecommendation}`);
   pushItemsToConfirm(lines, d.itemsToConfirm);
   return lines.join("\n");
+}
+
+/**
+ * 保存済み帳票（documents.content の下書きJSON）を docType に応じてコピー用テキストへ整形する。
+ * 利用者詳細の「承認済み書類のコピー」（G4）から使う。不明な docType は空文字を返す。
+ * content は保存時の Draft JSON（保存経路が各 Draft 型を保証するためキャストで受ける）。
+ */
+export function documentContentToText(docType: CareDocumentType, content: unknown): string {
+  switch (docType) {
+    case "assessment":
+      return assessmentToText(content as AssessmentDraft);
+    case "carePlan":
+      return carePlanToText(content as CarePlanDraft);
+    case "meetingSummary":
+      return meetingSummaryToText(content as MeetingSummaryDraft);
+    case "supportLog":
+      return supportLogToText(content as SupportLogDraft);
+    case "monitoring":
+      return monitoringToText(content as MonitoringDraft);
+    default:
+      return "";
+  }
 }

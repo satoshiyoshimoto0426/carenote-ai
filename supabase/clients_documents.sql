@@ -31,10 +31,12 @@ create table if not exists documents (
   client_id       uuid not null references clients (id) on delete cascade,
   org_id          text,
   doc_type        text not null,          -- assessment|carePlan|meetingSummary|supportLog|monitoring
-  status          text not null default 'draft',  -- draft|complete
+  status          text not null default 'draft',  -- draft|approved（G4: 承認は人間操作のみ）
   content         jsonb not null,         -- 帳票ごとの下書きJSON
   source          text not null default 'rescue', -- rescue|create
   retention_until timestamptz not null,   -- created_at + 5年（保存義務に合わせ長め）
+  approved_at     timestamptz,            -- G4 監査証跡: いつ承認したか（未承認は null）
+  approved_by     text,                   -- G4 監査証跡: 誰が承認したか（Clerk userId）
   created_by      text not null,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()

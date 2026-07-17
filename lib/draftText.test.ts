@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
+import type { CareDocumentType } from "@/types/document";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import type { MonitoringDraft } from "@/types/monitoring";
 import type { SupportLogDraft } from "@/types/supportLog";
 import {
   assessmentToText,
   carePlanToText,
+  documentContentToText,
   meetingSummaryToText,
   monitoringToText,
   supportLogToText,
@@ -185,5 +187,33 @@ describe("monitoringToText", () => {
   it("要確認が空ならブロックを出さない", () => {
     const text = monitoringToText({ ...monitoring, itemsToConfirm: [] });
     expect(text).not.toContain("【要確認事項】");
+  });
+});
+
+describe("documentContentToText", () => {
+  it("assessment は assessmentToText と同じ整形になる", () => {
+    expect(documentContentToText("assessment", assessment)).toBe(assessmentToText(assessment));
+  });
+
+  it("carePlan は carePlanToText と同じ整形になる", () => {
+    expect(documentContentToText("carePlan", carePlan)).toBe(carePlanToText(carePlan));
+  });
+
+  it("meetingSummary は meetingSummaryToText と同じ整形になる", () => {
+    expect(documentContentToText("meetingSummary", meetingSummary)).toBe(
+      meetingSummaryToText(meetingSummary),
+    );
+  });
+
+  it("supportLog は supportLogToText と同じ整形になる", () => {
+    expect(documentContentToText("supportLog", supportLog)).toBe(supportLogToText(supportLog));
+  });
+
+  it("monitoring は monitoringToText と同じ整形になる", () => {
+    expect(documentContentToText("monitoring", monitoring)).toBe(monitoringToText(monitoring));
+  });
+
+  it("不明な docType は空文字を返す", () => {
+    expect(documentContentToText("unknown" as CareDocumentType, {})).toBe("");
   });
 });

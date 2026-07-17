@@ -35,12 +35,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "保存する内容がありません。" }, { status: 400 });
   }
   const source: CareDocumentSource = body.source === "create" ? "create" : "rescue";
-  const status = body.status === "complete" ? "complete" : "draft";
 
+  // G4: 保存は常に draft（クライアントが status を送っても無視。承認は PATCH /api/documents/[id] のみ）
   const record = await saveDocument({
     userId,
     orgId: orgId ?? null,
-    input: { clientId, docType, content: body.content, source, status },
+    input: { clientId, docType, content: body.content, source },
   });
   if (!record) {
     return NextResponse.json({ error: "保存に失敗しました。" }, { status: 500 });
