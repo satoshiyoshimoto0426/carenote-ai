@@ -58,7 +58,8 @@
 - K1の知見を注入→実API再生成→吉本さん目視＋評価エンジン採点で品質確定 🧩👤
 - 第6・7表（給付管理・計算）は対象外を維持
 
-### P-SECURITY｜拡張API受け口の認可是正 ★G3
+### P-SECURITY｜拡張API受け口の認可是正 ★G3 ── ✅ 完了（2026-07-09・独立監査 条件付きGo→指摘反映済）
+> 実装: lib/extensionAuth.ts（複数トークン・定数時間比較・CORS許可リスト・レート制限）／入力サイズ上限413（dispatch）／監査ログ（PIIなし）／middleware公開ルート是正。残り運用: Anthropic側スペンドキャップ設定（G1と同時・任意）。手順=docs/EXTENSION-TOKENS.md。
 - `api/extension/generate` の CORS `*` → 拡張IDに限定、単一固定トークン → ユーザー単位・失効可能に、レート制限＋監査ログ 🧩
 
 ### P-KAIPOKE｜カイポケ実機検証＋規約照会 ★G2
