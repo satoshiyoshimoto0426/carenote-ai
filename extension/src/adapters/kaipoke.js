@@ -685,17 +685,36 @@
   }
 
   /**
-   * 連番欄（"form:xxx0".."form:xxxN"）へ配列を書き込む（第4表 出席者・モニタリング目標評価用）。
-   * docs/KAIPOKE-DOM.md の {N} 表記に従い 0 始まりで探索する。行の対応関係を保つため、
-   * 空文字の行もそのまま書く（値の詰め直しはしない）。
+   * 連番欄の開始番号（0始まりか1始まりか）を実画面から自動判定する。
+   * 2026-07-19 の実機検証で第4表の出席者欄が0始まりでは見つからなかったため、
+   * 固定の0始まりをやめ、実在する方を採用する（どちらも無ければ null）。
+   * @param {string} baseName
+   * @returns {number | null}
+   */
+  function detectSequentialStart(baseName) {
+    for (const start of [0, 1]) {
+      if (findByName([`${baseName}${start}`])) return start;
+    }
+    return null;
+  }
+
+  /**
+   * 連番欄（"form:xxx0".. または "form:xxx1"..）へ配列を書き込む
+   * （第4表 出席者・モニタリング目標評価用）。開始番号は実画面から自動判定。
+   * 行の対応関係を保つため、空文字の行もそのまま書く（値の詰め直しはしない）。
    * @param {string} baseName - 例 "form:conventionAttendancePersonFullName"
    * @param {string[]} values
-   * @returns {{found:number, missing:number[], elements:HTMLElement[]}} missing は 0 始まりの行番号
+   * @returns {{found:number, missing:number[], elements:HTMLElement[]}} missing は行番号（配列添字）
    */
   function writeSequentialFields(baseName, values) {
     const report = { found: 0, missing: [], elements: [] };
+    const start = detectSequentialStart(baseName);
+    if (start === null) {
+      for (let i = 0; i < values.length; i++) report.missing.push(i);
+      return report;
+    }
     for (let i = 0; i < values.length; i++) {
-      const el = findByName([`${baseName}${i}`]);
+      const el = findByName([`${baseName}${start + i}`]);
       if (!el) {
         report.missing.push(i);
         continue;
