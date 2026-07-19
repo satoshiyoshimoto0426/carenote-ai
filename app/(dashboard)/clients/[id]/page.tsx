@@ -148,6 +148,15 @@ export default function ClientDetailPage() {
     setTimeout(() => setCopiedId(null), 1500);
   };
 
+  // カイポケ拡張へ渡す用のJSONコピー（V3-lite）。拡張パネルの
+  // 「下書きJSONを貼り付けて読み込む」に貼ると、生成し直さずに流し込みできる。
+  // G4準拠: 承認済み書類のみ（このボタン自体を approved 分岐にのみ置く）。
+  const copyForExtension = async (doc: CareDocumentRecord) => {
+    await navigator.clipboard.writeText(JSON.stringify(doc.content, null, 2));
+    setCopiedId(`ext-${doc.id}`);
+    setTimeout(() => setCopiedId(null), 1500);
+  };
+
   if (loading)
     return (
       <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
@@ -312,6 +321,24 @@ export default function ClientDetailPage() {
                         </button>
                         <button
                           type="button"
+                          onClick={() => copyForExtension(d)}
+                          className={btnSecondary}
+                          title="カイポケ拡張のサイドパネル「下書きJSONを貼り付けて読み込む」に貼ると、生成し直さずに流し込みできます"
+                        >
+                          {copiedId === `ext-${d.id}` ? (
+                            <>
+                              <IconCheck size={15} className="text-[var(--green)]" />
+                              コピーしました
+                            </>
+                          ) : (
+                            <>
+                              <IconLayers size={15} />
+                              カイポケ用データ
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => patchDocument(d.id, "unapprove")}
                           disabled={patchingId === d.id}
                           className="text-xs text-[var(--clay)] underline underline-offset-4 transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
@@ -319,6 +346,12 @@ export default function ClientDetailPage() {
                           {patchingId === d.id ? "取消中…" : "承認を取り消す"}
                         </button>
                       </div>
+                    )}
+                    {d.status === "approved" && (
+                      <p className="text-xs leading-relaxed text-[var(--faint)]">
+                        「カイポケ用データ」をコピー → カイポケ画面で拡張パネルを開き、帳票の種類を
+                        合わせて「下書きJSONを貼り付けて読み込む」→「この画面に流し込む」
+                      </p>
                     )}
                     {actionError && (
                       <p className="flex items-start gap-1.5 text-xs text-[var(--clay)]">
