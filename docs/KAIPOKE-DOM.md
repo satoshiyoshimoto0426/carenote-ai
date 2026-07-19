@@ -89,5 +89,48 @@
 - 行数・全角桁数の上限は `measureText` で計測し、超過は**警告のみ**（人が調整）。
 - DOM未取得の欄（第2表・チェック/ラジオ群）は未対応 → 取得後に `FIELD_MAPS` を追補する。
 
+## 追加取得（2026-07-19・テスト利用者画面・構造のみ）
+
+### 第2表（居宅サービス計画書(2)） MEM091703.do — **対話型（v2対応）**
+- 一覧表示が基本で常設の入力欄がほぼ無い。「+ 項目を追加」クリックで初めて入力欄が現れる方式。
+- 自動流し込みは「クリック→欄出現→入力→確定」の多段自動化が必要 → **v1はコピー貼り付け運用、v2で対応**。
+
+### 第4表（サービス担当者会議の要点） MEM092601.do — 常設欄型 ✅
+| 欄 | プログラム名 | 型 |
+|---|---|---|
+| 作成年月日 | `form:makeYmd{Era,Year,Month,Day}` | sel×4 |
+| 被保険者適用期間 / 計画作成者 | `form:lsLedInsuranceProof` / `form:planMakePerson`(max40) | sel / text |
+| 開催日 | `form:holdingMeetingYmd{Era,Year,Month,Day}` | sel×4 |
+| 開催場所 / 開催回数 | `form:holdingMeetingPlace` / `form:holdingMeetingCount`(max5) | text |
+| 開催時間 | radio `form:timeMeetingAppointed`/`timeMeetingArbitrary`＋`form:{start,end}Hour`・`form:{start,end}MinuteN`＋任意文 `form:holdingMeetingTimeArbitrarySubject` | radio+sel+text |
+| 出席者（×9行） | `form:conventionAttendancePersonBelongName{N}`(所属)・`form:conventionAttendancePersonFullName{N}`(氏名) | text |
+| 欠席者（×3行） | `form:conventionAbsencePerson{BelongName,FullName}{N}`＋照会radio `...DocumentBooleanDivision{N}`＋理由 `form:conventionAbsenceReasonSubject{N}` | text+radio |
+| **検討した項目** | `form:considerationAlternateSubject` | textarea |
+| **検討内容** | `form:considerationSubject` | textarea |
+| **結論** | `form:conclusionSubject` | textarea |
+| **残された課題（次回開催時期）** | `form:remainingThemeSubject` | textarea |
+
+### 第5表（支援経過）
+- 一覧: MEM0927 系（対象期間セレクト＋既存記録のradio一覧）。**記録の編集は1階層奥**。
+- **記録1件の新規追加/編集フォーム** MEM092701.do:
+  `form:supportProgressYmd{Era,Year,Month,Day}`（年月日 sel×4）＋ `form:supportProgressSubject`（本文 textarea）＋ `form:accept`（登録）。
+  → **1記録＝日付＋本文1欄**。複数記録は「流し込み→人が登録→次」のループで対応（登録は必ず人・F7）。
+
+### モニタリング表 編集 MEM091801.do — 常設欄型 ✅
+| 欄 | プログラム名 | 型 |
+|---|---|---|
+| 担当ケアマネ / 実施者 | `form:lsLedStaffMemberBasic` / `form:monitoringEnforcementPerson` | sel / text |
+| 実施日 | `form:enforcementYmd{Era,Year,Month,Day}` | sel×4 |
+| 満足度セクション | `form:saName{N}`(サービス名)・`form:scDiv{N}`(満足度sel)・`form:sRemarks{N}`(備考) ×5〜7行 | text/sel |
+| 目標評価セクション（×5行） | `form:pcDiv{N}`(sel)・`form:mscDiv{N}`(sel)・**`form:stmRemarks{N}`(textarea rows3)** | sel+textarea |
+| 所見 | `form:lsOpinionComputationDivision{N}`(sel)＋`form:opinionRemarks{N}`(text) ×2 | sel+text |
+| **総合所見** | `form:synthesisComputationSubject` | textarea |
+
+### CareNote → カイポケ 追加マッピング方針（v1）
+- 第4表: meetingDate→開催日sel×4 / meetingPlace→開催場所 / attendees[]→出席者{Belong,Full}Name{0..8} / discussions のitem一覧→検討した項目・details連結→検討内容 / conclusion→結論 / remainingIssues→残された課題
+- 第5表: entries[i] → （開いている新規追加フォームに）date→supportProgressYmd sel×4・5層本文→supportProgressSubject。エントリ選択UIをパネルに追加
+- モニタリング: overallSummary→synthesisComputationSubject / goalEvaluations[i]（達成状況・根拠・提案の連結）→stmRemarks{i} / 実施日→enforcementYmd sel×4
+- 日付セレクトの書込: era=option文言一致（令和）、年月日=数値一致。**解析不能な日付（「初回訪問時」等の相対表現）はスキップして caution 報告**
+
 ---
-*次回取得予定: ケアプラン第1表・第2表、第4表（担当者会議）、第5表（支援経過）、モニタリングの各編集画面。*
+*次回取得予定: 第2表の「+ 項目を追加」後に現れる入力欄（v2の設計材料）。*
