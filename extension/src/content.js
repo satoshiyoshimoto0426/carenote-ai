@@ -44,7 +44,8 @@
         return undefined;
       }
       try {
-        const report = adapter.inject(message.documentType, message.draft);
+        // options: supportLog の entryIndex 等（adapters/kaipoke.js の InjectOptions）。
+        const report = adapter.inject(message.documentType, message.draft, message.options);
         sendResponse({ ok: true, report });
       } catch (e) {
         const messageText = e instanceof Error ? e.message : "流し込み中にエラーが発生しました。";

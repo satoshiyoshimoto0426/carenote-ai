@@ -42,6 +42,17 @@
       assessmentSummary: "→ カイポケ: 意向を踏まえた課題分析の結果（第1表）",
       comprehensivePolicy: "→ カイポケ: 総合的な援助の方針（第1表）",
     },
+    meetingSummary: {
+      meetingInfo: "→ カイポケ: 開催日（セレクト）・開催場所欄 ※開催時間は手入力",
+      attendees: "→ カイポケ: 出席者の所属・氏名欄（9行まで）",
+      discussions: "→ カイポケ: 検討した項目／検討内容欄",
+      conclusion: "→ カイポケ: 結論欄",
+      remainingIssues: "→ カイポケ: 残された課題（次回開催時期）欄",
+    },
+    monitoring: {
+      overallSummary: "→ カイポケ: 総合所見欄",
+      goalEvaluations: "→ カイポケ: 目標評価・特記事項欄（5行まで）",
+    },
   };
 
   const $ = (id) => document.getElementById(id);
@@ -226,9 +237,10 @@
         ];
       case "monitoring":
         return [
-          { label: "総合所見", text: d.overallSummary },
+          { label: "総合所見", text: d.overallSummary, key: "overallSummary" },
           {
             label: "目標ごとの達成状況",
+            key: "goalEvaluations",
             text: (d.goalEvaluations || [])
               .map(
                 (g, i) =>
@@ -242,22 +254,29 @@
         return [
           {
             label: "会議情報",
+            key: "meetingInfo",
             text: `開催日: ${d.meetingDate}\n場所: ${d.meetingPlace}\n時間: ${d.meetingTime}`,
           },
           {
             label: "出席者",
+            key: "attendees",
             text: (d.attendees || [])
               .map((a) => `・${a.affiliation}（${a.role}） ${a.name}`)
               .join("\n"),
           },
           {
             label: "検討した項目・検討内容",
+            key: "discussions",
             text: (d.discussions || [])
               .map((x, i) => `${i + 1}. ${x.item}\n   ${x.details}`)
               .join("\n\n"),
           },
-          { label: "結論", text: d.conclusion },
-          { label: "残された課題（次回の開催時期）", text: d.remainingIssues },
+          { label: "結論", text: d.conclusion, key: "conclusion" },
+          {
+            label: "残された課題（次回の開催時期）",
+            text: d.remainingIssues,
+            key: "remainingIssues",
+          },
         ];
       case "supportLog":
         return (d.entries || []).map((e, i) => ({
@@ -350,10 +369,13 @@
     renderConfirmBlock(draft.itemsToConfirm);
     $("result").hidden = false;
 
-    // 流し込みカードは対応帳票のときだけ表示
-    const injectable = Boolean(INJECT_HINTS[documentType]);
+    // 流し込みカードは対応帳票のときだけ表示（supportLog はエントリ単位ボタンで対応）
+    const injectable = Boolean(INJECT_HINTS[documentType]) || documentType === "supportLog";
     $("inject-card").hidden = !injectable;
-    if (injectable) refreshTabStatus();
+    if (injectable) {
+      renderEntryList();
+      refreshTabStatus();
+    }
   }
 
   function copyAll() {
@@ -373,31 +395,38 @@
     return tab;
   }
 
+  /** 流し込み系ボタン（一括ボタン＋supportLog のエントリ別ボタン）の活性をまとめて切り替える。 */
+  function setInjectDisabled(disabled) {
+    $("inject").disabled = disabled;
+    for (const b of $("entry-list").querySelectorAll("button")) {
+      b.disabled = disabled;
+    }
+  }
+
   async function refreshTabStatus() {
     const badge = $("tab-status");
-    const btn = $("inject");
     try {
       const tab = await getActiveTab();
       if (!tab || !/^https:\/\/r\.kaipoke\.biz\//.test(tab.url || "")) {
         badge.textContent = "カイポケ未表示";
         badge.className = "badge off";
-        btn.disabled = true;
+        setInjectDisabled(true);
         return;
       }
       const res = await chrome.tabs.sendMessage(tab.id, { type: "CARENOTE_PING" });
       if (res?.ok && res.adapterReady) {
         badge.textContent = "カイポケ接続OK";
         badge.className = "badge ok";
-        btn.disabled = false;
+        setInjectDisabled(false);
       } else {
         badge.textContent = "再読込が必要";
         badge.className = "badge off";
-        btn.disabled = true;
+        setInjectDisabled(true);
       }
     } catch {
       badge.textContent = "カイポケ未表示";
       badge.className = "badge off";
-      btn.disabled = true;
+      setInjectDisabled(true);
     }
   }
 
@@ -419,16 +448,64 @@
     wrap.append(summary);
   }
 
-  async function onInject() {
-    const btn = $("inject");
-    btn.disabled = true;
+  /**
+   * supportLog のとき: 流し込みカードに「エントリ一覧」ボタンを出す。
+   * カイポケ第5表は1記録＝1フォーム（MEM092701）のため一括流し込みができず、
+   * 押したエントリ1件だけを CARENOTE_INJECT {entryIndex} で送る（他帳票は一括ボタンのまま）。
+   */
+  function renderEntryList() {
+    const wrap = $("entry-list");
+    const isSupportLog = current.documentType === "supportLog";
+    wrap.hidden = !isSupportLog;
+    $("inject").hidden = isSupportLog;
+    wrap.innerHTML = "";
+    if (!isSupportLog) return;
+
+    const guide = document.createElement("p");
+    guide.className = "hint";
+    guide.textContent =
+      "第5表は1記録ずつ入力します。「流し込み → カイポケで登録 → 次の記録」の順で1件ずつ進めてください（登録は必ずご自身で）。";
+    wrap.append(guide);
+
+    const entries = Array.isArray(current.draft?.entries) ? current.draft.entries : [];
+    if (entries.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "流し込める記録がありません。";
+      wrap.append(empty);
+      return;
+    }
+    entries.forEach((e, i) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn entry-btn";
+      btn.disabled = true; // 直後の refreshTabStatus が接続状態に合わせて活性化する
+      const date = String(e?.date ?? "").trim() || "日付なし";
+      const category = String(e?.category ?? "").trim() || "種別なし";
+      btn.textContent = `記録${i + 1}を流し込む: ${date}（${category}）`;
+      btn.addEventListener("click", () => onInject(i));
+      wrap.append(btn);
+    });
+  }
+
+  /**
+   * カイポケ画面へ流し込む。supportLog はカイポケ側が「1記録＝1フォーム」のため、
+   * entryIndex（entries の何件目か）を options で渡し、そのエントリだけを書く。
+   * @param {number} [entryIndex] - supportLog のエントリ別ボタンからのみ渡される
+   */
+  async function onInject(entryIndex) {
+    setInjectDisabled(true);
     try {
       const tab = await getActiveTab();
-      const res = await chrome.tabs.sendMessage(tab.id, {
+      const message = {
         type: "CARENOTE_INJECT",
         documentType: current.documentType,
         draft: current.draft,
-      });
+      };
+      if (Number.isInteger(entryIndex)) {
+        message.options = { entryIndex };
+      }
+      const res = await chrome.tabs.sendMessage(tab.id, message);
       if (res?.ok) {
         renderReport(res.report);
       } else {
@@ -438,7 +515,7 @@
       $("inject-report").textContent =
         "カイポケ画面と通信できませんでした。対象の編集画面を開いて、ページを再読込してください。";
     } finally {
-      btn.disabled = false;
+      refreshTabStatus();
     }
   }
 
@@ -465,7 +542,7 @@
     $("load-json").addEventListener("click", onLoadJson);
     $("copy-all").addEventListener("click", copyAll);
     $("clear").addEventListener("click", onClear);
-    $("inject").addEventListener("click", onInject);
+    $("inject").addEventListener("click", () => onInject());
     $("open-options").addEventListener("click", () => chrome.runtime.openOptionsPage());
 
     loadDraft().then(renderResult);

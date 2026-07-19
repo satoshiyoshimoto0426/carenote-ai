@@ -205,6 +205,22 @@ body {
   color: var(--danger);
 }
 
+.entry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.entry-btn {
+  width: 100%;
+  text-align: left;
+  border-color: #a7f3d0;
+}
+
+.entry-btn:hover:not(:disabled) {
+  background: #dcfce7;
+}
+
 .report {
   display: flex;
   flex-direction: column;

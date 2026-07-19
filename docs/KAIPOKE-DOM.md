@@ -132,5 +132,13 @@
 - モニタリング: overallSummary→synthesisComputationSubject / goalEvaluations[i]（達成状況・根拠・提案の連結）→stmRemarks{i} / 実施日→enforcementYmd sel×4
 - 日付セレクトの書込: era=option文言一致（令和）、年月日=数値一致。**解析不能な日付（「初回訪問時」等の相対表現）はスキップして caution 報告**
 
+### 実装（2026-07-19）
+
+上記マッピング方針は `extension/src/adapters/kaipoke.js` の `FIELD_MAPS`（meetingSummary / supportLog / monitoring）に実装済。
+- 日付: `parseJapaneseDate()`（YYYY-MM-DD / YYYY/M/D / M/D（年なし→年号・年は触らない）/ 令和N年M月D日。西暦は和暦へ変換）→ `writeDateSelects(baseName, dateStr)` が Era/Year/Month/Day の4セレクトへ書込＋change 発火。解析不能は日付スキップ＋caution 警告。
+- 連番欄: `writeSequentialFields(baseName, values)` が `{baseName}0..N-1` へ書込（0始まり）。上限（出席者9行 / 目標評価5行）超過分は入力せず警告。
+- 第5表はエントリ単位: `inject(documentType, draft, options)` の `options.entryIndex` で対象エントリを指定（1記録＝1フォームのため。複数記録は「流し込み→人が登録→次」のループ）。本文の5層書式は `lib/draftText.ts` と `kaipoke.test.ts` の突き合わせテストで整合担保。
+- モニタリング実施日（enforcementYmd）は MonitoringDraft に該当フィールドが無いため書き込まない。
+
 ---
 *次回取得予定: 第2表の「+ 項目を追加」後に現れる入力欄（v2の設計材料）。*
