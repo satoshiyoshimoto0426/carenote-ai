@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { maskNames, type NameAlias, nextClientCode, restoreNames } from "./pseudonymize";
+import {
+  expandAliasVariants,
+  maskNames,
+  type NameAlias,
+  nextClientCode,
+  restoreNames,
+} from "./pseudonymize";
 
 const aliases: NameAlias[] = [
   { real: "山田太郎", code: "A様" },
@@ -19,6 +25,29 @@ describe("仮名化: maskNames / restoreNames", () => {
 
   it("空の実名は無視する", () => {
     expect(maskNames("テスト", [{ real: "", code: "X様" }])).toBe("テスト");
+  });
+});
+
+describe("仮名化: expandAliasVariants（表記ゆれ展開）", () => {
+  it("空白あり・なしの両方を同じ記号に対応付ける", () => {
+    const v = expandAliasVariants([{ real: "山田 花子", code: "A様" }]);
+    expect(v).toContainEqual({ real: "山田 花子", code: "A様" });
+    expect(v).toContainEqual({ real: "山田花子", code: "A様" });
+  });
+
+  it("展開した対応表で、メモ内の空白なし実名もマスクされる", () => {
+    const v = expandAliasVariants([{ real: "山田 花子", code: "A様" }]);
+    expect(maskNames("山田花子さんが来訪。", v)).toBe("A様さんが来訪。");
+  });
+
+  it("2文字未満・重複は除外する", () => {
+    const v = expandAliasVariants([
+      { real: "李", code: "B様" },
+      { real: "山田 花子", code: "A様" },
+      { real: "山田花子", code: "A様" },
+    ]);
+    expect(v.filter((a) => a.code === "B様")).toHaveLength(0);
+    expect(v.filter((a) => a.real === "山田花子")).toHaveLength(1);
   });
 });
 

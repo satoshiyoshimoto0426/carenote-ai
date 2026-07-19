@@ -38,6 +38,26 @@ export function restoreNames(text: string, aliases: NameAlias[]): string {
 }
 
 /**
+ * 実名の表記ゆれ（空白の有無）を展開して対応表を増やす（純粋関数）。
+ * 例:「山田 花子」→「山田 花子」「山田花子」の両方を A様 に対応付ける。
+ * 2文字未満（過剰置換の危険）や記号と同値は除外。姓のみは誤置換リスクが高いため展開しない
+ * （運用ルール「メモに実名を書かない」が第一の防御・本関数はその安全網）。
+ */
+export function expandAliasVariants(aliases: NameAlias[]): NameAlias[] {
+  const seen = new Set<string>();
+  const out: NameAlias[] = [];
+  for (const { real, code } of aliases) {
+    const base = real.trim();
+    for (const variant of [base, base.replace(/[\s　]+/g, "")]) {
+      if (variant.length < 2 || variant === code || seen.has(variant)) continue;
+      seen.add(variant);
+      out.push({ real: variant, code });
+    }
+  }
+  return out;
+}
+
+/**
  * 連番から利用者コードを生成する（0→A, 1→B, …, 25→Z, 26→AA, 27→AB …）。
  * org 内の既存件数を渡して次のコードを決める。表示は別途「様」を付す。
  */

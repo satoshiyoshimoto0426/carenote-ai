@@ -1,5 +1,5 @@
 import { decryptString, encryptString, getPiiKey } from "@/lib/privacy/crypto";
-import { nextClientCode } from "@/lib/privacy/pseudonymize";
+import { expandAliasVariants, type NameAlias, nextClientCode } from "@/lib/privacy/pseudonymize";
 import type { ClientAttributes, ClientInput, ClientRecord } from "@/types/client";
 import { createServerClient } from "../supabase/server";
 
@@ -101,6 +101,47 @@ export async function getClientById(id: string, userId: string): Promise<ClientR
     .single();
   if (error || !data) return null;
   return toRecord(data as ClientRow);
+}
+
+/**
+ * ログインユーザーの全利用者について「実名⇄記号」の対応表を返す（仮名化用・サーバ専用）。
+ * AIへ送る前の実名マスキング（maskNames）に使う。復号できない行はスキップ。
+ * 対応表が作れない場合は空配列＋エラーログ（マスキングは劣化するが生成は止めない。
+ * 第一の防御は運用ルール「メモに実名を書かない」であり、本機能はその安全網）。
+ */
+export async function getClientAliases(userId: string): Promise<NameAlias[]> {
+  try {
+    const db = createServerClient();
+    const [clientsRes, idsRes] = await Promise.all([
+      db.from("clients").select("id, code").eq("created_by", userId),
+      db.from("client_identities").select("client_id, name_encrypted").eq("created_by", userId),
+    ]);
+    if (clientsRes.error || idsRes.error) {
+      console.error(
+        "[db] getClientAliases error:",
+        clientsRes.error?.message ?? idsRes.error?.message,
+      );
+      return [];
+    }
+    const codeById = new Map(
+      (clientsRes.data as { id: string; code: string }[]).map((c) => [c.id, c.code]),
+    );
+    const key = getPiiKey();
+    const aliases: NameAlias[] = [];
+    for (const row of idsRes.data as { client_id: string; name_encrypted: string }[]) {
+      const code = codeById.get(row.client_id);
+      if (!code) continue;
+      try {
+        aliases.push({ real: decryptString(row.name_encrypted, key), code: `${code}様` });
+      } catch {
+        // 復号失敗行はスキップ（鍵ローテーション時など）
+      }
+    }
+    return expandAliasVariants(aliases);
+  } catch (e) {
+    console.error("[db] getClientAliases failed:", e instanceof Error ? e.message : String(e));
+    return [];
+  }
 }
 
 /** 実名を復号して返す（権限内・必要時のみ）。失敗時は null。 */

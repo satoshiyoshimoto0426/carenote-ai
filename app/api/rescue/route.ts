@@ -1,12 +1,14 @@
 import { auth } from "@clerk/nextjs/server";
 import { del } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
+import { getClientAliases } from "@/lib/db/clients";
 import {
   composePersonaNotes,
   generateRescueBundle,
   type RescuePersona,
 } from "@/lib/generation/rescue";
 import { generateIntake, type IntakeDocument } from "@/lib/generation/rescueIntake";
+import { maskNames } from "@/lib/privacy/pseudonymize";
 
 // 5帳票を依存順＋並列で生成するため、通常の生成より長めに確保する。
 export const maxDuration = 300;
@@ -75,8 +77,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
   }
 
+  // 仮名化（SPEC §7）: 登録済み利用者の実名を記号（A様等）へ置換してからAIへ送る。
+  // 第一の防御は「メモに実名を書かない」運用で、これはその安全網（登録外の実名は置換できない）。
+  const aliases = await getClientAliases(userId);
   const str = (key: string): string | undefined =>
-    typeof body[key] === "string" ? (body[key] as string) : undefined;
+    typeof body[key] === "string" ? maskNames(body[key] as string, aliases) : undefined;
 
   const persona: RescuePersona = {
     clientInfo: str("clientInfo"),
@@ -139,6 +144,11 @@ export async function POST(req: NextRequest) {
         docs.push({ name: doc.name, base64: Buffer.from(arrayBuffer).toString("base64") });
       }
       intake = await generateIntake(docs, persona);
+      // 読解サマリにも仮名化を適用（PDF由来の実名がサマリ経由で下流プロンプトへ流れる穴を塞ぐ）
+      intake = {
+        summary: maskNames(intake.summary, aliases),
+        cautions: intake.cautions.map((c) => maskNames(c, aliases)),
+      };
     }
 
     const bundle = await generateRescueBundle(persona, intake?.summary);

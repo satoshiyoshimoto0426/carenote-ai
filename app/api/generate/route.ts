@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
+import { getClientAliases } from "@/lib/db/clients";
 import { GenerateRequestError, generateFromBody } from "@/lib/generation/dispatch";
+import { maskNames } from "@/lib/privacy/pseudonymize";
 
 // Opus + adaptive thinking は時間がかかるため余裕を持たせる
 export const maxDuration = 300;
@@ -17,6 +19,17 @@ export async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
+  }
+
+  // 仮名化（SPEC §7）: 登録済み利用者の実名を記号へ置換してからAIへ送る（安全網。
+  // 第一の防御は「メモに実名を書かない」運用）。documentType は対象外。
+  const aliases = await getClientAliases(userId);
+  if (aliases.length > 0) {
+    for (const [key, value] of Object.entries(body)) {
+      if (key !== "documentType" && typeof value === "string") {
+        body[key] = maskNames(value, aliases);
+      }
+    }
   }
 
   try {

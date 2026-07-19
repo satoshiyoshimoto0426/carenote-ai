@@ -133,7 +133,11 @@
 **B（現行ダークのまま機能追加）完了**: `app/(dashboard)/clients/`（一覧＋新規作成）・`clients/[id]/`（詳細＋保存帳票）、
 Sidebar に「👥 利用者」、救済結果を選択/新規の利用者に5帳票一括保存（`/rescue` の保存パネル）。compile/build 検証済（実行は上記前提が必要・UI見た目はAで刷新）。
 **残り（A＝editorial 総替え）**: layout/Sidebar/ホーム/既存ページ（create/evaluate/rescue/clients）をデザインシステムv0へ。
-**未対応**: `/create` からの「利用者に保存」導線、**maskNames を generate/rescue に組み込み**（Claudeへ記号のみ）。
+**仮名化の配線済み (2026-07-19)**: `getClientAliases`（lib/db/clients・実名復号→記号対応表・表記ゆれ展開）を
+`/api/generate` と `/api/rescue` に組込み、**登録利用者の実名を記号化してからClaudeへ送信**（intakeサマリにも適用）。
+限界: 登録外の実名・PDF原本は置換不可＝第一の防御は「実名を書かない」運用（docs/DATA-HANDLING-EXPLANATION.md §3・§7）。
+拡張API（/api/extension/generate）はClerkユーザー文脈が無いため対象外（同運用ルールでカバー）。
+**未対応**: `/create` からの「利用者に保存」導線。
 
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき

@@ -67,7 +67,7 @@ Yoshimoto (CareNote AI) — sy19800426@gmail.com
 |---|---|---|
 | DPA の締結方法・書面 | **署名不要・自動適用**。Commercial Terms に参照組込みで、同意時点で有効（個別交渉なし・$500K未満は標準一律）。本文は公開＝コンサル先に提示・レビュー可: anthropic.com/legal/data-processing-addendum（役割=当方controller/Anthropic processor・終了後30日でデータ返却or削除・サブプロセッサ事前通知・48時間以内の侵害通知・Schedule 2 TOMs） | 2026-07-19 |
 | ZDR の可否・条件 | 可能だが **$100K+のコミットメント＋Safeguardsレビュー**・組織単位申請・API経由(api.anthropic.com)のみ対象（Console/Workbenchは対象外）。→ **1社実証の規模では見送りが妥当**（下記の代替で説明） | 2026-07-19 |
-| 保持期間・処理拠点・学習不使用 | 入出力は**受領/生成から30日以内に自動削除**（例外: Files API等の長期保存サービス・ZDR合意・Usage Policy執行=フラグ時最長2年/T&S分類スコア最長7年・法令）。**学習利用は Commercial Terms §B で禁止**。処理拠点は公開情報で断定不可（国際移転はDPAのSCCsで手当て）→ Trust Center/API窓口でフォローアップ | 2026-07-19 |
+| 保持期間・処理拠点・学習不使用 | 入出力は**受領/生成から30日以内に自動削除**（例外: Files API等の長期保存サービス・ZDR合意・Usage Policy執行=フラグ時最長2年/T&S分類スコア最長7年・法令。出典: privacy.claude.com/en/articles/7996866）。**学習利用は Commercial Terms §B で禁止**。ZDRの適用範囲: privacy.claude.com/en/articles/8956058・platform.claude.com/docs/en/manage-claude/api-and-data-retention。処理拠点は公開情報で断定不可（国際移転はDPAのSCCsで手当て）→ Trust Center/API窓口でフォローアップ | 2026-07-19 |
 | 所要日数 → ローンチ逆算 | **DPA=即時（待ち時間ゼロ）**。ZDR=審査次第だが見送りのため影響なし。→ **G1の外部待ちは実質消滅。残りは自前の書類整備のみ** | 2026-07-19 |
 
 ### 結論（G1 の残タスク＝書類整備のみ）
