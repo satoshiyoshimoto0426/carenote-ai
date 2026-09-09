@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
-import { getClientAliases } from "@/lib/db/clients";
+import { AliasLoadError, getClientAliases } from "@/lib/db/clients";
 import { findNameCandidates, type NameCandidate } from "@/lib/privacy/candidates";
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskRequestBody } from "@/lib/privacy/maskBody";
@@ -30,7 +30,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
   }
 
-  const aliases = await getClientAliases(userId);
+  // 名簿が読めなければ確認画面も出さない（実名が残った文章を「送っていい」と見せないため）
+  let aliases: Awaited<ReturnType<typeof getClientAliases>>;
+  try {
+    aliases = await getClientAliases(userId);
+  } catch (e) {
+    if (e instanceof AliasLoadError)
+      return NextResponse.json({ error: e.message }, { status: 503 });
+    throw e;
+  }
   try {
     const masked = maskRequestBody(body, aliases, createPiiVault());
     const candidates: Record<string, NameCandidate[]> = {};

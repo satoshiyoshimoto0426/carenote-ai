@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { del } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
-import { getClientAliases } from "@/lib/db/clients";
+import { AliasLoadError, getClientAliases } from "@/lib/db/clients";
 import {
   composePersonaNotes,
   generateRescueBundle,
@@ -83,7 +83,15 @@ export async function POST(req: NextRequest) {
   // 一括適用してからAIへ送る。残っていれば 422 で送信を中止（fail-closed）。
   // 第一の防御は「メモに実名を書かない」運用で、これはその安全網（登録外の実名は置換できない）。
   // 二枚方式（§2.5）: 型置換の元の値はリクエスト内の札入れが覚え、AIの返事で手元に戻す。
-  const aliases = await getClientAliases(userId);
+  // 名簿が読めなければ送らない（fail-closed）
+  let aliases: Awaited<ReturnType<typeof getClientAliases>>;
+  try {
+    aliases = await getClientAliases(userId);
+  } catch (e) {
+    if (e instanceof AliasLoadError)
+      return NextResponse.json({ error: e.message }, { status: 503 });
+    throw e;
+  }
   const vault = createPiiVault();
   const str = (key: string): string | undefined =>
     typeof body[key] === "string" ? maskPii(body[key] as string, aliases, vault).text : undefined;

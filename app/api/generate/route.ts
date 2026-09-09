@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
-import { getClientAliases } from "@/lib/db/clients";
+import { AliasLoadError, getClientAliases } from "@/lib/db/clients";
 import { GenerateRequestError, generateFromBody } from "@/lib/generation/dispatch";
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskRequestBody } from "@/lib/privacy/maskBody";
@@ -28,7 +28,15 @@ export async function POST(req: NextRequest) {
   // 第一の防御は「メモに実名を書かない」運用で、これはその安全網。documentType は対象外。
   // 二枚方式（§2.5）: 型置換の元の値はリクエスト内の札入れが覚え、AIの返事で手元に戻す。
   // /api/preview と同じ maskRequestBody を通す（画面で見せた文章とAIに送る文章を一致させる）。
-  const aliases = await getClientAliases(userId);
+  // 名簿が読めなければ送らない（fail-closed）。名簿なしで進むと実名が消えないまま AI へ出る。
+  let aliases: Awaited<ReturnType<typeof getClientAliases>>;
+  try {
+    aliases = await getClientAliases(userId);
+  } catch (e) {
+    if (e instanceof AliasLoadError)
+      return NextResponse.json({ error: e.message }, { status: 503 });
+    throw e;
+  }
   const vault = createPiiVault();
   const masked = { names: 0, patterns: 0 };
   try {
@@ -56,6 +64,16 @@ export async function POST(req: NextRequest) {
     // 内部エラー詳細はクライアントに返さない（情報漏えい対策）。詳細はサーバログのみ。
     const detail = e instanceof Error ? e.message : String(e);
     console.error("[generate] error:", detail);
+    // AI会社側の利用枠不足は職員が直せない事象なので、原因が分かる言葉で返す（2026-09-09 実機で発生）
+    if (/credit balance/i.test(detail)) {
+      return NextResponse.json(
+        {
+          error:
+            "AI会社（Anthropic）の利用枠が不足しています。管理者に「Plans & Billing で残高の追加」を依頼してください。",
+        },
+        { status: 402 },
+      );
+    }
     return NextResponse.json(
       { error: "生成に失敗しました。しばらくして再度お試しください。" },
       { status: 500 },

@@ -104,44 +104,65 @@ export async function getClientById(id: string, userId: string): Promise<ClientR
 }
 
 /**
+ * 名簿が読めなかった時に投げる。呼び出し側（API）は 503 にして**送信を中止**する。
+ * なぜ: 名簿なしで進むと実名が消えないまま AI へ出る（fail-open）。2026-09-09 の実機で
+ * Supabase が一時的に "JWT issued at future" を返し、名簿が空のまま進んだ実例があった。
+ */
+export class AliasLoadError extends Error {
+  constructor(detail: string) {
+    super(
+      "利用者名簿を読み込めなかったため送信を中止しました。少し待ってからもう一度お試しください。",
+    );
+    this.name = "AliasLoadError";
+    console.error("[db] getClientAliases failed:", detail);
+  }
+}
+
+/**
  * ログインユーザーの全利用者について「実名⇄記号」の対応表を返す（仮名化用・サーバ専用）。
- * AIへ送る前の実名マスキング（maskNames）に使う。復号できない行はスキップ。
- * 対応表が作れない場合は空配列＋エラーログ（マスキングは劣化するが生成は止めない。
- * 第一の防御は運用ルール「メモに実名を書かない」であり、本機能はその安全網）。
+ * AIへ送る前の実名マスキング（maskPii）に使う。復号できない行はスキップ。
+ * 対応表が作れない場合は AliasLoadError を投げ、呼び出し側が送信を止める（fail-closed）。
+ * 旧仕様「空配列を返して生成は止めない」は 2026-09-09 に廃止（実名が消えないまま送られる穴）。
  */
 export async function getClientAliases(userId: string): Promise<NameAlias[]> {
+  // 一時的な失敗（ネットワーク・ゲートウェイの揺らぎ）は1回だけ読み直す
   try {
-    const db = createServerClient();
-    const [clientsRes, idsRes] = await Promise.all([
-      db.from("clients").select("id, code").eq("created_by", userId),
-      db.from("client_identities").select("client_id, name_encrypted").eq("created_by", userId),
-    ]);
-    if (clientsRes.error || idsRes.error) {
-      console.error(
-        "[db] getClientAliases error:",
-        clientsRes.error?.message ?? idsRes.error?.message,
-      );
-      return [];
+    return await loadAliases(userId);
+  } catch (first) {
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      return await loadAliases(userId);
+    } catch (second) {
+      const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+      throw new AliasLoadError(`${msg(first)} / retry: ${msg(second)}`);
     }
-    const codeById = new Map(
-      (clientsRes.data as { id: string; code: string }[]).map((c) => [c.id, c.code]),
-    );
-    const key = getPiiKey();
-    const aliases: NameAlias[] = [];
-    for (const row of idsRes.data as { client_id: string; name_encrypted: string }[]) {
-      const code = codeById.get(row.client_id);
-      if (!code) continue;
-      try {
-        aliases.push({ real: decryptString(row.name_encrypted, key), code: `${code}様` });
-      } catch {
-        // 復号失敗行はスキップ（鍵ローテーション時など）
-      }
-    }
-    return expandAliasVariants(aliases);
-  } catch (e) {
-    console.error("[db] getClientAliases failed:", e instanceof Error ? e.message : String(e));
-    return [];
   }
+}
+
+async function loadAliases(userId: string): Promise<NameAlias[]> {
+  const db = createServerClient();
+  const [clientsRes, idsRes] = await Promise.all([
+    db.from("clients").select("id, code").eq("created_by", userId),
+    db.from("client_identities").select("client_id, name_encrypted").eq("created_by", userId),
+  ]);
+  if (clientsRes.error || idsRes.error) {
+    throw new Error(clientsRes.error?.message ?? idsRes.error?.message ?? "unknown");
+  }
+  const codeById = new Map(
+    (clientsRes.data as { id: string; code: string }[]).map((c) => [c.id, c.code]),
+  );
+  const key = getPiiKey();
+  const aliases: NameAlias[] = [];
+  for (const row of idsRes.data as { client_id: string; name_encrypted: string }[]) {
+    const code = codeById.get(row.client_id);
+    if (!code) continue;
+    try {
+      aliases.push({ real: decryptString(row.name_encrypted, key), code: `${code}様` });
+    } catch {
+      // 復号失敗行はスキップ（鍵ローテーション時など）
+    }
+  }
+  return expandAliasVariants(aliases);
 }
 
 /** 実名を復号して返す（権限内・必要時のみ）。失敗時は null。 */
