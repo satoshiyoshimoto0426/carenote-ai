@@ -145,7 +145,9 @@ findings は種類と件数のみ（原文をログに出さない）。予定�
 **二枚方式 (同日)**: 型置換の元の値はリクエスト内の札入れ `lib/privacy/vault.ts`（〔電話番号1〕＝090-…・同じ値は同じ札・フィールド間で共有）が覚え、
 AIの返事は `restoreDeep` で手元に戻してから返す。名前（A様）は「記号で保持」契約どおり戻さない（表示時の復元は次の増分）。
 **送る前に見る画面 (同日・第2段)**: `POST /api/preview`（AIへ送らず、`lib/privacy/maskBody.maskRequestBody` を通した本文＋`candidates.findNameCandidates` の候補を返す）
-→ `components/drafts/PreSendPreview.tsx`（候補を赤下線）→ 職員が「この内容で送る」→ `/api/generate`（同じ maskRequestBody）。`/create` に組込済。実機確認は未（Clerkログインが要る）。
+→ `components/drafts/PreSendPreview.tsx`（候補を赤下線）→ 職員が「この内容で送る」→ `/api/generate`（同じ maskRequestBody）。`/create` に組込済（実機確認済 2026-09-09）。
+**フル版表示 (同日)**: `GET /api/clients/aliases`（記号→実名・本人の利用者のみ）→ `/create` 結果画面の「実名で表示」切替。
+`pseudonymize.restoreNamesDeep` は表示とコピー専用。保存帳票は記号のまま（documents.ts の契約を維持）。
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
 ## 4. 更新トリガ（いつここを直すか）

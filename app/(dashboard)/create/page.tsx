@@ -34,6 +34,7 @@ import {
   monitoringToText,
   supportLogToText,
 } from "@/lib/draftText";
+import { type NameAlias, restoreNamesDeep } from "@/lib/privacy/pseudonymize";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
@@ -126,6 +127,36 @@ export default function CreatePage() {
   const [copied, setCopied] = useState(false);
   /** 送る前に見る画面（第2段）。null なら入力画面。 */
   const [preview, setPreview] = useState<PreviewData | null>(null);
+  /** フル版表示（二枚方式）: 記号→実名の対応表は初回の切替時にだけ取り寄せる */
+  const [showRealNames, setShowRealNames] = useState(false);
+  const [aliases, setAliases] = useState<NameAlias[] | null>(null);
+  const [aliasError, setAliasError] = useState<string | null>(null);
+
+  const toggleRealNames = async () => {
+    if (showRealNames) {
+      setShowRealNames(false);
+      return;
+    }
+    if (aliases === null) {
+      try {
+        const resp = await fetch("/api/clients/aliases");
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
+        setAliases(data as NameAlias[]);
+        setAliasError(null);
+      } catch (e: unknown) {
+        setAliasError(e instanceof Error ? e.message : "対応表を読み込めませんでした");
+        return;
+      }
+    }
+    setShowRealNames(true);
+  };
+
+  /** 画面とコピーに使う版。保存する帳票は記号のまま（restoreNamesDeep は表示専用） */
+  const shown: GeneratedResult | null =
+    result && showRealNames && aliases
+      ? ({ ...result, draft: restoreNamesDeep(result.draft, aliases) } as GeneratedResult)
+      : result;
 
   /** 帳票種別に応じた送信本文（/api/preview と /api/generate で同じものを使う） */
   const buildPayload = (): Record<string, string> => {
@@ -221,8 +252,8 @@ export default function CreatePage() {
   };
 
   const copyDraft = async () => {
-    if (!result) return;
-    await navigator.clipboard.writeText(resultToText(result));
+    if (!shown) return;
+    await navigator.clipboard.writeText(resultToText(shown));
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -407,13 +438,29 @@ export default function CreatePage() {
             </p>
           </div>
 
-          {result.type === "carePlan" && <CarePlanDraftView draft={result.draft} />}
-          {result.type === "assessment" && <AssessmentDraftView draft={result.draft} />}
-          {result.type === "monitoring" && <MonitoringDraftView draft={result.draft} />}
-          {result.type === "meetingSummary" && <MeetingSummaryDraftView draft={result.draft} />}
-          {result.type === "supportLog" && <SupportLogDraftView draft={result.draft} />}
+          {/* 二枚方式: 記号（A様）のまま見るか、手元で実名に戻して見るか */}
+          <div className="flex items-center justify-between rounded-[12px] border border-[var(--paper)] bg-white px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">
+                {showRealNames ? "実名で表示しています" : "記号（A様）で表示しています"}
+              </p>
+              <p className="text-xs text-[var(--muted)]">
+                実名は画面とコピーにだけ使い、AIには送っていません。
+              </p>
+              {aliasError && <p className="mt-1 text-xs text-[var(--clay)]">{aliasError}</p>}
+            </div>
+            <button type="button" onClick={toggleRealNames} className={btnSecondary}>
+              {showRealNames ? "記号で表示" : "実名で表示"}
+            </button>
+          </div>
 
-          <ItemsToConfirm items={result.draft.itemsToConfirm} />
+          {shown?.type === "carePlan" && <CarePlanDraftView draft={shown.draft} />}
+          {shown?.type === "assessment" && <AssessmentDraftView draft={shown.draft} />}
+          {shown?.type === "monitoring" && <MonitoringDraftView draft={shown.draft} />}
+          {shown?.type === "meetingSummary" && <MeetingSummaryDraftView draft={shown.draft} />}
+          {shown?.type === "supportLog" && <SupportLogDraftView draft={shown.draft} />}
+
+          {shown && <ItemsToConfirm items={shown.draft.itemsToConfirm} />}
 
           {/* Actions */}
           <div className="flex gap-2.5">

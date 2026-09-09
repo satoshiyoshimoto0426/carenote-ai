@@ -38,6 +38,23 @@ export function restoreNames(text: string, aliases: NameAlias[]): string {
 }
 
 /**
+ * 帳票JSONの中の文字列をすべて記号→実名へ戻す（表示用・権限内のみ。二枚方式の「手元のフル版」）。
+ * 保存する帳票は記号のまま（lib/db/documents.ts の契約）。画面とコピーにだけ使う。
+ */
+export function restoreNamesDeep<T>(value: T, aliases: NameAlias[]): T {
+  if (typeof value === "string") return restoreNames(value, aliases) as T;
+  if (Array.isArray(value)) return value.map((v) => restoreNamesDeep(v, aliases)) as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = restoreNamesDeep(v, aliases);
+    }
+    return out as T;
+  }
+  return value;
+}
+
+/**
  * 実名の表記ゆれ（空白の有無）を展開して対応表を増やす（純粋関数）。
  * 例:「山田 花子」→「山田 花子」「山田花子」の両方を A様 に対応付ける。
  * 2文字未満（過剰置換の危険）や記号と同値は除外。姓のみは誤置換リスクが高いため展開しない
