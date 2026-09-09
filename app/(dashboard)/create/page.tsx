@@ -6,6 +6,7 @@ import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import ItemsToConfirm from "@/components/drafts/ItemsToConfirm";
 import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
 import MonitoringDraftView from "@/components/drafts/MonitoringDraftView";
+import PreSendPreview, { type PreviewData } from "@/components/drafts/PreSendPreview";
 import SupportLogDraftView from "@/components/drafts/SupportLogDraftView";
 import {
   IconAlert,
@@ -123,6 +124,45 @@ export default function CreatePage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GeneratedResult | null>(null);
   const [copied, setCopied] = useState(false);
+  /** 送る前に見る画面（第2段）。null なら入力画面。 */
+  const [preview, setPreview] = useState<PreviewData | null>(null);
+
+  /** 帳票種別に応じた送信本文（/api/preview と /api/generate で同じものを使う） */
+  const buildPayload = (): Record<string, string> => {
+    const payload: Record<string, string> = { documentType: docType, clientInfo };
+    if (docType === "monitoring") {
+      payload.previousPlanSummary = previousPlanSummary;
+      payload.monitoringNotes = monitoringNotes;
+    } else if (docType === "meetingSummary") {
+      payload.meetingNotes = meetingNotes;
+    } else if (docType === "supportLog") {
+      payload.supportNotes = supportNotes;
+    } else {
+      payload.assessmentNotes = assessmentNotes;
+    }
+    return payload;
+  };
+
+  /** 職員が確認したあとにAIへ送り、下書きを作る（第2段の「この内容で送る」）。 */
+  const sendToAi = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload()),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
+      setResult({ type: docType, draft: data } as GeneratedResult);
+      setPreview(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "不明なエラーが発生しました");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const switchDocType = (t: DocType) => {
     setDocType(t);
@@ -160,30 +200,19 @@ export default function CreatePage() {
       return;
     }
 
+    // 第2段（送る前に見る）: まず黒塗り後の文章を取り寄せて画面に出す。AIへはまだ送らない。
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const payload: Record<string, string> = { documentType: docType, clientInfo };
-      if (docType === "monitoring") {
-        payload.previousPlanSummary = previousPlanSummary;
-        payload.monitoringNotes = monitoringNotes;
-      } else if (docType === "meetingSummary") {
-        payload.meetingNotes = meetingNotes;
-      } else if (docType === "supportLog") {
-        payload.supportNotes = supportNotes;
-      } else {
-        payload.assessmentNotes = assessmentNotes;
-      }
-
-      const resp = await fetch("/api/generate", {
+      const resp = await fetch("/api/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(buildPayload()),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
-      setResult({ type: docType, draft: data } as GeneratedResult);
+      setPreview(data as PreviewData);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "不明なエラーが発生しました");
     } finally {
@@ -232,7 +261,24 @@ export default function CreatePage() {
         </div>
       </Card>
 
-      {!result ? (
+      {preview && !result ? (
+        <div className="space-y-4">
+          <PreSendPreview
+            data={preview}
+            loading={loading}
+            onBack={() => setPreview(null)}
+            onConfirm={sendToAi}
+            primaryClass={btnPrimary}
+            secondaryClass={btnSecondary}
+          />
+          {error && (
+            <div className="flex items-start gap-2.5 rounded-[12px] border border-[var(--clay)] bg-white p-4">
+              <IconAlert size={16} className="mt-0.5 shrink-0 text-[var(--clay)]" />
+              <p className="text-sm text-[var(--clay)]">{error}</p>
+            </div>
+          )}
+        </div>
+      ) : !result ? (
         <div className="animate-fadeIn space-y-4">
           <p className="-mt-2 text-xs text-[var(--faint)]">{DOC_META[docType].description}</p>
 
@@ -344,10 +390,10 @@ export default function CreatePage() {
             {loading ? (
               <>
                 <IconLoader size={16} className="animate-spin" />
-                AIが作成中です…（30秒〜1分ほど）
+                送る文章を確認中…
               </>
             ) : (
-              `${DOC_META[docType].label}の下書きを生成する`
+              `${DOC_META[docType].label}の下書きを生成する（送る前に確認）`
             )}
           </button>
         </div>

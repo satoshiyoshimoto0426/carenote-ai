@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getClientAliases } from "@/lib/db/clients";
 import { GenerateRequestError, generateFromBody } from "@/lib/generation/dispatch";
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
-import { maskPii } from "@/lib/privacy/maskPii";
+import { maskRequestBody } from "@/lib/privacy/maskBody";
 import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
 
 // Opus + adaptive thinking は時間がかかるため余裕を持たせる
@@ -27,18 +27,15 @@ export async function POST(req: NextRequest) {
   // 一括適用してからAIへ送る。名簿が空でも型置換は動く。残っていれば 422 で送信を中止（fail-closed）。
   // 第一の防御は「メモに実名を書かない」運用で、これはその安全網。documentType は対象外。
   // 二枚方式（§2.5）: 型置換の元の値はリクエスト内の札入れが覚え、AIの返事で手元に戻す。
+  // /api/preview と同じ maskRequestBody を通す（画面で見せた文章とAIに送る文章を一致させる）。
   const aliases = await getClientAliases(userId);
   const vault = createPiiVault();
   const masked = { names: 0, patterns: 0 };
   try {
-    for (const [key, value] of Object.entries(body)) {
-      if (key !== "documentType" && typeof value === "string") {
-        const r = maskPii(value, aliases, vault);
-        body[key] = r.text;
-        masked.names += r.findings.names;
-        masked.patterns += r.findings.patterns.reduce((s, f) => s + f.count, 0);
-      }
-    }
+    const r = maskRequestBody(body, aliases, vault);
+    body = r.body;
+    masked.names = r.findings.names;
+    masked.patterns = r.findings.patterns.reduce((s, f) => s + f.count, 0);
   } catch (e) {
     if (e instanceof PiiLeakError) {
       return NextResponse.json({ error: e.message }, { status: 422 });
