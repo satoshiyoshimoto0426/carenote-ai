@@ -391,7 +391,7 @@ export default function CreatePage() {
                 value={supportNotes}
                 onChange={(e) => setSupportNotes(e.target.value)}
                 rows={10}
-                placeholder="日付・相手・やり取りの内容などの殴り書きメモを貼り付けてください。複数日の対応が混ざっていてもOK（自動で分割します）。"
+                placeholder="電話なら SecondBrain の文字起こし「全文」を貼り付けてください（要約ではなく全文）。手書きメモや複数日の対応が混ざっていてもOK（自動で分割します）。"
                 className={`${textareaClass} resize-y`}
               />
               {/* 第3段: 電話の録音を文字にしてメモへ足す（音声は保存しない・文字はこのあと黒塗りを通る） */}
