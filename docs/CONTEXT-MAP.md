@@ -148,6 +148,9 @@ AIの返事は `restoreDeep` で手元に戻してから返す。名前（A様�
 → `components/drafts/PreSendPreview.tsx`（候補を赤下線）→ 職員が「この内容で送る」→ `/api/generate`（同じ maskRequestBody）。`/create` に組込済（実機確認済 2026-09-09）。
 **フル版表示 (同日)**: `GET /api/clients/aliases`（記号→実名・本人の利用者のみ）→ `/create` 結果画面の「実名で表示」切替。
 `pseudonymize.restoreNamesDeep` は表示とコピー専用。保存帳票は記号のまま（documents.ts の契約を維持）。
+**第3段 文字起こし入口 (同日・D1=外部サービス)**: `/create` 支援経過欄の「録音ファイルから文字にする」→ `POST /api/transcribe`
+→ `lib/transcribe/provider.ts`（OpenAI 文字起こしAPI・`OPENAI_API_KEY`・差し込み口で他社切替可）→ 文字を支援メモに追記 → 第2段へ。
+音声は非保持。`lib/transcribe/validate.ts` が 25MB・形式・エラー言い換え。**新しい外部送信先＝DATA-HANDLING-EXPLANATION の更新が必要**。
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
 ## 4. 更新トリガ（いつここを直すか）

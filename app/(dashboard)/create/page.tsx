@@ -152,6 +152,28 @@ export default function CreatePage() {
     setShowRealNames(true);
   };
 
+  /** 第3段: 録音ファイル→文字（外部サービス）。結果は支援メモに足し、通常の「送る前に見る」へ乗せる */
+  const [transcribing, setTranscribing] = useState(false);
+  const transcribeFile = async (file: File) => {
+    setTranscribing(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const resp = await fetch("/api/transcribe", { method: "POST", body: form });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
+      const text = String(data.text ?? "").trim();
+      setSupportNotes((prev) =>
+        prev.trim() ? `${prev.trim()}\n\n【録音の文字起こし】\n${text}` : text,
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "文字起こしに失敗しました");
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
   /** 画面とコピーに使う版。保存する帳票は記号のまま（restoreNamesDeep は表示専用） */
   const shown: GeneratedResult | null =
     result && showRealNames && aliases
@@ -372,6 +394,30 @@ export default function CreatePage() {
                 placeholder="日付・相手・やり取りの内容などの殴り書きメモを貼り付けてください。複数日の対応が混ざっていてもOK（自動で分割します）。"
                 className={`${textareaClass} resize-y`}
               />
+              {/* 第3段: 電話の録音を文字にしてメモへ足す（音声は保存しない・文字はこのあと黒塗りを通る） */}
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+                <label
+                  htmlFor="callAudio"
+                  className={`${btnSecondary} cursor-pointer ${transcribing ? "pointer-events-none opacity-60" : ""}`}
+                >
+                  {transcribing ? "文字にしています…（1〜2分）" : "録音ファイルから文字にする"}
+                </label>
+                <input
+                  id="callAudio"
+                  type="file"
+                  accept=".mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm,audio/*"
+                  className="hidden"
+                  disabled={transcribing}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) transcribeFile(f);
+                    e.target.value = "";
+                  }}
+                />
+                <span>
+                  25MBまで。音声は保存せず、文字にしたあと通常の「送る前に確認」を通ります。
+                </span>
+              </div>
             </div>
           ) : docType === "meetingSummary" ? (
             <div>
