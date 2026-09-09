@@ -142,6 +142,8 @@ Sidebar に「👥 利用者」、救済結果を選択/新規の利用者に5�
 （名簿置換 `pseudonymize.maskNames` → 型置換 `patterns.maskPatterns`〔電話・郵便番号・メール・住所・生年月日・番号類〕
 → 自己点検 `leakCheck.assertNoLeak`）。`/api/generate` と `/api/rescue` はこれを通し、実名や型が残れば **422** で送信中止（fail-closed）。
 findings は種類と件数のみ（原文をログに出さない）。予定の日付は消さない（カレンダー登録・支援経過の日付を守る）。
+**二枚方式 (同日)**: 型置換の元の値はリクエスト内の札入れ `lib/privacy/vault.ts`（〔電話番号1〕＝090-…・同じ値は同じ札・フィールド間で共有）が覚え、
+AIの返事は `restoreDeep` で手元に戻してから返す。名前（A様）は「記号で保持」契約どおり戻さない（表示時の復元は第2段）。
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
 ## 4. 更新トリガ（いつここを直すか）

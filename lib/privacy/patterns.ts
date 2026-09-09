@@ -5,11 +5,13 @@
  *   名簿置換（pseudonymize.maskNames）は登録済みの実名しか消せない。電話連絡の要約では
  *   番号や住所がそのまま出てくるため、「形が決まっているもの」を機械的に消す第2の黒塗りが要る
  *   （docs/specs/call-pipeline.md §2.1）。maskPii から呼ばれ、AIへ送る直前に適用される。
+ *   置き換えた元の値は札入れ（vault.ts）が覚え、AIの返事で手元に戻す（§2.5 二枚方式）。
  *
  * 設計上の線引き:
  *   予定の日付（「9月12日に面談」）は**消さない**。消すとカレンダー登録と支援経過の日付が壊れる。
  *   生年月日は文脈語（生年月日・生まれ・誕生）がある場合と、昭和・大正・明治の年月日のみ対象。
  */
+import type { PiiVault } from "./vault";
 
 /** 置換した個人情報の種類。findings は種類と件数だけを持ち、原文は持たない（ログに残さないため）。 */
 export type PiiKind = "phone" | "postal" | "email" | "address" | "birthdate" | "number";
@@ -19,7 +21,7 @@ export interface PatternFinding {
   count: number;
 }
 
-/** 置換後のトークン。AIにも「何が消されたか」が伝わる表記にする。 */
+/** 札の基本形。実際の札は末尾に連番が入る（〔電話番号1〕）。AIにも「何が消されたか」が伝わる表記。 */
 export const PII_TOKEN: Record<PiiKind, string> = {
   phone: "〔電話番号〕",
   postal: "〔郵便番号〕",
@@ -62,16 +64,19 @@ const RULES: { kind: PiiKind; re: RegExp }[] = [
 ];
 
 /**
- * 型で判別できる個人情報をトークンへ置換する。
+ * 型で判別できる個人情報を札へ置換する。元の値は vault が覚える。
  * 呼び出し側（maskPii）で NFKC 正規化済みのテキストを渡す前提（全角数字は半角に揃っている）。
  */
-export function maskPatterns(text: string): { text: string; findings: PatternFinding[] } {
+export function maskPatterns(
+  text: string,
+  vault: PiiVault,
+): { text: string; findings: PatternFinding[] } {
   let out = text;
   const counts = new Map<PiiKind, number>();
   for (const { kind, re } of RULES) {
-    out = out.replace(re, () => {
+    out = out.replace(re, (match) => {
       counts.set(kind, (counts.get(kind) ?? 0) + 1);
-      return PII_TOKEN[kind];
+      return vault.tokenFor(kind, match);
     });
   }
   const findings = [...counts.entries()].map(([kind, count]) => ({ kind, count }));

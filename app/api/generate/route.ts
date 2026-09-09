@@ -4,6 +4,7 @@ import { getClientAliases } from "@/lib/db/clients";
 import { GenerateRequestError, generateFromBody } from "@/lib/generation/dispatch";
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskPii } from "@/lib/privacy/maskPii";
+import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
 
 // Opus + adaptive thinking は時間がかかるため余裕を持たせる
 export const maxDuration = 300;
@@ -25,12 +26,14 @@ export async function POST(req: NextRequest) {
   // 黒塗り（SPEC §7・docs/specs/call-pipeline.md §2.1）: 名簿置換→型置換→自己点検を maskPii で
   // 一括適用してからAIへ送る。名簿が空でも型置換は動く。残っていれば 422 で送信を中止（fail-closed）。
   // 第一の防御は「メモに実名を書かない」運用で、これはその安全網。documentType は対象外。
+  // 二枚方式（§2.5）: 型置換の元の値はリクエスト内の札入れが覚え、AIの返事で手元に戻す。
   const aliases = await getClientAliases(userId);
+  const vault = createPiiVault();
   const masked = { names: 0, patterns: 0 };
   try {
     for (const [key, value] of Object.entries(body)) {
       if (key !== "documentType" && typeof value === "string") {
-        const r = maskPii(value, aliases);
+        const r = maskPii(value, aliases, vault);
         body[key] = r.text;
         masked.names += r.findings.names;
         masked.patterns += r.findings.patterns.reduce((s, f) => s + f.count, 0);
@@ -47,7 +50,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const draft = await generateFromBody(body);
-    return NextResponse.json(draft);
+    // AIの返事に残る札（〔電話番号1〕等）を手元で元の値に戻してから返す（名前の記号はそのまま）
+    return NextResponse.json(restoreDeep(draft, vault));
   } catch (e: unknown) {
     if (e instanceof GenerateRequestError) {
       return NextResponse.json({ error: e.message }, { status: e.status });
