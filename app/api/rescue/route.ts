@@ -8,7 +8,8 @@ import {
   type RescuePersona,
 } from "@/lib/generation/rescue";
 import { generateIntake, type IntakeDocument } from "@/lib/generation/rescueIntake";
-import { maskNames } from "@/lib/privacy/pseudonymize";
+import { PiiLeakError } from "@/lib/privacy/leakCheck";
+import { maskPii } from "@/lib/privacy/maskPii";
 
 // 5帳票を依存順＋並列で生成するため、通常の生成より長めに確保する。
 export const maxDuration = 300;
@@ -77,24 +78,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
   }
 
-  // 仮名化（SPEC §7）: 登録済み利用者の実名を記号（A様等）へ置換してからAIへ送る。
+  // 黒塗り（SPEC §7・docs/specs/call-pipeline.md §2.1）: 名簿置換→型置換→自己点検を maskPii で
+  // 一括適用してからAIへ送る。残っていれば 422 で送信を中止（fail-closed）。
   // 第一の防御は「メモに実名を書かない」運用で、これはその安全網（登録外の実名は置換できない）。
   const aliases = await getClientAliases(userId);
   const str = (key: string): string | undefined =>
-    typeof body[key] === "string" ? maskNames(body[key] as string, aliases) : undefined;
+    typeof body[key] === "string" ? maskPii(body[key] as string, aliases).text : undefined;
 
-  const persona: RescuePersona = {
-    clientInfo: str("clientInfo"),
-    personality: str("personality"),
-    lifeHistory: str("lifeHistory"),
-    medical: str("medical"),
-    physicalCognitive: str("physicalCognitive"),
-    familyHousing: str("familyHousing"),
-    currentServices: str("currentServices"),
-    intentions: str("intentions"),
-    timeline: str("timeline"),
-    additionalNotes: str("additionalNotes"),
-  };
+  let persona: RescuePersona;
+  try {
+    persona = {
+      clientInfo: str("clientInfo"),
+      personality: str("personality"),
+      lifeHistory: str("lifeHistory"),
+      medical: str("medical"),
+      physicalCognitive: str("physicalCognitive"),
+      familyHousing: str("familyHousing"),
+      currentServices: str("currentServices"),
+      intentions: str("intentions"),
+      timeline: str("timeline"),
+      additionalNotes: str("additionalNotes"),
+    };
+  } catch (e) {
+    if (e instanceof PiiLeakError) {
+      return NextResponse.json({ error: e.message }, { status: 422 });
+    }
+    throw e;
+  }
 
   const sourceDocs = parseSourceDocs(body.sourceDocs);
   if (sourceDocs === null) {
@@ -144,16 +154,20 @@ export async function POST(req: NextRequest) {
         docs.push({ name: doc.name, base64: Buffer.from(arrayBuffer).toString("base64") });
       }
       intake = await generateIntake(docs, persona);
-      // 読解サマリにも仮名化を適用（PDF由来の実名がサマリ経由で下流プロンプトへ流れる穴を塞ぐ）
+      // 読解サマリにも黒塗りを適用（PDF由来の実名・番号がサマリ経由で下流プロンプトへ流れる穴を塞ぐ）
       intake = {
-        summary: maskNames(intake.summary, aliases),
-        cautions: intake.cautions.map((c) => maskNames(c, aliases)),
+        summary: maskPii(intake.summary, aliases).text,
+        cautions: intake.cautions.map((c) => maskPii(c, aliases).text),
       };
     }
 
     const bundle = await generateRescueBundle(persona, intake?.summary);
     return NextResponse.json(intake ? { ...bundle, intake } : bundle);
   } catch (e: unknown) {
+    // 読解サマリの黒塗りで実名が残った場合も 422（fail-closed）。原文はログに出さない
+    if (e instanceof PiiLeakError) {
+      return NextResponse.json({ error: e.message }, { status: 422 });
+    }
     const message = e instanceof Error ? e.message : "不明なエラーが発生しました";
     console.error("[rescue] error:", message);
     return NextResponse.json({ error: message }, { status: 500 });

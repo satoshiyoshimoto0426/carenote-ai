@@ -64,7 +64,7 @@
 | `app/api/rescue/` | 救済モードAPI（Clerk認証）。人物像（＋timeline／sourceDocs=Blob上のPDF最大5件）→（資料あれば Stage0 `generateIntake`）→`generateRescueBundle`→一式JSON＋`intake`。PDFは finally で必ず del()（非保持原則）。maxDuration=300 | 実装済 |
 | `app/(dashboard)/create/` | 作成UI：帳票セレクタ→入力→下書き生成→確認・コピー（`components/drafts/` に表示部品） | P1実装済 |
 | `app/(dashboard)/rescue/` | 救済モードUI：人物像の**構造化フォーム**（性格/生活歴/既往・診断/心身/家族・住環境/サービス/意向/補足）→一式生成→全帳票表示＋コピー。完成形まで埋める旨のバナー表示 | 実装済 |
-| `extension/` | **時短エンジン**：ブラウザ拡張(MV3)。対象=**カイポケ**。サイドパネルで下書き生成→セクション単位コピー(Step1)＋カイポケ画面へ流し込み(Step2)。`src/adapters/kaipoke.js`＝CareNote→カイポケ欄マッピング(出典[KAIPOKE-DOM.md](KAIPOKE-DOM.md))。調査: [P2-KAIPOKE.md](P2-KAIPOKE.md) | **P2 Step1+Step2 実装済**（テキスト欄の半自動入力。第2表等はDOM追加取得後） |
+| `extension/` | **時短エンジン**：ブラウザ拡張(MV3)。対象=**カイポケ**。サイドパネルで下書き生成→セクション単位コピー(Step1)＋カイポケ画面へ流し込み(Step2)。`src/adapters/kaipoke.js`＝CareNote→カイポケ欄マッピング(出典[KAIPOKE-DOM.md](KAIPOKE-DOM.md))。調査: [P2-KAIPOKE.md](P2-KAIPOKE.md)・[CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)（電話録音→要約→転記の可否／カイポケ公開APIは無し・公認既製品あり・2026-09-09） | **P2 Step1+Step2 実装済**（テキスト欄の半自動入力。第2表等はDOM追加取得後） |
 | 評価（現行） | 独立機能として継続。開発時は生成物の品質回帰チェックにも転用 | 継続 |
 
 ### 生成のデータフロー（P1実装済・3帳票）
@@ -138,6 +138,11 @@ Sidebar に「👥 利用者」、救済結果を選択/新規の利用者に5�
 限界: 登録外の実名・PDF原本は置換不可＝第一の防御は「実名を書かない」運用（docs/DATA-HANDLING-EXPLANATION.md §3・§7）。
 拡張API（/api/extension/generate）はClerkユーザー文脈が無いため対象外（同運用ルールでカバー）。
 **未対応**: `/create` からの「利用者に保存」導線。
+**黒塗りの3段化 (2026-09-09・電話連絡パイプライン第1段)**: `lib/privacy/maskPii.ts` が唯一の入口
+（名簿置換 `pseudonymize.maskNames` → 型置換 `patterns.maskPatterns`〔電話・郵便番号・メール・住所・生年月日・番号類〕
+→ 自己点検 `leakCheck.assertNoLeak`）。`/api/generate` と `/api/rescue` はこれを通し、実名や型が残れば **422** で送信中止（fail-closed）。
+findings は種類と件数のみ（原文をログに出さない）。予定の日付は消さない（カレンダー登録・支援経過の日付を守る）。
+仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
