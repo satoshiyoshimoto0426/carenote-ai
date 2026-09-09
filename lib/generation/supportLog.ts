@@ -33,11 +33,34 @@ const SUPPORT_LOG_JSON_SCHEMA = {
         additionalProperties: false,
       },
     },
+    // 第4段: メモ中の「これから」の予定（カレンダー登録用）。実名・番号・住所は入れない
+    appointments: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          date: { type: "string" },
+          startTime: { type: "string" },
+          endTime: { type: "string" },
+          location: { type: "string" },
+          note: { type: "string" },
+          confidence: { type: "string", enum: ["確定", "要確認"] },
+        },
+        required: ["title", "date", "startTime", "endTime", "location", "note", "confidence"],
+        additionalProperties: false,
+      },
+    },
     itemsToConfirm: { type: "array", items: { type: "string" } },
   },
-  required: ["clientName", "entries", "itemsToConfirm"],
+  required: ["clientName", "entries", "appointments", "itemsToConfirm"],
   additionalProperties: false,
 };
+
+/** 日本時間の今日を YYYY-MM-DD で返す（サーバのタイムゾーンに依存しない）。 */
+function todayInJapan(): string {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
+}
 
 /** 対応メモから、支援経過記録（第5表）の下書きを生成する。 */
 export async function generateSupportLog(
@@ -48,7 +71,8 @@ export async function generateSupportLog(
     systemPrompt: options.rescue
       ? `${SUPPORT_LOG_SYSTEM_PROMPT}\n\n${RESCUE_SYSTEM_OVERRIDE}`
       : SUPPORT_LOG_SYSTEM_PROMPT,
-    userMessage: buildSupportLogUserMessage(input),
+    // 「来週火曜」等を日付に直すため、日本時間の今日を渡す
+    userMessage: buildSupportLogUserMessage(input, todayInJapan()),
     schema: SUPPORT_LOG_JSON_SCHEMA,
   });
 }

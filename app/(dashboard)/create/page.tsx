@@ -1,6 +1,7 @@
 "use client";
 
 import { type ComponentType, useState } from "react";
+import AppointmentsPanel from "@/components/drafts/AppointmentsPanel";
 import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
 import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import ItemsToConfirm from "@/components/drafts/ItemsToConfirm";
@@ -505,6 +506,13 @@ export default function CreatePage() {
           {shown?.type === "monitoring" && <MonitoringDraftView draft={shown.draft} />}
           {shown?.type === "meetingSummary" && <MeetingSummaryDraftView draft={shown.draft} />}
           {shown?.type === "supportLog" && <SupportLogDraftView draft={shown.draft} />}
+          {/* 第4段: 予定は記号版（result）から作る。実名で表示中でもカレンダーへ実名は渡さない */}
+          {result?.type === "supportLog" && (
+            <AppointmentsPanel
+              appointments={result.draft.appointments ?? []}
+              secondaryClass={btnSecondary}
+            />
+          )}
 
           {shown && <ItemsToConfirm items={shown.draft.itemsToConfirm} />}
 
