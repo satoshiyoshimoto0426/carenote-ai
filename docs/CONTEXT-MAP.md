@@ -157,6 +157,8 @@ AIの返事は `restoreDeep` で手元に戻してから返す。名前（A様�
 **第5段 アセスメント追記 (2026-09-10)**: `assessmentUpdates`（AIが状態像の変化から欄別の追記文を作る・書き換え禁止・個人情報禁止）→ CareNote `AssessmentUpdatesPanel`（表示・コピー）
 ／拡張 `kaipoke.js` の**追記モード**（`buildAppendedValue`〔純粋・二重追記防止〕→ `previewAppend`〔書かない〕→ `applyAppend`〔退避して末尾に足す〕→ `undoAppend`）。
 `content.js` CARENOTE_APPEND_*、`panel.js` 「前後を見る／この欄に追記する／元に戻す」。inject（上書き）とは別経路。登録は人。
+**D4 関係者名簿 (2026-09-10)**: `supabase/client_related.sql`（`client_related_identities`・暗号化・続柄一意）→ `lib/db/clients.ts` `getRelatedPeople/addRelatedPerson/deleteRelatedPerson`＋`loadAliases` が関係者を含める
+（記号＝`pseudonymize.relatedAliasCode`「A様の長女」）→ `GET/POST/DELETE /api/clients/[id]/related` → `components/clients/RelatedPeople.tsx`（利用者詳細ページ）。SQL は手動実行が要る。
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
 ## 4. 更新トリガ（いつここを直すか）

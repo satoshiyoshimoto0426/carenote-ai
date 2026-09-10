@@ -158,6 +158,19 @@ Claude の懸念（プライバシーポリシーに「機微情報は収集し�
 - [ ] **実機**：カイポケのアセスメント P1 を開き、「前後を見る」で今の文章が正しく読めること →「この欄に追記する」で末尾に足されること →「元に戻す」で戻ること（吉本さん・**登録ボタンは押さずに**確認）
 - [ ] **規程**：追記の運用（誰が承認するか・追記の書式・元に戻す期限）を事業所規程に置く（上級編の教材そのもの）
 
+## 2g. D4 関係者名簿（実装 2026-09-10）
+
+黒塗りは名簿にある名前しか消せない（§2.4）。家族・他事業所の担当者・主治医を**利用者ごと**に登録し、「A様の長女」のような記号へ置き換える。
+- DB: `supabase/client_related.sql`（`client_related_identities`：client_id・relation・name_encrypted〔AES-256-GCM〕・created_by。同じ利用者に同じ続柄は一意）。**Supabase の SQL Editor で実行が必要**
+- 名簿読込 `loadAliases` が関係者も含める（表が未作成なら警告のみで名簿本体は動く）。記号は `relatedAliasCode(clientCode, relation)`
+- API `GET/POST/DELETE /api/clients/[id]/related`（所有者チェック・実名は画面表示用のみ）
+- UI `components/clients/RelatedPeople.tsx` を利用者詳細ページに配置（続柄＋氏名 → 登録／削除。「→ A様の長女」と置換後の記号を表示）
+- テスト：記号生成・登録した家族名がメモから消えて復元できる
+
+受け入れ条件：
+- [x] tsc・biome・vitest 168 緑・build 合格（`/api/clients/[id]/related` 登録）
+- [ ] **実機**：SQL 実行 → 利用者詳細で「長女／佐藤 一郎」を登録 → `/create` の「送る前に確認」で「佐藤一郎さん」が「A様の長女さん」になる（吉本さん）
+
 ## 3. 吉本さんの判断が要るもの
 
 | # | 判断 | 影響する段 |

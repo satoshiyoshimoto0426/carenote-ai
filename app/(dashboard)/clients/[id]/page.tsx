@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import RelatedPeople from "@/components/clients/RelatedPeople";
 import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
 import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
@@ -19,7 +20,13 @@ import {
   IconLock,
   IconPlus,
 } from "@/components/ui/icons";
-import { btnPrimary, btnSecondary, Card, SectionTitle } from "@/components/ui/primitives";
+import {
+  btnPrimary,
+  btnSecondary,
+  Card,
+  inputClass,
+  SectionTitle,
+} from "@/components/ui/primitives";
 import { documentContentToText } from "@/lib/draftText";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
@@ -197,6 +204,17 @@ export default function ClientDetailPage() {
         <IconChevronRight size={13} className="text-[var(--faint)]" />
         <span className="text-[var(--ink)]">{client.code}様</span>
       </nav>
+
+      {/* D4: 関係者名簿（家族・担当者・主治医）。登録した名前は黒塗りで「A様の長女」等に置き換わる */}
+      <div className="mb-5">
+        <RelatedPeople
+          clientId={client.id}
+          clientCode={client.code}
+          inputClass={inputClass}
+          primaryClass={btnPrimary}
+          secondaryClass={btnSecondary}
+        />
+      </div>
 
       <header className="mb-8">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">

@@ -75,6 +75,16 @@ export function expandAliasVariants(aliases: NameAlias[]): NameAlias[] {
 }
 
 /**
+ * 関係者（家族・担当者・主治医など）の記号を作る（純粋関数）。
+ * 例: clientCode "A", relation "長女" → "A様の長女"。続柄は前後の空白を詰め、記号に使えない改行は落とす。
+ * なぜ: 名簿にない人名は黒塗りで消えない（第1段の限界）。利用者ごとに関係者を登録し、この記号へ置き換える。
+ */
+export function relatedAliasCode(clientCode: string, relation: string): string {
+  const rel = relation.replace(/[\r\n]+/g, " ").trim();
+  return `${clientCode}様の${rel}`;
+}
+
+/**
  * 連番から利用者コードを生成する（0→A, 1→B, …, 25→Z, 26→AA, 27→AB …）。
  * org 内の既存件数を渡して次のコードを決める。表示は別途「様」を付す。
  */
