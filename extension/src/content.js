@@ -35,6 +35,37 @@
       return undefined;
     }
 
+    // 第5段: アセスメント欄への追記（前後の確認 → 退避して追記 → 取り消し）。保存はしない。
+    if (
+      message.type === "CARENOTE_APPEND_PREVIEW" ||
+      message.type === "CARENOTE_APPEND_APPLY" ||
+      message.type === "CARENOTE_APPEND_UNDO"
+    ) {
+      if (!adapter) {
+        sendResponse({
+          ok: false,
+          error: "アダプタの初期化に失敗しました。ページを再読込してください。",
+        });
+        return undefined;
+      }
+      try {
+        const fn =
+          message.type === "CARENOTE_APPEND_PREVIEW"
+            ? adapter.previewAppend
+            : message.type === "CARENOTE_APPEND_APPLY"
+              ? adapter.applyAppend
+              : adapter.undoAppend;
+        const report = fn(message.documentType, message.fieldKey, message.addition);
+        sendResponse({ ok: true, report });
+      } catch (e) {
+        sendResponse({
+          ok: false,
+          error: e instanceof Error ? e.message : "追記中にエラーが発生しました。",
+        });
+      }
+      return undefined;
+    }
+
     if (message.type === "CARENOTE_INJECT") {
       if (!adapter) {
         sendResponse({

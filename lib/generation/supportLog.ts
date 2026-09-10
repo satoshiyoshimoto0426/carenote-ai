@@ -51,9 +51,24 @@ const SUPPORT_LOG_JSON_SCHEMA = {
         additionalProperties: false,
       },
     },
+    // 第5段: 状態像の変化 → アセスメント欄への「追記」案（既存文章は書き換えない）
+    assessmentUpdates: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          field: { type: "string", enum: ["mainComplaints", "lifeHistory", "overview"] },
+          text: { type: "string" },
+          reason: { type: "string" },
+          confidence: { type: "string", enum: ["確定", "要確認"] },
+        },
+        required: ["field", "text", "reason", "confidence"],
+        additionalProperties: false,
+      },
+    },
     itemsToConfirm: { type: "array", items: { type: "string" } },
   },
-  required: ["clientName", "entries", "appointments", "itemsToConfirm"],
+  required: ["clientName", "entries", "appointments", "assessmentUpdates", "itemsToConfirm"],
   additionalProperties: false,
 };
 

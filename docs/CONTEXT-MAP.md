@@ -154,6 +154,9 @@ AIの返事は `restoreDeep` で手元に戻してから返す。名前（A様�
 **第4段 カレンダー (同日・D2=個人 Google)**: `types/supportLog.ts` に `appointments`（AIが抽出・記号＋用件・番号禁止・「今日の日付」で相対表現を解決）
 → `lib/calendar/links.ts`（JST→UTC・終日・maskPatterns 二重安全網・`googleCalendarUrl`／`buildIcs` RFC5545）→ `components/drafts/AppointmentsPanel.tsx`
 （「Googleカレンダーに追加」＝作成画面を開くだけ・保存は人／.ics）。**API・OAuth 審査は使わない**（テスト状態は7日でトークン失効＝公式確認）。記号版 result から作り実名を渡さない。
+**第5段 アセスメント追記 (2026-09-10)**: `assessmentUpdates`（AIが状態像の変化から欄別の追記文を作る・書き換え禁止・個人情報禁止）→ CareNote `AssessmentUpdatesPanel`（表示・コピー）
+／拡張 `kaipoke.js` の**追記モード**（`buildAppendedValue`〔純粋・二重追記防止〕→ `previewAppend`〔書かない〕→ `applyAppend`〔退避して末尾に足す〕→ `undoAppend`）。
+`content.js` CARENOTE_APPEND_*、`panel.js` 「前後を見る／この欄に追記する／元に戻す」。inject（上書き）とは別経路。登録は人。
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
 ## 4. 更新トリガ（いつここを直すか）

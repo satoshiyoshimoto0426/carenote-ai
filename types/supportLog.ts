@@ -37,6 +37,24 @@ export interface Appointment {
   confidence: "確定" | "要確認";
 }
 
+/** アセスメントの欄（カイポケの入力欄に対応。extension/src/adapters/kaipoke.js の FIELD_MAPS.assessment と一致させる） */
+export type AssessmentField = "mainComplaints" | "lifeHistory" | "overview";
+
+/**
+ * メモから読み取れた「状態像の変化」を、アセスメントの該当欄へ**追記**する案（第5段）。
+ * 既存の文章は書き換えない。text は末尾に足す1段落（日付・情報源つき）。実名・番号・住所は書かない。
+ */
+export interface AssessmentUpdate {
+  /** 追記先の欄 */
+  field: AssessmentField;
+  /** 追記する文章（例:「2026-09-10 電話（長女）: 夜間の排泄で失敗が増えたとの訴え。…」） */
+  text: string;
+  /** なぜ追記が必要か（職員が判断するための短い理由） */
+  reason: string;
+  /** メモから明確に読める変化なら「確定」、推測を含むなら「要確認」 */
+  confidence: "確定" | "要確認";
+}
+
 /** 支援経過記録（第5表）の下書き */
 export interface SupportLogDraft {
   /** 利用者名（不明なら「要確認」） */
@@ -45,6 +63,8 @@ export interface SupportLogDraft {
   entries: SupportLogEntry[];
   /** メモに含まれる今後の予定（無ければ空配列）。旧データには無いので省略可 */
   appointments?: Appointment[];
+  /** 状態像の変化があれば、アセスメント欄への追記案（無ければ空配列）。旧データには無いので省略可 */
+  assessmentUpdates?: AssessmentUpdate[];
   /** 人間のケアマネジャーの確認が必要な事項 */
   itemsToConfirm: string[];
 }

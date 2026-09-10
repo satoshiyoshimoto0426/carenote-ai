@@ -852,9 +852,91 @@
     return { filled, results };
   }
 
+  // ---- 追記モード（第5段: アセスメント欄の末尾に足す。既存の文章は消さない） ----
+  //
+  // なぜ inject と分けるか: inject は欄を「上書き」する。アセスメントは過去の記録が入っている欄に
+  // 「足す」動作で、失敗すると過去の記録が消える。そこで ①書く前に前後を見せる（previewAppend）
+  // ②書く時に元の文章を退避する（applyAppend）③元に戻せる（undoAppend）の3段にした。
+  // 保存（カイポケの登録ボタン）は従来どおり必ず人（SPEC F7）。
+
+  /**
+   * 既存の本文に追記段落を足した値を作る（純粋関数・テスト対象）。
+   * 既に同じ文が入っていれば null（二重追記を防ぐ）。既存が空なら追記文だけ。
+   * @param {string} existing
+   * @param {string} addition
+   * @returns {string|null}
+   */
+  function buildAppendedValue(existing, addition) {
+    const base = String(existing ?? "").replace(/\s+$/, "");
+    const add = String(addition ?? "").trim();
+    if (!add) return null;
+    if (base.includes(add)) return null;
+    return base ? `${base}\n${add}` : add;
+  }
+
+  /** 追記前の本文の退避先（画面を再読込すると消える。カイポケ側は登録するまで何も変わらない） */
+  const appendSnapshots = new Map();
+
+  function findAppendTarget(documentType, fieldKey) {
+    const mapping = (FIELD_MAPS[documentType] || []).find((m) => m.key === fieldKey);
+    if (!mapping) return { mapping: null, el: null };
+    return { mapping, el: findField(mapping) };
+  }
+
+  /**
+   * 追記の前後を返す（**書かない**）。パネルはこれを職員に見せてから applyAppend を呼ぶ。
+   * @returns {{status:"ok"|"not_found"|"duplicate"|"unknown_field", label?:string, before?:string, after?:string, note?:string}}
+   */
+  function previewAppend(documentType, fieldKey, addition) {
+    const { mapping, el } = findAppendTarget(documentType, fieldKey);
+    if (!mapping) return { status: "unknown_field" };
+    if (!el) return { status: "not_found", label: mapping.label, note: NOT_FOUND_NOTE };
+    const before = getValue(el);
+    const after = buildAppendedValue(before, addition);
+    if (after === null) {
+      return {
+        status: "duplicate",
+        label: mapping.label,
+        before,
+        note: "同じ文が既に入っています。",
+      };
+    }
+    return { status: "ok", label: mapping.label, before, after };
+  }
+
+  /**
+   * 退避してから追記を書き込む。保存はしない。
+   * @returns {{status:"filled"|"not_found"|"duplicate"|"unknown_field", label?:string, before?:string, after?:string, note?:string}}
+   */
+  function applyAppend(documentType, fieldKey, addition) {
+    const p = previewAppend(documentType, fieldKey, addition);
+    if (p.status !== "ok") return p;
+    const { el } = findAppendTarget(documentType, fieldKey);
+    appendSnapshots.set(`${documentType}:${fieldKey}`, { before: p.before, at: Date.now() });
+    writeField(el, p.after);
+    highlight(el, "caution");
+    return { status: "filled", label: p.label, before: p.before, after: p.after };
+  }
+
+  /** 直前の追記を取り消し、退避した本文に戻す（登録前に限る）。 */
+  function undoAppend(documentType, fieldKey) {
+    const key = `${documentType}:${fieldKey}`;
+    const snap = appendSnapshots.get(key);
+    if (!snap) return { status: "none", note: "戻せる退避がありません。" };
+    const { mapping, el } = findAppendTarget(documentType, fieldKey);
+    if (!el) return { status: "not_found", label: mapping?.label, note: NOT_FOUND_NOTE };
+    writeField(el, snap.before);
+    appendSnapshots.delete(key);
+    return { status: "restored", label: mapping.label };
+  }
+
   return {
     FIELD_MAPS,
     INJECTABLE_TYPES,
+    buildAppendedValue,
+    previewAppend,
+    applyAppend,
+    undoAppend,
     charWidth,
     lineFullWidth,
     measureText,

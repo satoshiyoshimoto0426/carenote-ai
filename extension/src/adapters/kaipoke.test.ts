@@ -345,3 +345,22 @@ describe("CareNoteKaipoke モニタリング（monitoring）", () => {
     expect(baseNames).not.toContain("form:enforcementYmd");
   });
 });
+
+describe("CareNoteKaipoke 追記モード（buildAppendedValue・純粋関数）", () => {
+  it("既存の末尾に改行で足し、末尾の空白は詰める", () => {
+    expect(
+      adapter.buildAppendedValue("既存の記録。\n\n", "2026-09-10 電話（長女）: 夜間の失敗が増加。"),
+    ).toBe("既存の記録。\n2026-09-10 電話（長女）: 夜間の失敗が増加。");
+  });
+
+  it("既存が空なら追記文だけ、追記文が空なら null", () => {
+    expect(adapter.buildAppendedValue("", "追記")).toBe("追記");
+    expect(adapter.buildAppendedValue("既存", "   ")).toBeNull();
+  });
+
+  it("同じ文が既に入っていれば null（二重追記を防ぐ）", () => {
+    expect(
+      adapter.buildAppendedValue("既存。\n2026-09-10 電話: 同じ文。", "2026-09-10 電話: 同じ文。"),
+    ).toBeNull();
+  });
+});

@@ -374,6 +374,7 @@
     $("inject-card").hidden = !injectable;
     if (injectable) {
       renderEntryList();
+      renderAppendList();
       refreshTabStatus();
     }
   }
@@ -399,6 +400,9 @@
   function setInjectDisabled(disabled) {
     $("inject").disabled = disabled;
     for (const b of $("entry-list").querySelectorAll("button")) {
+      b.disabled = disabled;
+    }
+    for (const b of $("append-list").querySelectorAll("button")) {
       b.disabled = disabled;
     }
   }
@@ -486,6 +490,126 @@
       btn.addEventListener("click", () => onInject(i));
       wrap.append(btn);
     });
+  }
+
+  // ---- 第5段: アセスメント欄への追記（前後を見る → 退避して追記 → 元に戻す） ----
+
+  const APPEND_FIELD_LABELS = {
+    mainComplaints: "主訴・意向（P1 本人欄）",
+    lifeHistory: "生活歴・経過（P1）",
+    overview: "全体のまとめ（P10）",
+  };
+
+  /**
+   * supportLog の下書きに assessmentUpdates（状態像の変化の追記案）があれば、追記ボタンを出す。
+   * 追記は inject（上書き）と別経路: 必ず「前後を見る」を経て「この欄に追記する」を押す。
+   */
+  function renderAppendList() {
+    const block = $("append-block");
+    const list = $("append-list");
+    const updates =
+      current.documentType === "supportLog" && Array.isArray(current.draft?.assessmentUpdates)
+        ? current.draft.assessmentUpdates
+        : [];
+    block.hidden = updates.length === 0;
+    list.innerHTML = "";
+    $("append-report").innerHTML = "";
+    updates.forEach((u, i) => {
+      const item = document.createElement("div");
+      item.className = "append-item";
+
+      const head = document.createElement("div");
+      head.className = "hint";
+      const conf = u.confidence === "要確認" ? "（推測を含む・要確認）" : "";
+      head.textContent = `追記${i + 1}: ${APPEND_FIELD_LABELS[u.field] || u.field}${conf}`;
+      item.append(head);
+
+      const text = document.createElement("div");
+      text.className = "append-text";
+      text.textContent = String(u.text ?? "");
+      item.append(text);
+
+      const row = document.createElement("div");
+      row.className = "append-actions";
+      const previewBtn = document.createElement("button");
+      previewBtn.type = "button";
+      previewBtn.className = "btn";
+      previewBtn.disabled = true;
+      previewBtn.textContent = "前後を見る";
+      previewBtn.addEventListener("click", () => onAppend("CARENOTE_APPEND_PREVIEW", u, i));
+      const applyBtn = document.createElement("button");
+      applyBtn.type = "button";
+      applyBtn.className = "btn btn-accent";
+      applyBtn.disabled = true;
+      applyBtn.textContent = "この欄に追記する";
+      applyBtn.addEventListener("click", () => onAppend("CARENOTE_APPEND_APPLY", u, i));
+      const undoBtn = document.createElement("button");
+      undoBtn.type = "button";
+      undoBtn.className = "btn";
+      undoBtn.disabled = true;
+      undoBtn.textContent = "元に戻す";
+      undoBtn.addEventListener("click", () => onAppend("CARENOTE_APPEND_UNDO", u, i));
+      row.append(previewBtn, applyBtn, undoBtn);
+      item.append(row);
+
+      list.append(item);
+    });
+  }
+
+  /** 追記の前後を1枚の報告に整形する（本文はパネル内にだけ出す。外へは送らない） */
+  function renderAppendReport(kind, report) {
+    const wrap = $("append-report");
+    wrap.innerHTML = "";
+    if (!report) return;
+    const line = document.createElement("div");
+    const status = report.status;
+    line.className = `report-item ${status === "filled" || status === "ok" || status === "restored" ? "filled" : "caution"}`;
+    const label = report.label ? `${report.label}：` : "";
+    const msg =
+      status === "ok"
+        ? "追記後の文章はこうなります（まだ書いていません）。"
+        : status === "filled"
+          ? "追記しました。内容を確認のうえ、カイポケで登録してください（登録前なら「元に戻す」で戻せます）。"
+          : status === "restored"
+            ? "元の文章に戻しました。"
+            : status === "duplicate"
+              ? "同じ文が既に入っています（追記しません）。"
+              : report.note || "該当欄が見つかりませんでした。";
+    line.textContent = `${label}${msg}`;
+    wrap.append(line);
+
+    if (kind !== "CARENOTE_APPEND_UNDO" && (status === "ok" || status === "filled")) {
+      const before = document.createElement("pre");
+      before.className = "append-diff before";
+      before.textContent = `【今の文章】\n${report.before || "（空）"}`;
+      const after = document.createElement("pre");
+      after.className = "append-diff after";
+      after.textContent = `【追記後】\n${report.after || ""}`;
+      wrap.append(before, after);
+    }
+  }
+
+  async function onAppend(type, update, index) {
+    setInjectDisabled(true);
+    try {
+      const tab = await getActiveTab();
+      const res = await chrome.tabs.sendMessage(tab.id, {
+        type,
+        documentType: "assessment",
+        fieldKey: update.field,
+        addition: String(update.text ?? ""),
+      });
+      if (res?.ok) {
+        renderAppendReport(type, res.report);
+      } else {
+        $("append-report").textContent = res?.error || `追記${index + 1}の処理に失敗しました。`;
+      }
+    } catch {
+      $("append-report").textContent =
+        "カイポケ画面と通信できませんでした。アセスメントの該当ページを開いて、ページを再読込してください。";
+    } finally {
+      refreshTabStatus();
+    }
   }
 
   /**

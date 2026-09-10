@@ -3,6 +3,7 @@
 import { type ComponentType, useState } from "react";
 import AppointmentsPanel from "@/components/drafts/AppointmentsPanel";
 import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
+import AssessmentUpdatesPanel from "@/components/drafts/AssessmentUpdatesPanel";
 import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import ItemsToConfirm from "@/components/drafts/ItemsToConfirm";
 import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
@@ -510,6 +511,13 @@ export default function CreatePage() {
           {result?.type === "supportLog" && (
             <AppointmentsPanel
               appointments={result.draft.appointments ?? []}
+              secondaryClass={btnSecondary}
+            />
+          )}
+          {/* 第5段: アセスメント欄への追記案（表示・コピーのみ。書き込みは人／拡張の追記モード） */}
+          {shown?.type === "supportLog" && (
+            <AssessmentUpdatesPanel
+              updates={shown.draft.assessmentUpdates ?? []}
               secondaryClass={btnSecondary}
             />
           )}
