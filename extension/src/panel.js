@@ -172,7 +172,12 @@
       setMessage("JSONの形式が正しくありません。", "error");
       return;
     }
-    const documentType = $("doctype").value;
+    // JSON 自身が documentType を持っていればそれを優先（CareNote「拡張用JSONをコピー」はカイポケ転記シート）
+    const documentType =
+      typeof parsed?.documentType === "string" ? parsed.documentType : $("doctype").value;
+    if ([...$("doctype").options].some((o) => o.value === documentType)) {
+      $("doctype").value = documentType;
+    }
     current = { documentType, draft: parsed };
     saveDraft();
     renderResult();
@@ -185,9 +190,41 @@
     return (items || []).map((s, i) => `${i + 1}. ${s}`).join("\n");
   }
 
+  /** カイポケ転記シートの何枚目にどんな欄があるかの表示名（adapters/kaipoke.js と対応） */
+  const KAIPOKE_PAGE_TITLES = {
+    1: "フェイスシート",
+    2: "家族情報・サービス利用",
+    3: "サービス利用・住居",
+    4: "健康状態",
+    5: "基本（身体機能・起居）動作",
+    6: "生活機能（食事・排泄）",
+    7: "認知機能・精神行動障害",
+    8: "社会生活力",
+    9: "医療・健康関係",
+    10: "全体のまとめ",
+  };
+
   function toSections(documentType, d) {
     if (!d) return [];
     switch (documentType) {
+      case "kaipokeAssessment": {
+        const fields = Array.isArray(d.fields) ? d.fields : [];
+        const sections = [];
+        for (let page = 1; page <= 10; page++) {
+          const rows = fields.filter((f) => f.page === page && String(f.text ?? "").trim());
+          if (rows.length === 0) continue;
+          sections.push({
+            label: `${page}枚目：${KAIPOKE_PAGE_TITLES[page] || ""}`,
+            text: rows
+              .map(
+                (f) =>
+                  `【${f.label || f.formName}】${f.isInferred ? "【推測を含む】" : ""}\n${f.text}`,
+              )
+              .join("\n\n"),
+          });
+        }
+        return sections;
+      }
       case "assessment":
         return [
           { label: "今回のアセスメントの理由", text: d.assessmentReason },
@@ -370,7 +407,10 @@
     $("result").hidden = false;
 
     // 流し込みカードは対応帳票のときだけ表示（supportLog はエントリ単位ボタンで対応）
-    const injectable = Boolean(INJECT_HINTS[documentType]) || documentType === "supportLog";
+    const injectable =
+      Boolean(INJECT_HINTS[documentType]) ||
+      documentType === "supportLog" ||
+      documentType === "kaipokeAssessment";
     $("inject-card").hidden = !injectable;
     if (injectable) {
       renderEntryList();
@@ -464,9 +504,32 @@
   function renderEntryList() {
     const wrap = $("entry-list");
     const isSupportLog = current.documentType === "supportLog";
-    wrap.hidden = !isSupportLog;
-    $("inject").hidden = isSupportLog;
+    const isKaipokeSheet = current.documentType === "kaipokeAssessment";
+    wrap.hidden = !(isSupportLog || isKaipokeSheet);
+    $("inject").hidden = isSupportLog || isKaipokeSheet;
     wrap.innerHTML = "";
+
+    if (isKaipokeSheet) {
+      // カイポケ転記シート: 開いているページ分だけ流し込む（同名の欄が別ページにあるため）
+      const guide = document.createElement("p");
+      guide.className = "hint";
+      guide.textContent =
+        "カイポケでその枚目を開いてから押してください。すでに文章が入っている欄には書きません（消さない）。登録は必ずご自身で。";
+      wrap.append(guide);
+      const fields = Array.isArray(current.draft?.fields) ? current.draft.fields : [];
+      for (let page = 1; page <= 10; page++) {
+        const n = fields.filter((f) => f.page === page && String(f.text ?? "").trim()).length;
+        if (n === 0) continue;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn entry-btn";
+        btn.disabled = true;
+        btn.textContent = `${page}枚目を流し込む: ${KAIPOKE_PAGE_TITLES[page] || ""}（${n}欄）`;
+        btn.addEventListener("click", () => onInject(undefined, { page }));
+        wrap.append(btn);
+      }
+      return;
+    }
     if (!isSupportLog) return;
 
     const guide = document.createElement("p");
@@ -621,7 +684,7 @@
    * entryIndex（entries の何件目か）を options で渡し、そのエントリだけを書く。
    * @param {number} [entryIndex] - supportLog のエントリ別ボタンからのみ渡される
    */
-  async function onInject(entryIndex) {
+  async function onInject(entryIndex, extraOptions) {
     setInjectDisabled(true);
     try {
       const tab = await getActiveTab();
@@ -632,6 +695,9 @@
       };
       if (Number.isInteger(entryIndex)) {
         message.options = { entryIndex };
+      }
+      if (extraOptions && typeof extraOptions === "object") {
+        message.options = { ...(message.options || {}), ...extraOptions };
       }
       const res = await chrome.tabs.sendMessage(tab.id, message);
       if (res?.ok) {

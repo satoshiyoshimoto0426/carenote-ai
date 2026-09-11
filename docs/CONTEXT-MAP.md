@@ -164,7 +164,9 @@ AIの返事は `restoreDeep` で手元に戻してから返す。名前（A様�
 → `composeIntakeNotes`（食い違い→分類別事実）を `generateRescueBundle` の入力に。結果の全文章に maskPii。画面に読み取り報告・食い違い・事実（分類別）。
 **カイポケ転記 手順仕様書 (2026-09-11)**: [KAIPOKE-TRANSCRIPTION-SPEC.md](KAIPOKE-TRANSCRIPTION-SPEC.md)（ブラウザ操作型AIの実機転記記録＝アセスメント11ページ全欄・第2表往復・禁止文字・keyup同期・エラー回避）。
 取り込み済: `kaipoke.js` `normalizeForKaipoke`（〜→～・丸数字→(n)・ローマ数字・組文字・空白）を `writeField` で必ず通す／`writeField` が keyup も dispatch／`measureText` に総文字数の安全上限（行×字−行数）／
-`isReloginRequired`（再ログイン画面検知）→ `content.js` が書き込み系を拒否・`panel.js` バッジ「再ログインが必要」／FIELD_MAPS.assessment に P1 の26字幅と P2 `form:supportSubject` を追加。未着手: 11ページ全欄のマップ・第2表の階層入力・`is_inferred`。
+`isReloginRequired`（再ログイン画面検知）→ `content.js` が書き込み系を拒否・`panel.js` バッジ「再ログインが必要」／FIELD_MAPS.assessment に P1 の26字幅と P2 `form:supportSubject` を追加。
+**カイポケ転記シート (同日)**: `lib/kaipoke/assessmentLayout.ts`（10ページ31欄・安全上限・純粋）→ `lib/generation/kaipokeAssessment.ts`（下書き→欄別文章・`isInferred`）→ `POST /api/kaipoke/assessment`
+→ `/create` の「カイポケの欄に合わせる」→ `KaipokeSheetView`（欄ごとコピー／拡張用JSON）→ 拡張 documentType `kaipokeAssessment`（`injectKaipokeSheet`：ページ単位・既存文章は消さない）。未着手: 第2表の階層入力。
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
 ## 4. 更新トリガ（いつここを直すか）

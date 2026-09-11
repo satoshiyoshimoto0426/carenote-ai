@@ -6,6 +6,7 @@ import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
 import AssessmentUpdatesPanel from "@/components/drafts/AssessmentUpdatesPanel";
 import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import ItemsToConfirm from "@/components/drafts/ItemsToConfirm";
+import KaipokeSheetView from "@/components/drafts/KaipokeSheetView";
 import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
 import MonitoringDraftView from "@/components/drafts/MonitoringDraftView";
 import PreSendPreview, { type PreviewData } from "@/components/drafts/PreSendPreview";
@@ -36,6 +37,7 @@ import {
   monitoringToText,
   supportLogToText,
 } from "@/lib/draftText";
+import type { KaipokeAssessmentSheet } from "@/lib/kaipoke/assessmentLayout";
 import { type NameAlias, restoreNamesDeep } from "@/lib/privacy/pseudonymize";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
@@ -176,6 +178,29 @@ export default function CreatePage() {
     }
   };
 
+  /** カイポケ転記用シート（アセスメントの下書きを10ページの欄に組み替えたもの） */
+  const [kaipokeSheet, setKaipokeSheet] = useState<KaipokeAssessmentSheet | null>(null);
+  const [sheetLoading, setSheetLoading] = useState(false);
+  const makeKaipokeSheet = async () => {
+    if (!result || result.type !== "assessment") return;
+    setSheetLoading(true);
+    setError(null);
+    try {
+      const resp = await fetch("/api/kaipoke/assessment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft: result.draft }), // 記号版を渡す（実名は送らない）
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
+      setKaipokeSheet(data as KaipokeAssessmentSheet);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "カイポケ用の整形に失敗しました");
+    } finally {
+      setSheetLoading(false);
+    }
+  };
+
   /** 画面とコピーに使う版。保存する帳票は記号のまま（restoreNamesDeep は表示専用） */
   const shown: GeneratedResult | null =
     result && showRealNames && aliases
@@ -212,6 +237,7 @@ export default function CreatePage() {
       if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
       setResult({ type: docType, draft: data } as GeneratedResult);
       setPreview(null);
+      setKaipokeSheet(null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "不明なエラーが発生しました");
     } finally {
@@ -504,6 +530,35 @@ export default function CreatePage() {
 
           {shown?.type === "carePlan" && <CarePlanDraftView draft={shown.draft} />}
           {shown?.type === "assessment" && <AssessmentDraftView draft={shown.draft} />}
+          {/* カイポケ転記用: 10ページの欄に合わせた文章（コピー貼り付け／拡張でページ単位の流し込み） */}
+          {result?.type === "assessment" && (
+            <div className="rounded-[12px] border border-[var(--paper)] bg-white p-4">
+              {kaipokeSheet ? (
+                <KaipokeSheetView
+                  sheet={kaipokeSheet}
+                  primaryClass={btnPrimary}
+                  secondaryClass={btnSecondary}
+                />
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">カイポケに写すときは</p>
+                    <p className="text-xs text-[var(--muted)]">
+                      10ページの欄の順番・欄名・文字数に合わせた文章に組み替えます（欄ごとにコピーできます）。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={makeKaipokeSheet}
+                    disabled={sheetLoading}
+                    className={btnSecondary}
+                  >
+                    {sheetLoading ? "組み替え中…（30秒〜1分）" : "カイポケの欄に合わせる"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {shown?.type === "monitoring" && <MonitoringDraftView draft={shown.draft} />}
           {shown?.type === "meetingSummary" && <MeetingSummaryDraftView draft={shown.draft} />}
           {shown?.type === "supportLog" && <SupportLogDraftView draft={shown.draft} />}

@@ -855,6 +855,10 @@
    * @returns {{filled:number, results:{label:string,status:string,note?:string,warnings?:string[]}[]}}
    */
   function inject(documentType, draft, options) {
+    // カイポケ転記用シート（CareNote「カイポケの欄に合わせる」の出力）: 名前→値のマップをページ単位で書く
+    if (documentType === "kaipokeAssessment") {
+      return injectKaipokeSheet(draft, options);
+    }
     const fields = selectInjectableFields(documentType, draft, options);
     const results = [];
     let filled = 0;
@@ -919,6 +923,66 @@
         status: kind,
         note: f.mapping.note,
         warnings: f.measure.warnings,
+      });
+    }
+    return { filled, results };
+  }
+
+  // ---- カイポケ転記用シート（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §1・§6） ----
+  //
+  // CareNote が「10ページ × 欄名 × 文章」の形で出したものを、職員が開いているページ分だけ書く。
+  // 同じフォーム名が別ページにもある（specialMentionMatterSubject 等）ため、必ず page を指定して呼ぶ。
+  // 上書きなので、既に文章が入っている欄には書かず caution で知らせる（消さない）。
+
+  /**
+   * 指定ページの欄だけを取り出す純粋関数（テスト対象）。空文字の欄は除く。
+   * @param {{fields?: {page:number, formName:string, text:string, isInferred?:boolean}[]}} sheet
+   * @param {number} page
+   */
+  function kaipokePageFields(sheet, page) {
+    const fields = Array.isArray(sheet?.fields) ? sheet.fields : [];
+    return fields.filter((f) => f && f.page === page && String(f.text ?? "").trim() !== "");
+  }
+
+  function injectKaipokeSheet(sheet, options) {
+    const page = Number(options?.page);
+    if (!Number.isInteger(page) || page < 1) {
+      return {
+        filled: 0,
+        results: [{ label: "ページ", status: "not_found", note: "何枚目かを指定してください。" }],
+      };
+    }
+    const results = [];
+    let filled = 0;
+    for (const f of kaipokePageFields(sheet, page)) {
+      const mapping = { key: f.formName, label: f.label || f.formName, names: [f.formName] };
+      const el = findField(mapping);
+      if (!el) {
+        results.push({ label: mapping.label, status: "not_found", note: NOT_FOUND_NOTE });
+        continue;
+      }
+      const existing = getValue(el);
+      if (existing.trim() && existing.trim() !== normalizeForKaipoke(f.text).trim()) {
+        results.push({
+          label: mapping.label,
+          status: "caution",
+          note: "すでに文章が入っているため書きませんでした（消さない）。必要なら手で貼り替えてください。",
+        });
+        continue;
+      }
+      const measure = measureText(f.text, {
+        maxRows: f.maxRows,
+        maxColsFullWidth: f.maxCols,
+      });
+      writeField(el, f.text);
+      highlight(el, f.isInferred ? "caution" : "filled");
+      filled++;
+      const warnings = [...measure.warnings];
+      if (f.isInferred) warnings.push("推測を含む欄です。内容を確かめてください。");
+      results.push({
+        label: mapping.label,
+        status: f.isInferred ? "caution" : "filled",
+        warnings,
       });
     }
     return { filled, results };
@@ -1011,6 +1075,7 @@
     undoAppend,
     normalizeForKaipoke,
     isReloginRequired,
+    kaipokePageFields,
     charWidth,
     lineFullWidth,
     measureText,

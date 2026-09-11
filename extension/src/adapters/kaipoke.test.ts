@@ -393,3 +393,20 @@ describe("CareNoteKaipoke measureText 総文字数の安全上限", () => {
     expect(over.warnings.some((w) => w.includes("安全上限38字"))).toBe(true);
   });
 });
+
+describe("CareNoteKaipoke カイポケ転記シート（kaipokePageFields・純粋関数）", () => {
+  it("指定ページの欄だけを返し、空文字の欄は除く", () => {
+    const sheet = {
+      fields: [
+        { page: 4, formName: "form:caseOrMedicalHistorySubject", text: "脳梗塞の既往。" },
+        { page: 4, formName: "form:specialMentionMatterSubject1", text: "   " },
+        { page: 10, formName: "form:summarySubject", text: "全体像。" },
+      ],
+    };
+    expect(adapter.kaipokePageFields(sheet, 4).map((f) => f.formName)).toEqual([
+      "form:caseOrMedicalHistorySubject",
+    ]);
+    expect(adapter.kaipokePageFields(sheet, 10)).toHaveLength(1);
+    expect(adapter.kaipokePageFields({}, 1)).toEqual([]);
+  });
+});
