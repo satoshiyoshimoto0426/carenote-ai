@@ -55,7 +55,7 @@ export function normalizeDigitSeparators(s: string): string {
  * 電話番号の区切りとして許す文字（ハイフン類・括弧・ドット・中黒・空白）。
  * 置換ルールと漏れ検査（hasLongDigitRun）が**同じ定数**を使い、片方だけ広げて穴が空くのを防ぐ（CI 審査 2026-09-12）。
  */
-const PHONE_SEP = "[-−‐()（）.・\\s]";
+const PHONE_SEP = "[-−‐()（）.・,、\\s]";
 
 /** 区切りを無視して数字だけ数える（TEL: 直後などの判定用） */
 function digitCount(s: string): number {

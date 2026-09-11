@@ -98,6 +98,10 @@ describe("表記ゆれ（独立審査 2026-09-11 critical #8・D24）", () => {
 
   it("hasLongDigitRun: 区切りを無視して10桁以上なら true、日付・時刻は false", () => {
     expect(hasLongDigitRun("90 ・ 1234 ・ 5678")).toBe(true);
+    expect(hasLongDigitRun("90,1234,5678")).toBe(true); // CI 審査 Minor: 読点区切り
+    expect(mask("090,1234,5678 と 費用 1,234,567円").text).toBe(
+      "〔電話番号1〕 と 費用 1,234,567円",
+    );
     expect(hasLongDigitRun("2026-09-11 14:30 に 2026-09-30 10:00 訪問")).toBe(false);
     expect(hasLongDigitRun("90-1234-5678")).toBe(true);
     expect(hasLongDigitRun("0901234-5678")).toBe(true);
