@@ -44,3 +44,8 @@
 - 事象: `app/(dashboard)/rescue/page.tsx` が `lib/generation/rescueIntake.ts` から定数（種別一覧）を import → 同ファイルが Anthropic SDK を読むため `node:fs` 等がブラウザ向けビルドに混ざり `Module build failed`。tsc・vitest は通るので build まで回さないと気づけない。
 - 対策: 型と定数を `lib/generation/intakeTypes.ts`（純粋）へ分離し、画面はそちらを読む。rescueIntake.ts は `export *` で再輸出。
 - 学び: 画面から `lib/generation/*` を **値 import する時は純粋モジュールか確認**（`import type` なら消えるので安全）。完了報告前の `npm run build` は省略しない（§2.8-B）。
+
+## 2026-09-11 同名系ヘルパーの取り違え（getValue(draft,key) を欄の読み取りに使い、追記が上書きになる欠陥）
+- 事象: 追記モード（previewAppend/applyAppend）と転記シート（injectKaipokeSheet）で `getValue(el)` と書いたが、既存の `getValue(draft, key)` は下書きから値を取る関数。要素を渡すと常に "" → 「既存は空」と誤判定し、**過去の記録を消さないための機能が上書きになる**欠陥。テストは DOM を通らないので緑のまま。コミット前の読み返しで発見。
+- 対策: `readFieldValue(el)` を新設して両所を差し替え。テストで「getValue に要素を渡すと空」を明示。
+- 学び: ①DOM を触る関数は名前に `Field`/`El` を入れて下書き系と区別する ②「消さない」系の安全機能は、実機（またはjsdom）で **既存文章が残ること**を必ず確認する（次回: jsdom テストを1本足す）。

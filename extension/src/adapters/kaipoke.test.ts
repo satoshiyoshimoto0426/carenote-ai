@@ -410,3 +410,13 @@ describe("CareNoteKaipoke カイポケ転記シート（kaipokePageFields・純�
     expect(adapter.kaipokePageFields({}, 1)).toEqual([]);
   });
 });
+
+describe("CareNoteKaipoke readFieldValue（欄の今の文章を読む）", () => {
+  it("要素の value を返す。value が無ければ空文字（getValue(draft,key) と取り違えない）", () => {
+    expect(adapter.readFieldValue({ value: "既存の記録。" })).toBe("既存の記録。");
+    expect(adapter.readFieldValue({})).toBe("");
+    expect(adapter.readFieldValue(null)).toBe("");
+    // 取り違えの再発防止: 下書き用 getValue に要素を渡しても空になる＝「既存が空」と誤判定する
+    expect(adapter.getValue({ value: "既存の記録。" }, undefined as unknown as string)).toBe("");
+  });
+});

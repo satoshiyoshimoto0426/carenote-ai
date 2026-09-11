@@ -294,6 +294,17 @@
     return typeof v === "string" ? v : "";
   }
 
+  /**
+   * 入力欄の「今の文章」を読む（追記モード・転記シートの「消さない」判定に使う）。
+   * ※ getValue(draft, key) は下書きから値を取る関数で、欄を読む関数ではない。
+   *    2026-09-11 に取り違えて「既存が常に空」と判定し、追記が上書きになる欠陥があった（コミット前に発見）。
+   * @param {{value?: unknown}} el
+   * @returns {string}
+   */
+  function readFieldValue(el) {
+    return typeof el?.value === "string" ? el.value : "";
+  }
+
   // ---- 帳票別の値組み立て・日付解析（純粋関数・DOM非依存） ----
 
   /**
@@ -961,7 +972,7 @@
         results.push({ label: mapping.label, status: "not_found", note: NOT_FOUND_NOTE });
         continue;
       }
-      const existing = getValue(el);
+      const existing = readFieldValue(el);
       if (existing.trim() && existing.trim() !== normalizeForKaipoke(f.text).trim()) {
         results.push({
           label: mapping.label,
@@ -1027,7 +1038,7 @@
     const { mapping, el } = findAppendTarget(documentType, fieldKey);
     if (!mapping) return { status: "unknown_field" };
     if (!el) return { status: "not_found", label: mapping.label, note: NOT_FOUND_NOTE };
-    const before = getValue(el);
+    const before = readFieldValue(el);
     const after = buildAppendedValue(before, addition);
     if (after === null) {
       return {
@@ -1076,6 +1087,7 @@
     normalizeForKaipoke,
     isReloginRequired,
     kaipokePageFields,
+    readFieldValue,
     charWidth,
     lineFullWidth,
     measureText,
