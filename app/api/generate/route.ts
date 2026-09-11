@@ -1,8 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
-import { getClientAliases } from "@/lib/db/clients";
+import { AliasLoadError, getClientAliases } from "@/lib/db/clients";
 import { GenerateRequestError, generateFromBody } from "@/lib/generation/dispatch";
-import { maskNames } from "@/lib/privacy/pseudonymize";
+import { PiiLeakError } from "@/lib/privacy/leakCheck";
+import { maskRequestBody } from "@/lib/privacy/maskBody";
+import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
 
 // Opus + adaptive thinking は時間がかかるため余裕を持たせる
 export const maxDuration = 300;
@@ -21,20 +23,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
   }
 
-  // 仮名化（SPEC §7）: 登録済み利用者の実名を記号へ置換してからAIへ送る（安全網。
-  // 第一の防御は「メモに実名を書かない」運用）。documentType は対象外。
-  const aliases = await getClientAliases(userId);
-  if (aliases.length > 0) {
-    for (const [key, value] of Object.entries(body)) {
-      if (key !== "documentType" && typeof value === "string") {
-        body[key] = maskNames(value, aliases);
-      }
-    }
+  // 黒塗り（SPEC §7・docs/specs/call-pipeline.md §2.1）: 名簿置換→型置換→自己点検を maskPii で
+  // 一括適用してからAIへ送る。名簿が空でも型置換は動く。残っていれば 422 で送信を中止（fail-closed）。
+  // 第一の防御は「メモに実名を書かない」運用で、これはその安全網。documentType は対象外。
+  // 二枚方式（§2.5）: 型置換の元の値はリクエスト内の札入れが覚え、AIの返事で手元に戻す。
+  // /api/preview と同じ maskRequestBody を通す（画面で見せた文章とAIに送る文章を一致させる）。
+  // 名簿が読めなければ送らない（fail-closed）。名簿なしで進むと実名が消えないまま AI へ出る。
+  let aliases: Awaited<ReturnType<typeof getClientAliases>>;
+  try {
+    aliases = await getClientAliases(userId);
+  } catch (e) {
+    if (e instanceof AliasLoadError)
+      return NextResponse.json({ error: e.message }, { status: 503 });
+    throw e;
   }
+  const vault = createPiiVault();
+  const masked = { names: 0, patterns: 0 };
+  try {
+    const r = maskRequestBody(body, aliases, vault);
+    body = r.body;
+    masked.names = r.findings.names;
+    masked.patterns = r.findings.patterns.reduce((s, f) => s + f.count, 0);
+  } catch (e) {
+    if (e instanceof PiiLeakError) {
+      return NextResponse.json({ error: e.message }, { status: 422 });
+    }
+    throw e;
+  }
+  // 件数のみ記録する（本文・原文はログに出さない）
+  if (masked.names + masked.patterns > 0) console.info("[generate] pii masked", masked);
 
   try {
     const draft = await generateFromBody(body);
-    return NextResponse.json(draft);
+    // AIの返事に残る札（〔電話番号1〕等）を手元で元の値に戻してから返す（名前の記号はそのまま）。
+    // 予定（appointments）はカレンダーへ渡すので戻さない（不変条件⑥「記号＋用件のみ」・独立審査 D22）
+    return NextResponse.json(restoreDeep(draft, vault, { skipKeys: ["appointments"] }));
   } catch (e: unknown) {
     if (e instanceof GenerateRequestError) {
       return NextResponse.json({ error: e.message }, { status: e.status });
@@ -42,6 +65,16 @@ export async function POST(req: NextRequest) {
     // 内部エラー詳細はクライアントに返さない（情報漏えい対策）。詳細はサーバログのみ。
     const detail = e instanceof Error ? e.message : String(e);
     console.error("[generate] error:", detail);
+    // AI会社側の利用枠不足は職員が直せない事象なので、原因が分かる言葉で返す（2026-09-09 実機で発生）
+    if (/credit balance/i.test(detail)) {
+      return NextResponse.json(
+        {
+          error:
+            "AI会社（Anthropic）の利用枠が不足しています。管理者に「Plans & Billing で残高の追加」を依頼してください。",
+        },
+        { status: 402 },
+      );
+    }
     return NextResponse.json(
       { error: "生成に失敗しました。しばらくして再度お試しください。" },
       { status: 500 },

@@ -1,11 +1,15 @@
 "use client";
 
 import { type ComponentType, useState } from "react";
+import AppointmentsPanel from "@/components/drafts/AppointmentsPanel";
 import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
+import AssessmentUpdatesPanel from "@/components/drafts/AssessmentUpdatesPanel";
 import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import ItemsToConfirm from "@/components/drafts/ItemsToConfirm";
+import KaipokeSheetView from "@/components/drafts/KaipokeSheetView";
 import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
 import MonitoringDraftView from "@/components/drafts/MonitoringDraftView";
+import PreSendPreview, { type PreviewData } from "@/components/drafts/PreSendPreview";
 import SupportLogDraftView from "@/components/drafts/SupportLogDraftView";
 import {
   IconAlert,
@@ -33,6 +37,8 @@ import {
   monitoringToText,
   supportLogToText,
 } from "@/lib/draftText";
+import type { KaipokeAssessmentSheet } from "@/lib/kaipoke/assessmentLayout";
+import { type NameAlias, restoreNamesDeep } from "@/lib/privacy/pseudonymize";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
@@ -123,6 +129,121 @@ export default function CreatePage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GeneratedResult | null>(null);
   const [copied, setCopied] = useState(false);
+  /** 送る前に見る画面（第2段）。null なら入力画面。 */
+  const [preview, setPreview] = useState<PreviewData | null>(null);
+  /** フル版表示（二枚方式）: 記号→実名の対応表は初回の切替時にだけ取り寄せる */
+  const [showRealNames, setShowRealNames] = useState(false);
+  const [aliases, setAliases] = useState<NameAlias[] | null>(null);
+  const [aliasError, setAliasError] = useState<string | null>(null);
+
+  const toggleRealNames = async () => {
+    if (showRealNames) {
+      setShowRealNames(false);
+      return;
+    }
+    if (aliases === null) {
+      try {
+        const resp = await fetch("/api/clients/aliases");
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
+        setAliases(data as NameAlias[]);
+        setAliasError(null);
+      } catch (e: unknown) {
+        setAliasError(e instanceof Error ? e.message : "対応表を読み込めませんでした");
+        return;
+      }
+    }
+    setShowRealNames(true);
+  };
+
+  /** 第3段: 録音ファイル→文字（外部サービス）。結果は支援メモに足し、通常の「送る前に見る」へ乗せる */
+  const [transcribing, setTranscribing] = useState(false);
+  const transcribeFile = async (file: File) => {
+    setTranscribing(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const resp = await fetch("/api/transcribe", { method: "POST", body: form });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
+      const text = String(data.text ?? "").trim();
+      setSupportNotes((prev) =>
+        prev.trim() ? `${prev.trim()}\n\n【録音の文字起こし】\n${text}` : text,
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "文字起こしに失敗しました");
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
+  /** カイポケ転記用シート（アセスメントの下書きを10ページの欄に組み替えたもの） */
+  const [kaipokeSheet, setKaipokeSheet] = useState<KaipokeAssessmentSheet | null>(null);
+  const [sheetLoading, setSheetLoading] = useState(false);
+  const makeKaipokeSheet = async () => {
+    if (!result || result.type !== "assessment") return;
+    setSheetLoading(true);
+    setError(null);
+    try {
+      const resp = await fetch("/api/kaipoke/assessment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft: result.draft }), // 記号版を渡す（実名は送らない）
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
+      setKaipokeSheet(data as KaipokeAssessmentSheet);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "カイポケ用の整形に失敗しました");
+    } finally {
+      setSheetLoading(false);
+    }
+  };
+
+  /** 画面とコピーに使う版。保存する帳票は記号のまま（restoreNamesDeep は表示専用） */
+  const shown: GeneratedResult | null =
+    result && showRealNames && aliases
+      ? ({ ...result, draft: restoreNamesDeep(result.draft, aliases) } as GeneratedResult)
+      : result;
+
+  /** 帳票種別に応じた送信本文（/api/preview と /api/generate で同じものを使う） */
+  const buildPayload = (): Record<string, string> => {
+    const payload: Record<string, string> = { documentType: docType, clientInfo };
+    if (docType === "monitoring") {
+      payload.previousPlanSummary = previousPlanSummary;
+      payload.monitoringNotes = monitoringNotes;
+    } else if (docType === "meetingSummary") {
+      payload.meetingNotes = meetingNotes;
+    } else if (docType === "supportLog") {
+      payload.supportNotes = supportNotes;
+    } else {
+      payload.assessmentNotes = assessmentNotes;
+    }
+    return payload;
+  };
+
+  /** 職員が確認したあとにAIへ送り、下書きを作る（第2段の「この内容で送る」）。 */
+  const sendToAi = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload()),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
+      setResult({ type: docType, draft: data } as GeneratedResult);
+      setPreview(null);
+      setKaipokeSheet(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "不明なエラーが発生しました");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const switchDocType = (t: DocType) => {
     setDocType(t);
@@ -160,30 +281,19 @@ export default function CreatePage() {
       return;
     }
 
+    // 第2段（送る前に見る）: まず黒塗り後の文章を取り寄せて画面に出す。AIへはまだ送らない。
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const payload: Record<string, string> = { documentType: docType, clientInfo };
-      if (docType === "monitoring") {
-        payload.previousPlanSummary = previousPlanSummary;
-        payload.monitoringNotes = monitoringNotes;
-      } else if (docType === "meetingSummary") {
-        payload.meetingNotes = meetingNotes;
-      } else if (docType === "supportLog") {
-        payload.supportNotes = supportNotes;
-      } else {
-        payload.assessmentNotes = assessmentNotes;
-      }
-
-      const resp = await fetch("/api/generate", {
+      const resp = await fetch("/api/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(buildPayload()),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
-      setResult({ type: docType, draft: data } as GeneratedResult);
+      setPreview(data as PreviewData);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "不明なエラーが発生しました");
     } finally {
@@ -192,8 +302,8 @@ export default function CreatePage() {
   };
 
   const copyDraft = async () => {
-    if (!result) return;
-    await navigator.clipboard.writeText(resultToText(result));
+    if (!shown) return;
+    await navigator.clipboard.writeText(resultToText(shown));
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -232,7 +342,24 @@ export default function CreatePage() {
         </div>
       </Card>
 
-      {!result ? (
+      {preview && !result ? (
+        <div className="space-y-4">
+          <PreSendPreview
+            data={preview}
+            loading={loading}
+            onBack={() => setPreview(null)}
+            onConfirm={sendToAi}
+            primaryClass={btnPrimary}
+            secondaryClass={btnSecondary}
+          />
+          {error && (
+            <div className="flex items-start gap-2.5 rounded-[12px] border border-[var(--clay)] bg-white p-4">
+              <IconAlert size={16} className="mt-0.5 shrink-0 text-[var(--clay)]" />
+              <p className="text-sm text-[var(--clay)]">{error}</p>
+            </div>
+          )}
+        </div>
+      ) : !result ? (
         <div className="animate-fadeIn space-y-4">
           <p className="-mt-2 text-xs text-[var(--faint)]">{DOC_META[docType].description}</p>
 
@@ -292,9 +419,33 @@ export default function CreatePage() {
                 value={supportNotes}
                 onChange={(e) => setSupportNotes(e.target.value)}
                 rows={10}
-                placeholder="日付・相手・やり取りの内容などの殴り書きメモを貼り付けてください。複数日の対応が混ざっていてもOK（自動で分割します）。"
+                placeholder="電話なら SecondBrain の文字起こし「全文」を貼り付けてください（要約ではなく全文）。手書きメモや複数日の対応が混ざっていてもOK（自動で分割します）。"
                 className={`${textareaClass} resize-y`}
               />
+              {/* 第3段: 電話の録音を文字にしてメモへ足す（音声は保存しない・文字はこのあと黒塗りを通る） */}
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+                <label
+                  htmlFor="callAudio"
+                  className={`${btnSecondary} cursor-pointer ${transcribing ? "pointer-events-none opacity-60" : ""}`}
+                >
+                  {transcribing ? "文字にしています…（1〜2分）" : "録音ファイルから文字にする"}
+                </label>
+                <input
+                  id="callAudio"
+                  type="file"
+                  accept=".mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm,audio/*"
+                  className="hidden"
+                  disabled={transcribing}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) transcribeFile(f);
+                    e.target.value = "";
+                  }}
+                />
+                <span>
+                  25MBまで。音声は保存せず、文字にしたあと通常の「送る前に確認」を通ります。
+                </span>
+              </div>
             </div>
           ) : docType === "meetingSummary" ? (
             <div>
@@ -344,10 +495,10 @@ export default function CreatePage() {
             {loading ? (
               <>
                 <IconLoader size={16} className="animate-spin" />
-                AIが作成中です…（30秒〜1分ほど）
+                送る文章を確認中…
               </>
             ) : (
-              `${DOC_META[docType].label}の下書きを生成する`
+              `${DOC_META[docType].label}の下書きを生成する（送る前に確認）`
             )}
           </button>
         </div>
@@ -361,13 +512,72 @@ export default function CreatePage() {
             </p>
           </div>
 
-          {result.type === "carePlan" && <CarePlanDraftView draft={result.draft} />}
-          {result.type === "assessment" && <AssessmentDraftView draft={result.draft} />}
-          {result.type === "monitoring" && <MonitoringDraftView draft={result.draft} />}
-          {result.type === "meetingSummary" && <MeetingSummaryDraftView draft={result.draft} />}
-          {result.type === "supportLog" && <SupportLogDraftView draft={result.draft} />}
+          {/* 二枚方式: 記号（A様）のまま見るか、手元で実名に戻して見るか */}
+          <div className="flex items-center justify-between rounded-[12px] border border-[var(--paper)] bg-white px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">
+                {showRealNames ? "実名で表示しています" : "記号（A様）で表示しています"}
+              </p>
+              <p className="text-xs text-[var(--muted)]">
+                実名は画面とコピーにだけ使い、AIには送っていません。
+              </p>
+              {aliasError && <p className="mt-1 text-xs text-[var(--clay)]">{aliasError}</p>}
+            </div>
+            <button type="button" onClick={toggleRealNames} className={btnSecondary}>
+              {showRealNames ? "記号で表示" : "実名で表示"}
+            </button>
+          </div>
 
-          <ItemsToConfirm items={result.draft.itemsToConfirm} />
+          {shown?.type === "carePlan" && <CarePlanDraftView draft={shown.draft} />}
+          {shown?.type === "assessment" && <AssessmentDraftView draft={shown.draft} />}
+          {/* カイポケ転記用: 10ページの欄に合わせた文章（コピー貼り付け／拡張でページ単位の流し込み） */}
+          {result?.type === "assessment" && (
+            <div className="rounded-[12px] border border-[var(--paper)] bg-white p-4">
+              {kaipokeSheet ? (
+                <KaipokeSheetView
+                  sheet={kaipokeSheet}
+                  primaryClass={btnPrimary}
+                  secondaryClass={btnSecondary}
+                />
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">カイポケに写すときは</p>
+                    <p className="text-xs text-[var(--muted)]">
+                      10ページの欄の順番・欄名・文字数に合わせた文章に組み替えます（欄ごとにコピーできます）。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={makeKaipokeSheet}
+                    disabled={sheetLoading}
+                    className={btnSecondary}
+                  >
+                    {sheetLoading ? "組み替え中…（30秒〜1分）" : "カイポケの欄に合わせる"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {shown?.type === "monitoring" && <MonitoringDraftView draft={shown.draft} />}
+          {shown?.type === "meetingSummary" && <MeetingSummaryDraftView draft={shown.draft} />}
+          {shown?.type === "supportLog" && <SupportLogDraftView draft={shown.draft} />}
+          {/* 第4段: 予定は記号版（result）から作る。実名で表示中でもカレンダーへ実名は渡さない */}
+          {result?.type === "supportLog" && (
+            <AppointmentsPanel
+              appointments={result.draft.appointments ?? []}
+              secondaryClass={btnSecondary}
+            />
+          )}
+          {/* 第5段: アセスメント欄への追記案（表示・コピーのみ。書き込みは人／拡張の追記モード） */}
+          {shown?.type === "supportLog" && (
+            <AssessmentUpdatesPanel
+              updates={shown.draft.assessmentUpdates ?? []}
+              secondaryClass={btnSecondary}
+            />
+          )}
+
+          {shown && <ItemsToConfirm items={shown.draft.itemsToConfirm} />}
 
           {/* Actions */}
           <div className="flex gap-2.5">

@@ -7,6 +7,7 @@ import FileUploader from "@/components/FileUploader";
 import LoadingProgress from "@/components/LoadingProgress";
 import { IconAlert } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/primitives";
+import { safeExtension } from "@/lib/rescue/sourceDocs";
 import type { EvaluationResult } from "@/types/evaluation";
 
 const AI_STEPS = [
@@ -26,7 +27,8 @@ async function uploadPdf(
 ): Promise<{ blobUrl?: string; pdf?: string }> {
   onProgress(5, "PDFをアップロード中...");
   try {
-    const blob = await upload(file.name, file, {
+    // 一時保管先の URL に元ファイル名（実名入りのことがある）を出さない: 拡張子だけの名前で上げる（CI 審査 2026-09-12）
+    const blob = await upload(`evaluate/${Date.now()}.${safeExtension(file.name)}`, file, {
       access: "public",
       handleUploadUrl: "/api/blob-upload",
     });

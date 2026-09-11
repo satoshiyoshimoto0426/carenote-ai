@@ -172,7 +172,12 @@
       setMessage("JSONの形式が正しくありません。", "error");
       return;
     }
-    const documentType = $("doctype").value;
+    // JSON 自身が documentType を持っていればそれを優先（CareNote「拡張用JSONをコピー」はカイポケ転記シート）
+    const documentType =
+      typeof parsed?.documentType === "string" ? parsed.documentType : $("doctype").value;
+    if ([...$("doctype").options].some((o) => o.value === documentType)) {
+      $("doctype").value = documentType;
+    }
     current = { documentType, draft: parsed };
     saveDraft();
     renderResult();
@@ -185,9 +190,41 @@
     return (items || []).map((s, i) => `${i + 1}. ${s}`).join("\n");
   }
 
+  /** カイポケ転記シートの何枚目にどんな欄があるかの表示名（adapters/kaipoke.js と対応） */
+  const KAIPOKE_PAGE_TITLES = {
+    1: "フェイスシート",
+    2: "家族情報・サービス利用",
+    3: "サービス利用・住居",
+    4: "健康状態",
+    5: "基本（身体機能・起居）動作",
+    6: "生活機能（食事・排泄）",
+    7: "認知機能・精神行動障害",
+    8: "社会生活力",
+    9: "医療・健康関係",
+    10: "全体のまとめ",
+  };
+
   function toSections(documentType, d) {
     if (!d) return [];
     switch (documentType) {
+      case "kaipokeAssessment": {
+        const fields = Array.isArray(d.fields) ? d.fields : [];
+        const sections = [];
+        for (let page = 1; page <= 10; page++) {
+          const rows = fields.filter((f) => f.page === page && String(f.text ?? "").trim());
+          if (rows.length === 0) continue;
+          sections.push({
+            label: `${page}枚目：${KAIPOKE_PAGE_TITLES[page] || ""}`,
+            text: rows
+              .map(
+                (f) =>
+                  `【${f.label || f.formName}】${f.isInferred ? "【推測を含む】" : ""}\n${f.text}`,
+              )
+              .join("\n\n"),
+          });
+        }
+        return sections;
+      }
       case "assessment":
         return [
           { label: "今回のアセスメントの理由", text: d.assessmentReason },
@@ -370,11 +407,18 @@
     $("result").hidden = false;
 
     // 流し込みカードは対応帳票のときだけ表示（supportLog はエントリ単位ボタンで対応）
-    const injectable = Boolean(INJECT_HINTS[documentType]) || documentType === "supportLog";
+    const injectable =
+      Boolean(INJECT_HINTS[documentType]) ||
+      documentType === "supportLog" ||
+      documentType === "kaipokeAssessment";
     $("inject-card").hidden = !injectable;
     if (injectable) {
       renderEntryList();
+      renderAppendList();
+      renderPlan2();
       refreshTabStatus();
+    } else {
+      $("plan2-block").hidden = true;
     }
   }
 
@@ -401,6 +445,10 @@
     for (const b of $("entry-list").querySelectorAll("button")) {
       b.disabled = disabled;
     }
+    for (const b of $("append-list").querySelectorAll("button")) {
+      b.disabled = disabled;
+    }
+    $("plan2-fill").disabled = disabled;
   }
 
   async function refreshTabStatus() {
@@ -414,7 +462,11 @@
         return;
       }
       const res = await chrome.tabs.sendMessage(tab.id, { type: "CARENOTE_PING" });
-      if (res?.ok && res.adapterReady) {
+      if (res?.ok && res.adapterReady && res.reloginRequired) {
+        badge.textContent = "再ログインが必要";
+        badge.className = "badge off";
+        setInjectDisabled(true);
+      } else if (res?.ok && res.adapterReady) {
         badge.textContent = "カイポケ接続OK";
         badge.className = "badge ok";
         setInjectDisabled(false);
@@ -456,9 +508,32 @@
   function renderEntryList() {
     const wrap = $("entry-list");
     const isSupportLog = current.documentType === "supportLog";
-    wrap.hidden = !isSupportLog;
-    $("inject").hidden = isSupportLog;
+    const isKaipokeSheet = current.documentType === "kaipokeAssessment";
+    wrap.hidden = !(isSupportLog || isKaipokeSheet);
+    $("inject").hidden = isSupportLog || isKaipokeSheet;
     wrap.innerHTML = "";
+
+    if (isKaipokeSheet) {
+      // カイポケ転記シート: 開いているページ分だけ流し込む（同名の欄が別ページにあるため）
+      const guide = document.createElement("p");
+      guide.className = "hint";
+      guide.textContent =
+        "カイポケでその枚目を開いてから押してください。すでに文章が入っている欄には書きません（消さない）。登録は必ずご自身で。";
+      wrap.append(guide);
+      const fields = Array.isArray(current.draft?.fields) ? current.draft.fields : [];
+      for (let page = 1; page <= 10; page++) {
+        const n = fields.filter((f) => f.page === page && String(f.text ?? "").trim()).length;
+        if (n === 0) continue;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn entry-btn";
+        btn.disabled = true;
+        btn.textContent = `${page}枚目を流し込む: ${KAIPOKE_PAGE_TITLES[page] || ""}（${n}欄）`;
+        btn.addEventListener("click", () => onInject(undefined, { page }));
+        wrap.append(btn);
+      }
+      return;
+    }
     if (!isSupportLog) return;
 
     const guide = document.createElement("p");
@@ -488,12 +563,277 @@
     });
   }
 
+  // ---- 第2表: 6階層を1手順ずつ（adapters/kaipoke.js buildPlan2Steps / fillPlan2Step） ----
+
+  const PLAN2_KEY = "carenote:plan2";
+  let plan2 = { steps: [], index: 0 };
+
+  async function loadPlan2() {
+    try {
+      const saved = (await chrome.storage.local.get(PLAN2_KEY))[PLAN2_KEY];
+      if (saved && Array.isArray(saved.steps)) plan2 = saved;
+    } catch {
+      // 保存が無ければ最初から
+    }
+  }
+  function savePlan2() {
+    chrome.storage.local.set({ [PLAN2_KEY]: plan2 }).catch(() => {});
+  }
+
+  /** carePlan の下書きから手順列を作り直す（ニーズが無ければ非表示） */
+  function renderPlan2() {
+    const block = $("plan2-block");
+    const isCarePlan = current.documentType === "carePlan";
+    const needs = isCarePlan && Array.isArray(current.draft?.needs) ? current.draft.needs : [];
+    block.hidden = needs.length === 0;
+    if (needs.length === 0) return;
+    // 下書きが変わっていれば手順を作り直す（ニーズ数・サービス数で判定）
+    const rebuilt = buildStepsFromDraft(current.draft);
+    if (plan2.steps.length !== rebuilt.length || plan2.index >= rebuilt.length) {
+      plan2 = { steps: rebuilt, index: 0 };
+      savePlan2();
+    }
+    renderPlan2Step();
+  }
+
+  /** パネル側は adapter を持たないので、同じ規則で手順列を作る（表示用。埋める内容は content 側の adapter が判断） */
+  function buildStepsFromDraft(draft) {
+    const KINDS = {
+      need: ["ニーズ", "一覧の最下段、ニーズ列の「+項目を追加」を押す"],
+      longTerm: ["長期目標", "そのニーズ行の長期目標列の「+項目を追加」を押す"],
+      shortTerm: ["短期目標", "その長期目標行の短期目標列の「+項目を追加」を押す"],
+      serviceContent: ["サービス内容", "その短期目標行のサービス内容列の「+項目を追加」を押す"],
+      serviceKind: ["サービス種別", "そのサービス内容行の種別列の「+項目を追加」を押す"],
+      provider: ["サービス事業所・頻度・期間", "その種別行の事業所列の「+項目を追加」を押す"],
+    };
+    const mk = (kind, extra) => ({ kind, label: KINDS[kind][0], hint: KINDS[kind][1], ...extra });
+    const steps = [];
+    (draft?.needs || []).forEach((n, i) => {
+      steps.push(mk("need", { needIndex: i, serviceIndex: null, need: n, text: n.need || "" }));
+      steps.push(
+        mk("longTerm", {
+          needIndex: i,
+          serviceIndex: null,
+          need: n,
+          text: n.longTermGoal || "",
+          period: n.longTermPeriod || "",
+        }),
+      );
+      steps.push(
+        mk("shortTerm", {
+          needIndex: i,
+          serviceIndex: null,
+          need: n,
+          text: n.shortTermGoal || "",
+          period: n.shortTermPeriod || "",
+        }),
+      );
+      (n.services || []).forEach((s, j) => {
+        steps.push(
+          mk("serviceContent", {
+            needIndex: i,
+            serviceIndex: j,
+            service: s,
+            text: s.content || "",
+          }),
+        );
+        steps.push(
+          mk("serviceKind", {
+            needIndex: i,
+            serviceIndex: j,
+            service: s,
+            text: s.serviceType || "",
+          }),
+        );
+        steps.push(
+          mk("provider", {
+            needIndex: i,
+            serviceIndex: j,
+            service: s,
+            text: `${s.provider || ""}／${s.frequency || ""}／${s.period || ""}`,
+          }),
+        );
+      });
+    });
+    return steps;
+  }
+
+  function renderPlan2Step() {
+    const step = plan2.steps[plan2.index];
+    $("plan2-progress").textContent = step
+      ? `手順 ${plan2.index + 1} / ${plan2.steps.length}（ニーズ${step.needIndex + 1}${step.serviceIndex !== null ? ` サービス${step.serviceIndex + 1}` : ""}）`
+      : "すべての手順が終わりました。一覧下部の「登録する」で第2表全体を登録してください。";
+    $("plan2-step").textContent = step
+      ? `【${step.label}】${step.hint}\n\n入れる内容: ${step.text}`
+      : "";
+    $("plan2-prev").disabled = plan2.index === 0;
+    $("plan2-next").disabled = !step;
+    $("plan2-report").innerHTML = "";
+  }
+
+  async function onPlan2Fill() {
+    const step = plan2.steps[plan2.index];
+    if (!step) return;
+    setInjectDisabled(true);
+    try {
+      const tab = await getActiveTab();
+      const res = await chrome.tabs.sendMessage(tab.id, { type: "CARENOTE_PLAN2_FILL", step });
+      const wrap = $("plan2-report");
+      wrap.innerHTML = "";
+      if (!res?.ok) {
+        wrap.textContent = res?.error || "流し込みに失敗しました。";
+        return;
+      }
+      const r = res.report;
+      const line = document.createElement("div");
+      line.className = `report-item ${r.status === "filled" ? "filled" : "caution"}`;
+      line.textContent =
+        r.status === "filled"
+          ? "入力しました。内容を確かめて「登録する」を押し、一覧に戻ったら「次へ」。"
+          : r.status === "screen_mismatch"
+            ? "画面が手順と違います。"
+            : "欄が見つかりませんでした。";
+      wrap.append(line);
+      for (const n of r.notes || []) {
+        const d = document.createElement("div");
+        d.className = "report-item caution";
+        d.textContent = n;
+        wrap.append(d);
+      }
+    } catch {
+      $("plan2-report").textContent =
+        "カイポケ画面と通信できませんでした。追加画面を開いて、ページを再読込してください。";
+    } finally {
+      refreshTabStatus();
+    }
+  }
+
+  // ---- 第5段: アセスメント欄への追記（前後を見る → 退避して追記 → 元に戻す） ----
+
+  const APPEND_FIELD_LABELS = {
+    mainComplaints: "主訴・意向（P1 本人欄）",
+    lifeHistory: "生活歴・経過（P1）",
+    overview: "全体のまとめ（P10）",
+  };
+
+  /**
+   * supportLog の下書きに assessmentUpdates（状態像の変化の追記案）があれば、追記ボタンを出す。
+   * 追記は inject（上書き）と別経路: 必ず「前後を見る」を経て「この欄に追記する」を押す。
+   */
+  function renderAppendList() {
+    const block = $("append-block");
+    const list = $("append-list");
+    const updates =
+      current.documentType === "supportLog" && Array.isArray(current.draft?.assessmentUpdates)
+        ? current.draft.assessmentUpdates
+        : [];
+    block.hidden = updates.length === 0;
+    list.innerHTML = "";
+    $("append-report").innerHTML = "";
+    updates.forEach((u, i) => {
+      const item = document.createElement("div");
+      item.className = "append-item";
+
+      const head = document.createElement("div");
+      head.className = "hint";
+      const conf = u.confidence === "要確認" ? "（推測を含む・要確認）" : "";
+      head.textContent = `追記${i + 1}: ${APPEND_FIELD_LABELS[u.field] || u.field}${conf}`;
+      item.append(head);
+
+      const text = document.createElement("div");
+      text.className = "append-text";
+      text.textContent = String(u.text ?? "");
+      item.append(text);
+
+      const row = document.createElement("div");
+      row.className = "append-actions";
+      const previewBtn = document.createElement("button");
+      previewBtn.type = "button";
+      previewBtn.className = "btn";
+      previewBtn.disabled = true;
+      previewBtn.textContent = "前後を見る";
+      previewBtn.addEventListener("click", () => onAppend("CARENOTE_APPEND_PREVIEW", u, i));
+      const applyBtn = document.createElement("button");
+      applyBtn.type = "button";
+      applyBtn.className = "btn btn-accent";
+      applyBtn.disabled = true;
+      applyBtn.textContent = "この欄に追記する";
+      applyBtn.addEventListener("click", () => onAppend("CARENOTE_APPEND_APPLY", u, i));
+      const undoBtn = document.createElement("button");
+      undoBtn.type = "button";
+      undoBtn.className = "btn";
+      undoBtn.disabled = true;
+      undoBtn.textContent = "元に戻す";
+      undoBtn.addEventListener("click", () => onAppend("CARENOTE_APPEND_UNDO", u, i));
+      row.append(previewBtn, applyBtn, undoBtn);
+      item.append(row);
+
+      list.append(item);
+    });
+  }
+
+  /** 追記の前後を1枚の報告に整形する（本文はパネル内にだけ出す。外へは送らない） */
+  function renderAppendReport(kind, report) {
+    const wrap = $("append-report");
+    wrap.innerHTML = "";
+    if (!report) return;
+    const line = document.createElement("div");
+    const status = report.status;
+    line.className = `report-item ${status === "filled" || status === "ok" || status === "restored" ? "filled" : "caution"}`;
+    const label = report.label ? `${report.label}：` : "";
+    const msg =
+      status === "ok"
+        ? "追記後の文章はこうなります（まだ書いていません）。"
+        : status === "filled"
+          ? "追記しました。内容を確認のうえ、カイポケで登録してください（このページを閉じたり再読込するまでの間なら「元に戻す」で戻せます）。"
+          : status === "restored"
+            ? "元の文章に戻しました。"
+            : status === "duplicate"
+              ? "同じ文が既に入っています（追記しません）。"
+              : report.note || "該当欄が見つかりませんでした。";
+    line.textContent = `${label}${msg}`;
+    wrap.append(line);
+
+    if (kind !== "CARENOTE_APPEND_UNDO" && (status === "ok" || status === "filled")) {
+      const before = document.createElement("pre");
+      before.className = "append-diff before";
+      before.textContent = `【今の文章】\n${report.before || "（空）"}`;
+      const after = document.createElement("pre");
+      after.className = "append-diff after";
+      after.textContent = `【追記後】\n${report.after || ""}`;
+      wrap.append(before, after);
+    }
+  }
+
+  async function onAppend(type, update, index) {
+    setInjectDisabled(true);
+    try {
+      const tab = await getActiveTab();
+      const res = await chrome.tabs.sendMessage(tab.id, {
+        type,
+        documentType: "assessment",
+        fieldKey: update.field,
+        addition: String(update.text ?? ""),
+      });
+      if (res?.ok) {
+        renderAppendReport(type, res.report);
+      } else {
+        $("append-report").textContent = res?.error || `追記${index + 1}の処理に失敗しました。`;
+      }
+    } catch {
+      $("append-report").textContent =
+        "カイポケ画面と通信できませんでした。アセスメントの該当ページを開いて、ページを再読込してください。";
+    } finally {
+      refreshTabStatus();
+    }
+  }
+
   /**
    * カイポケ画面へ流し込む。supportLog はカイポケ側が「1記録＝1フォーム」のため、
    * entryIndex（entries の何件目か）を options で渡し、そのエントリだけを書く。
    * @param {number} [entryIndex] - supportLog のエントリ別ボタンからのみ渡される
    */
-  async function onInject(entryIndex) {
+  async function onInject(entryIndex, extraOptions) {
     setInjectDisabled(true);
     try {
       const tab = await getActiveTab();
@@ -504,6 +844,9 @@
       };
       if (Number.isInteger(entryIndex)) {
         message.options = { entryIndex };
+      }
+      if (extraOptions && typeof extraOptions === "object") {
+        message.options = { ...(message.options || {}), ...extraOptions };
       }
       const res = await chrome.tabs.sendMessage(tab.id, message);
       if (res?.ok) {
@@ -544,8 +887,24 @@
     $("clear").addEventListener("click", onClear);
     $("inject").addEventListener("click", () => onInject());
     $("open-options").addEventListener("click", () => chrome.runtime.openOptionsPage());
+    $("plan2-fill").addEventListener("click", onPlan2Fill);
+    $("plan2-next").addEventListener("click", () => {
+      if (plan2.index < plan2.steps.length) plan2.index += 1;
+      savePlan2();
+      renderPlan2Step();
+    });
+    $("plan2-prev").addEventListener("click", () => {
+      if (plan2.index > 0) plan2.index -= 1;
+      savePlan2();
+      renderPlan2Step();
+    });
+    $("plan2-reset").addEventListener("click", () => {
+      plan2 = { steps: buildStepsFromDraft(current.draft), index: 0 };
+      savePlan2();
+      renderPlan2Step();
+    });
 
-    loadDraft().then(renderResult);
+    loadPlan2().then(loadDraft).then(renderResult);
   }
 
   document.addEventListener("DOMContentLoaded", init);

@@ -67,15 +67,28 @@
         label: "主訴・意向（P1 本人欄）",
         names: ["form:consultationSubjectPersonHimself"],
         maxRows: 10,
+        maxColsFullWidth: 26,
         confidence: "caution",
-        note: "本人欄に全文を入力します。家族の主訴は手作業で家族欄へ分けてください。",
+        note: "本人欄に全文を入力します。家族の主訴は手作業で家族欄（4行×26字）へ分けてください。",
       },
       {
         key: "lifeHistory",
         label: "生活歴・経過（P1）",
         names: ["form:progressSubject"],
         maxRows: 16,
+        maxColsFullWidth: 26,
         confidence: "clean",
+      },
+      {
+        // docs/KAIPOKE-TRANSCRIPTION-SPEC.md §1 2枚目。CareNote の currentServices は公的サービスも含むが、
+        // カイポケ側の公的サービスはチェック欄（homeuse01〜）なので、文章はインフォーマル支援欄に入れて人が振り分ける
+        key: "currentServices",
+        label: "活用している支援内容（P2 インフォーマル欄）",
+        names: ["form:supportSubject"],
+        maxRows: 9,
+        maxColsFullWidth: 16,
+        confidence: "caution",
+        note: "公的サービスはP2のチェック欄（訪問介護・通所介護…）へ手作業で。文章はインフォーマル支援欄に入ります。",
       },
       {
         key: "overview",
@@ -254,7 +267,20 @@
         `1行が上限(全角${mapping.maxColsFullWidth}文字)を超えています（最長${maxLineWidth}相当）。`,
       );
     }
-    return { rows, maxLineWidth, overRows, overCols, warnings };
+    // サーバ側は「改行を含む総文字数」で検証する欄がある（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §5-2:
+    // 画面「2行×20字」の欄が42字でも40字でもNG・30字でOK）。行×字−行数 を安全上限にして警告する
+    let overTotal = false;
+    if (typeof mapping.maxRows === "number" && typeof mapping.maxColsFullWidth === "number") {
+      const total = String(value ?? "").length;
+      const safeTotal = mapping.maxRows * mapping.maxColsFullWidth - mapping.maxRows;
+      if (total > safeTotal) {
+        overTotal = true;
+        warnings.push(
+          `文字数がサーバ側の上限を超える可能性があります（${total}字・安全上限${safeTotal}字）。登録エラーになったら削ってください。`,
+        );
+      }
+    }
+    return { rows, maxLineWidth, overRows, overCols, overTotal, warnings };
   }
 
   /**
@@ -266,6 +292,17 @@
   function getValue(draft, key) {
     const v = draft ? draft[key] : undefined;
     return typeof v === "string" ? v : "";
+  }
+
+  /**
+   * 入力欄の「今の文章」を読む（追記モード・転記シートの「消さない」判定に使う）。
+   * ※ getValue(draft, key) は下書きから値を取る関数で、欄を読む関数ではない。
+   *    2026-09-11 に取り違えて「既存が常に空」と判定し、追記が上書きになる欠陥があった（コミット前に発見）。
+   * @param {{value?: unknown}} el
+   * @returns {string}
+   */
+  function readFieldValue(el) {
+    return typeof el?.value === "string" ? el.value : "";
   }
 
   // ---- 帳票別の値組み立て・日付解析（純粋関数・DOM非依存） ----
@@ -755,18 +792,82 @@
    * @param {string} value
    */
   function writeField(el, value) {
+    // カイポケで保存エラーになる文字（波ダッシュ・丸数字等）を先に置き換える（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §2）
+    const safe = normalizeForKaipoke(value);
     el.focus();
     const proto =
       el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const descriptor = Object.getOwnPropertyDescriptor(proto, "value");
     if (descriptor?.set) {
-      descriptor.set.call(el, value);
+      descriptor.set.call(el, safe);
     } else {
-      el.value = value;
+      el.value = safe;
     }
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
+    // 第2表の一部の欄は onkeyup で隠し欄に同期する（同 §3）。keyup も送らないと保存時に検証で落ちる
+    el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
     el.blur();
+  }
+
+  /**
+   * カイポケに保存できない／崩れる文字を置き換える純粋関数（テスト対象・docs/KAIPOKE-TRANSCRIPTION-SPEC.md §2）。
+   * - 波ダッシュ 〜(U+301C)・⁓・∼ → 全角チルダ ～(U+FF5E)：VAL_0206「利用できない文字」の実例
+   * - 丸数字 ①〜⑳・㉑〜㉟ → (1)〜(35)、ローマ数字 Ⅰ〜Ⅻ／ⅰ〜ⅻ → I〜XII／i〜xii：機種依存文字の予防
+   * - ㎡・㎝・㎏ 等の組文字 → m2・cm・kg
+   * - 3個以上続く空白 → 1個（第1表画面の注意「大量の空白はレイアウトが崩れる」）
+   * @param {unknown} value
+   * @returns {string}
+   */
+  function normalizeForKaipoke(value) {
+    let s = String(value ?? "");
+    s = s.replace(/[〜⁓∼]/g, "～");
+    s = s.replace(/[①-⑳]/g, (c) => `(${c.charCodeAt(0) - 0x2460 + 1})`);
+    s = s.replace(/[㉑-㉟]/g, (c) => `(${c.charCodeAt(0) - 0x3251 + 21})`);
+    const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+    s = s.replace(/[Ⅰ-Ⅻ]/g, (c) => ROMAN[c.charCodeAt(0) - 0x2160]);
+    s = s.replace(/[ⅰ-ⅻ]/g, (c) => ROMAN[c.charCodeAt(0) - 0x2170].toLowerCase());
+    s = s.replace(/㎡/g, "m2").replace(/㎝/g, "cm").replace(/㎏/g, "kg").replace(/㎖/g, "ml");
+    s = s.replace(/[ 　]{3,}/g, " ");
+    return s;
+  }
+
+  /**
+   * セッション切れの再ログイン画面が出ているか（同 §5-6）。
+   * 30分無操作で「再度ユーザー認証が必要です」のフォームが表示される。拡張はパスワードを扱わないので、
+   * 出ていたら書き込まず、職員に再ログインを頼む。
+   */
+  function isReloginRequired() {
+    const root = typeof document !== "undefined" ? document.body : null;
+    if (!root) return false;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      if (node.nodeValue?.includes("再度ユーザー認証が必要")) {
+        const el = node.parentElement;
+        if (el && el.offsetParent !== null) return true;
+      }
+      node = walker.nextNode();
+    }
+    return false;
+  }
+
+  /**
+   * カイポケ画面へ「書く」メッセージ種別の一覧（content.js の再ログイン検知ゲートが参照）。
+   * 種別を増やしたらここに足す。ゲートは isWriteMessage で判定するので、ここに無い種別は素通りする
+   * （独立審査 2026-09-11 D11: 第2表流し込みがゲートから漏れていた）。
+   */
+  const WRITE_MESSAGE_TYPES = Object.freeze([
+    "CARENOTE_INJECT",
+    "CARENOTE_APPEND_PREVIEW",
+    "CARENOTE_APPEND_APPLY",
+    "CARENOTE_APPEND_UNDO",
+    "CARENOTE_PLAN2_FILL",
+  ]);
+
+  /** @param {unknown} type */
+  function isWriteMessage(type) {
+    return typeof type === "string" && WRITE_MESSAGE_TYPES.includes(type);
   }
 
   /** 欄が見つからない＝開いている画面が違う可能性が高い時の共通メッセージ。 */
@@ -783,6 +884,10 @@
    * @returns {{filled:number, results:{label:string,status:string,note?:string,warnings?:string[]}[]}}
    */
   function inject(documentType, draft, options) {
+    // カイポケ転記用シート（CareNote「カイポケの欄に合わせる」の出力）: 名前→値のマップをページ単位で書く
+    if (documentType === "kaipokeAssessment") {
+      return injectKaipokeSheet(draft, options);
+    }
     const fields = selectInjectableFields(documentType, draft, options);
     const results = [];
     let filled = 0;
@@ -852,9 +957,443 @@
     return { filled, results };
   }
 
+  // ---- カイポケ転記用シート（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §1・§6） ----
+  //
+  // CareNote が「10ページ × 欄名 × 文章」の形で出したものを、職員が開いているページ分だけ書く。
+  // 同じフォーム名が別ページにもある（specialMentionMatterSubject 等）ため、必ず page を指定して呼ぶ。
+  // 上書きなので、既に文章が入っている欄には書かず caution で知らせる（消さない）。
+
+  /**
+   * 指定ページの欄だけを取り出す純粋関数（テスト対象）。空文字の欄は除く。
+   * @param {{fields?: {page:number, formName:string, text:string, isInferred?:boolean}[]}} sheet
+   * @param {number} page
+   */
+  function kaipokePageFields(sheet, page) {
+    const fields = Array.isArray(sheet?.fields) ? sheet.fields : [];
+    return fields.filter((f) => f && f.page === page && String(f.text ?? "").trim() !== "");
+  }
+
+  function injectKaipokeSheet(sheet, options) {
+    const page = Number(options?.page);
+    if (!Number.isInteger(page) || page < 1) {
+      return {
+        filled: 0,
+        results: [{ label: "ページ", status: "not_found", note: "何枚目かを指定してください。" }],
+      };
+    }
+    const results = [];
+    let filled = 0;
+    for (const f of kaipokePageFields(sheet, page)) {
+      const mapping = { key: f.formName, label: f.label || f.formName, names: [f.formName] };
+      const el = findField(mapping);
+      if (!el) {
+        results.push({ label: mapping.label, status: "not_found", note: NOT_FOUND_NOTE });
+        continue;
+      }
+      const existing = readFieldValue(el);
+      if (existing.trim() && existing.trim() !== normalizeForKaipoke(f.text).trim()) {
+        results.push({
+          label: mapping.label,
+          status: "caution",
+          note: "すでに文章が入っているため書きませんでした（消さない）。必要なら手で貼り替えてください。",
+        });
+        continue;
+      }
+      const measure = measureText(f.text, {
+        maxRows: f.maxRows,
+        maxColsFullWidth: f.maxCols,
+      });
+      writeField(el, f.text);
+      highlight(el, f.isInferred ? "caution" : "filled");
+      filled++;
+      const warnings = [...measure.warnings];
+      if (f.isInferred) warnings.push("推測を含む欄です。内容を確かめてください。");
+      results.push({
+        label: mapping.label,
+        status: f.isInferred ? "caution" : "filled",
+        warnings,
+      });
+    }
+    return { filled, results };
+  }
+
+  // ---- 第2表（居宅サービス計画書(2)）を1件ずつ流し込む（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §4） ----
+  //
+  // カイポケの第2表は「ニーズ→長期→短期→サービス内容→種別→事業所」の6階層で、1階層ごとに追加画面へ遷移する。
+  // 拡張は画面遷移も登録ボタンも押さない。職員が「+項目を追加」で追加画面を開き、パネルの「この画面に流し込む」で
+  // その画面の欄だけを埋め、職員が「登録する」を押して一覧に戻る──を1手順ずつ繰り返す（登録は常に人・SPEC F7）。
+
+  /** 手順の種類と、職員への案内文・追加画面の特徴（欄名） */
+  const PLAN2_KINDS = {
+    need: { label: "ニーズ", hint: "一覧の最下段、ニーズ列の「+項目を追加」を押す" },
+    longTerm: { label: "長期目標", hint: "そのニーズ行の長期目標列の「+項目を追加」を押す" },
+    shortTerm: { label: "短期目標", hint: "その長期目標行の短期目標列の「+項目を追加」を押す" },
+    serviceContent: {
+      label: "サービス内容",
+      hint: "その短期目標行のサービス内容列の「+項目を追加」を押す",
+    },
+    serviceKind: {
+      label: "サービス種別",
+      hint: "そのサービス内容行の種別列の「+項目を追加」を押す",
+    },
+    provider: {
+      label: "サービス事業所・頻度・期間",
+      hint: "その種別行の事業所列の「+項目を追加」を押す",
+    },
+  };
+
+  /**
+   * CarePlanDraft（needs[]）から手順の列を作る純粋関数（テスト対象）。
+   * @returns {{kind:string, label:string, hint:string, needIndex:number, serviceIndex:number|null, text:string, service?:object, need?:object}[]}
+   */
+  function buildPlan2Steps(draft) {
+    const needs = Array.isArray(draft?.needs) ? draft.needs : [];
+    const steps = [];
+    needs.forEach((n, i) => {
+      const base = { needIndex: i, serviceIndex: null, need: n };
+      steps.push({ kind: "need", ...PLAN2_KINDS.need, ...base, text: String(n.need ?? "") });
+      steps.push({
+        kind: "longTerm",
+        ...PLAN2_KINDS.longTerm,
+        ...base,
+        text: String(n.longTermGoal ?? ""),
+        period: String(n.longTermPeriod ?? ""),
+      });
+      steps.push({
+        kind: "shortTerm",
+        ...PLAN2_KINDS.shortTerm,
+        ...base,
+        text: String(n.shortTermGoal ?? ""),
+        period: String(n.shortTermPeriod ?? ""),
+      });
+      (Array.isArray(n.services) ? n.services : []).forEach((s, j) => {
+        const sb = { needIndex: i, serviceIndex: j, service: s };
+        steps.push({
+          kind: "serviceContent",
+          ...PLAN2_KINDS.serviceContent,
+          ...sb,
+          text: String(s.content ?? ""),
+        });
+        steps.push({
+          kind: "serviceKind",
+          ...PLAN2_KINDS.serviceKind,
+          ...sb,
+          text: String(s.serviceType ?? ""),
+        });
+        steps.push({
+          kind: "provider",
+          ...PLAN2_KINDS.provider,
+          ...sb,
+          text: `${s.provider ?? ""}／${s.frequency ?? ""}／${s.period ?? ""}`,
+        });
+      });
+    });
+    return steps;
+  }
+
+  /**
+   * 頻度の文章をカイポケの入力に直す純粋関数（テスト対象）。
+   * 01=「N（日/週/月）にM回」、02=定期（毎日/毎週/随時/必要時）、03=その他（自由記述）
+   */
+  function parseFrequency(text) {
+    const s = normalizeForKaipoke(String(text ?? "")).trim();
+    if (!s) return { mode: "03", text: "" };
+    const fixed = { 毎日: "01", 毎週: "02", 随時: "03", 必要時: "04" };
+    for (const [k, v] of Object.entries(fixed)) {
+      if (s === k || s === `${k}に` || s.startsWith(`${k}（`) || s.startsWith(`${k}(`)) {
+        return { mode: "02", fixed: v };
+      }
+    }
+    const m = /^(?:1)?([日週月])(?:に|あたり)?\s*(\d+)\s*回$/.exec(s.replace(/\s+/g, ""));
+    if (m) {
+      const unit = { 日: "01", 週: "02", 月: "03" }[m[1]];
+      return { mode: "01", unit, count: Number(m[2]) };
+    }
+    return { mode: "03", text: s };
+  }
+
+  /** 介護保険サービスらしい種別名か（それ以外は「任意サービス」＝本人・家族・医療機関など） */
+  const INSURANCE_KIND_WORDS = [
+    "訪問介護",
+    "訪問入浴",
+    "訪問看護",
+    "訪問リハ",
+    "居宅療養",
+    "通所介護",
+    "通所リハ",
+    "短期入所",
+    "特定施設",
+    "福祉用具",
+    "住宅改修",
+    "夜間対応",
+    "認知症対応",
+    "小規模多機能",
+    "定期巡回",
+    "看護小規模",
+    "居宅介護支援",
+    "介護予防",
+    "地域密着",
+  ];
+  /** 種別名 → 介護サービス(01)か任意サービス(02)か（純粋関数・テスト対象） */
+  function classifyServiceType(text) {
+    const s = String(text ?? "").trim();
+    const insurance = INSURANCE_KIND_WORDS.some((w) => s.includes(w));
+    return insurance ? { category: "01", kindText: s } : { category: "02", name: s || "その他" };
+  }
+
+  /**
+   * 今の画面がどの追加画面かを、存在する欄名と URL から判定する純粋関数（テスト対象）。
+   * @param {string[]} names - document 内の input/select/textarea の name 一覧
+   * @param {string} url
+   */
+  function plan2ScreenFromNames(names, url) {
+    const has = (n) => names.includes(n);
+    if (has("form:longTimePeriodMarkSubject")) return "longTerm";
+    if (has("form:shortTermMarkSubject")) return "shortTerm";
+    if (has("form:assistanceSubjectServiceSubject")) return "serviceContent";
+    if (
+      has("service_category") ||
+      has("form:serviceKindInternalId") ||
+      has("form:arbitraryServiceName")
+    )
+      return "serviceKind";
+    if (has("provider_category") || has("form:idCompanyDto") || has("form:othersPlantName"))
+      return "provider";
+    if (/MEM091704\.do/.test(url || "")) return "need";
+    if (/MEM09170[3579]\.do|MEM09172[135]\.do/.test(url || "")) return "list";
+    return "unknown";
+  }
+
+  function byName(name) {
+    return document.querySelector(`[name="${CSS.escape(name)}"]`);
+  }
+  function allNames() {
+    return [...document.querySelectorAll("input[name], select[name], textarea[name]")].map(
+      (el) => el.name,
+    );
+  }
+  /** ラジオを選ぶ（click で画面側の有効化処理も走らせる） */
+  function setRadio(name, value) {
+    const el = document.querySelector(
+      `input[type="radio"][name="${CSS.escape(name)}"][value="${CSS.escape(value)}"]`,
+    );
+    if (!el) return false;
+    el.click();
+    if (!el.checked) {
+      el.checked = true;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    return true;
+  }
+  /** セレクトを「表示文字に含まれる語」で選ぶ（値が不明でも選べる） */
+  function setSelectByText(el, text) {
+    const t = String(text ?? "").trim();
+    if (!el || !t) return false;
+    const opt = [...el.options].find((o) =>
+      o.textContent?.replace(/\s+/g, "").includes(t.replace(/\s+/g, "")),
+    );
+    if (!opt) return false;
+    el.value = opt.value;
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+
+  /**
+   * 第2表の追加画面1つ分を埋める。画面が手順と違えば書かずに知らせる。登録は押さない。
+   * @returns {{status:"filled"|"screen_mismatch"|"not_found"|"unknown", screen:string, expected:string, notes:string[]}}
+   */
+  function fillPlan2Step(step) {
+    const screen = plan2ScreenFromNames(allNames(), location.href);
+    const notes = [];
+    if (!step || !PLAN2_KINDS[step.kind])
+      return { status: "unknown", screen, expected: "", notes: ["手順が不正です。"] };
+    if (screen !== step.kind) {
+      return {
+        status: "screen_mismatch",
+        screen,
+        expected: step.kind,
+        notes: [
+          `今の画面は「${PLAN2_KINDS[screen]?.label ?? (screen === "list" ? "一覧" : "不明")}」です。${PLAN2_KINDS[step.kind].hint}。`,
+        ],
+      };
+    }
+    const write = (name, value, label) => {
+      const el = byName(name);
+      if (!el) {
+        notes.push(`${label}の欄が見つかりません（${name}）。`);
+        return false;
+      }
+      writeField(el, value);
+      highlight(el, "filled");
+      return true;
+    };
+
+    if (step.kind === "need") {
+      const ta = document.querySelector("textarea");
+      if (!ta)
+        return {
+          status: "not_found",
+          screen,
+          expected: step.kind,
+          notes: ["ニーズの欄が見つかりません。"],
+        };
+      writeField(ta, step.text);
+      highlight(ta, "filled");
+    } else if (step.kind === "longTerm") {
+      write("form:longTimePeriodMarkSubject", step.text, "長期目標");
+      if (step.period)
+        notes.push(
+          `期間「${step.period}」はセレクト（年月日）なので手で合わせてください（初期値は当月1日〜月末）。`,
+        );
+    } else if (step.kind === "shortTerm") {
+      write("form:shortTermMarkSubject", step.text, "短期目標");
+      if (step.period)
+        notes.push(`期間「${step.period}」はセレクト（年月日）なので手で合わせてください。`);
+    } else if (step.kind === "serviceContent") {
+      write("form:assistanceSubjectServiceSubject", step.text, "サービス内容");
+    } else if (step.kind === "serviceKind") {
+      const c = classifyServiceType(step.text);
+      if (!setRadio("service_category", c.category))
+        notes.push("種別のラジオ（介護／任意）が見つかりません。");
+      if (c.category === "01") {
+        const cb = document.querySelector('input[type="checkbox"]');
+        if (cb && !cb.checked) cb.click(); // ※1 保険給付対象（画面内唯一のチェックボックス）
+        const sel = byName("form:serviceKindInternalId");
+        if (!sel || !setSelectByText(sel, c.kindText)) {
+          notes.push(
+            `サービス種別「${c.kindText}」に合う選択肢が見つかりません。手で選んでください。`,
+          );
+        }
+      } else {
+        write("form:arbitraryServiceName", c.name, "任意サービス名");
+      }
+    } else if (step.kind === "provider") {
+      const s = step.service || {};
+      const provider = String(s.provider ?? "").trim();
+      const sel = byName("form:idCompanyDto");
+      let usedCompany = false;
+      if (sel && provider && setRadio("provider_category", "01")) {
+        usedCompany = setSelectByText(sel, provider);
+      }
+      if (!usedCompany) {
+        setRadio("provider_category", "02");
+        write("form:othersPlantName", provider || "要確認", "事業所名（その他）"); // writeField が keyup も送る＝隠し欄同期
+        if (provider)
+          notes.push(
+            `「${provider}」は取引先一覧に無かったため「その他」に入れました。取引先にあるなら手で選び直してください。`,
+          );
+      }
+      const f = parseFrequency(s.frequency);
+      if (!setRadio("HINDO_KBN", f.mode)) notes.push("頻度のラジオが見つかりません。");
+      if (f.mode === "01") {
+        setRadio("form:frequencyScheduleDivision", f.unit);
+        write("form:count", String(f.count), "回数");
+      } else if (f.mode === "02") {
+        setRadio("form:frequencyFixedTermDivision", f.fixed);
+      } else {
+        write("form:othersFrequencyName", f.text, "頻度（その他）");
+      }
+      write("form:periodSubject", String(s.period ?? ""), "期間");
+    }
+    return { status: "filled", screen, expected: step.kind, notes };
+  }
+
+  // ---- 追記モード（第5段: アセスメント欄の末尾に足す。既存の文章は消さない） ----
+  //
+  // なぜ inject と分けるか: inject は欄を「上書き」する。アセスメントは過去の記録が入っている欄に
+  // 「足す」動作で、失敗すると過去の記録が消える。そこで ①書く前に前後を見せる（previewAppend）
+  // ②書く時に元の文章を退避する（applyAppend）③元に戻せる（undoAppend）の3段にした。
+  // 保存（カイポケの登録ボタン）は従来どおり必ず人（SPEC F7）。
+
+  /**
+   * 既存の本文に追記段落を足した値を作る（純粋関数・テスト対象）。
+   * 既に同じ文が入っていれば null（二重追記を防ぐ）。既存が空なら追記文だけ。
+   * @param {string} existing
+   * @param {string} addition
+   * @returns {string|null}
+   */
+  function buildAppendedValue(existing, addition) {
+    const base = String(existing ?? "").replace(/\s+$/, "");
+    const add = String(addition ?? "").trim();
+    if (!add) return null;
+    if (base.includes(add)) return null;
+    return base ? `${base}\n${add}` : add;
+  }
+
+  /** 追記前の本文の退避先（画面を再読込すると消える。カイポケ側は登録するまで何も変わらない） */
+  const appendSnapshots = new Map();
+
+  function findAppendTarget(documentType, fieldKey) {
+    const mapping = (FIELD_MAPS[documentType] || []).find((m) => m.key === fieldKey);
+    if (!mapping) return { mapping: null, el: null };
+    return { mapping, el: findField(mapping) };
+  }
+
+  /**
+   * 追記の前後を返す（**書かない**）。パネルはこれを職員に見せてから applyAppend を呼ぶ。
+   * @returns {{status:"ok"|"not_found"|"duplicate"|"unknown_field", label?:string, before?:string, after?:string, note?:string}}
+   */
+  function previewAppend(documentType, fieldKey, addition) {
+    const { mapping, el } = findAppendTarget(documentType, fieldKey);
+    if (!mapping) return { status: "unknown_field" };
+    if (!el) return { status: "not_found", label: mapping.label, note: NOT_FOUND_NOTE };
+    const before = readFieldValue(el);
+    const after = buildAppendedValue(before, addition);
+    if (after === null) {
+      return {
+        status: "duplicate",
+        label: mapping.label,
+        before,
+        note: "同じ文が既に入っています。",
+      };
+    }
+    return { status: "ok", label: mapping.label, before, after };
+  }
+
+  /**
+   * 退避してから追記を書き込む。保存はしない。
+   * @returns {{status:"filled"|"not_found"|"duplicate"|"unknown_field", label?:string, before?:string, after?:string, note?:string}}
+   */
+  function applyAppend(documentType, fieldKey, addition) {
+    const p = previewAppend(documentType, fieldKey, addition);
+    if (p.status !== "ok") return p;
+    const { el } = findAppendTarget(documentType, fieldKey);
+    appendSnapshots.set(`${documentType}:${fieldKey}`, { before: p.before, at: Date.now() });
+    writeField(el, p.after);
+    highlight(el, "caution");
+    return { status: "filled", label: p.label, before: p.before, after: p.after };
+  }
+
+  /** 直前の追記を取り消し、退避した本文に戻す（登録前に限る）。 */
+  function undoAppend(documentType, fieldKey) {
+    const key = `${documentType}:${fieldKey}`;
+    const snap = appendSnapshots.get(key);
+    if (!snap) return { status: "none", note: "戻せる退避がありません。" };
+    const { mapping, el } = findAppendTarget(documentType, fieldKey);
+    if (!el) return { status: "not_found", label: mapping?.label, note: NOT_FOUND_NOTE };
+    writeField(el, snap.before);
+    appendSnapshots.delete(key);
+    return { status: "restored", label: mapping.label };
+  }
+
   return {
     FIELD_MAPS,
     INJECTABLE_TYPES,
+    WRITE_MESSAGE_TYPES,
+    isWriteMessage,
+    buildAppendedValue,
+    previewAppend,
+    applyAppend,
+    undoAppend,
+    normalizeForKaipoke,
+    isReloginRequired,
+    kaipokePageFields,
+    readFieldValue,
+    buildPlan2Steps,
+    parseFrequency,
+    classifyServiceType,
+    plan2ScreenFromNames,
+    fillPlan2Step,
     charWidth,
     lineFullWidth,
     measureText,

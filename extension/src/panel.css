@@ -323,3 +323,35 @@ body {
 .result-footer {
   justify-content: flex-end;
 }
+
+/* 第5段: アセスメント追記（前後の見比べ） */
+.append-item {
+  border-top: 1px solid var(--line, #e5e5e5);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+.append-text {
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 4px 0;
+}
+.append-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.append-diff {
+  white-space: pre-wrap;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin: 6px 0 0;
+}
+.append-diff.before {
+  background: #f4f2ed;
+}
+.append-diff.after {
+  background: #e9f1ee;
+}

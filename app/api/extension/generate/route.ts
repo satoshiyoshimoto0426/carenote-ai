@@ -7,6 +7,9 @@ import {
   resolveCorsOrigin,
 } from "@/lib/extensionAuth";
 import { GenerateRequestError, generateFromBody } from "@/lib/generation/dispatch";
+import { PiiLeakError } from "@/lib/privacy/leakCheck";
+import { maskRequestBody } from "@/lib/privacy/maskBody";
+import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
 
 // Opus + adaptive thinking は時間がかかるため余裕を持たせる
 export const maxDuration = 300;
@@ -18,6 +21,9 @@ export const maxDuration = 300;
  * レート制限＋監査ログでトークン漏洩時の被害（なりすまし生成・APIコスト暴走）を抑える。
  * ※ middleware.ts で /api/extension/(.*) を公開ルートにしている（Clerkの横取り回避）。
  * ※ このエンドポイントは利用者DBを読まない（返すのは入力メモからの生成結果のみ）。
+ * ※ 黒塗り（独立審査 2026-09-11 D5/D25）: 名簿は読めないが、型置換（電話・住所・生年月日・番号）と
+ *    漏れ検査は名簿なしで動くので必ず通す。実名の記号化は無いため、拡張の画面は「実名を書かない」運用が前提
+ *    （docs/DATA-HANDLING-EXPLANATION.md §3 に明記）。
  */
 
 /** トークン単位のレート制限。サーバレスではインスタンス単位（ウォームな間）＝簡易防御。 */
@@ -83,10 +89,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return cors(NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 }));
   }
 
+  // 名簿なしの黒塗り（型置換＋漏れ検査）。残っていれば 422 で止める（fail-closed）
+  const vault = createPiiVault();
+  try {
+    body = maskRequestBody(body, [], vault).body;
+  } catch (e) {
+    if (e instanceof PiiLeakError) {
+      audit({ result: "pii_leak", label });
+      return cors(NextResponse.json({ error: e.message }, { status: 422 }));
+    }
+    throw e;
+  }
+
   try {
     const draft = await generateFromBody(body);
     audit({ result: "ok", label, documentType: String(body.documentType ?? "carePlan") });
-    return cors(NextResponse.json(draft));
+    return cors(NextResponse.json(restoreDeep(draft, vault, { skipKeys: ["appointments"] })));
   } catch (e: unknown) {
     if (e instanceof GenerateRequestError) {
       audit({ result: "bad_request", label, status: e.status });

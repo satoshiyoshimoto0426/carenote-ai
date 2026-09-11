@@ -16,12 +16,55 @@ export interface SupportLogEntry {
   nextAction: string;
 }
 
+/**
+ * メモから読み取れた「これから」の予定（第4段: カレンダー登録用）。
+ * 実名・電話番号・住所は入れない（title は「A様 面談」のように記号＋用件）。
+ */
+export interface Appointment {
+  /** 予定の名前（記号＋用件。例:「A様 自宅で面談」） */
+  title: string;
+  /** 日付 YYYY-MM-DD。年が読み取れない場合はメモの文脈から推定し confidence を「要確認」にする */
+  date: string;
+  /** 開始 HH:mm（24時間）。不明なら空文字＝終日 */
+  startTime: string;
+  /** 終了 HH:mm。不明なら空文字（既定60分） */
+  endTime: string;
+  /** 場所（自宅・事業所・〇〇病院 など。住所は書かない） */
+  location: string;
+  /** 短い補足（持ち物・同席者の続柄など。電話番号を書かない） */
+  note: string;
+  /** 日時が明確なら「確定」、推定を含むなら「要確認」 */
+  confidence: "確定" | "要確認";
+}
+
+/** アセスメントの欄（カイポケの入力欄に対応。extension/src/adapters/kaipoke.js の FIELD_MAPS.assessment と一致させる） */
+export type AssessmentField = "mainComplaints" | "lifeHistory" | "overview";
+
+/**
+ * メモから読み取れた「状態像の変化」を、アセスメントの該当欄へ**追記**する案（第5段）。
+ * 既存の文章は書き換えない。text は末尾に足す1段落（日付・情報源つき）。実名・番号・住所は書かない。
+ */
+export interface AssessmentUpdate {
+  /** 追記先の欄 */
+  field: AssessmentField;
+  /** 追記する文章（例:「2026-09-10 電話（長女）: 夜間の排泄で失敗が増えたとの訴え。…」） */
+  text: string;
+  /** なぜ追記が必要か（職員が判断するための短い理由） */
+  reason: string;
+  /** メモから明確に読める変化なら「確定」、推測を含むなら「要確認」 */
+  confidence: "確定" | "要確認";
+}
+
 /** 支援経過記録（第5表）の下書き */
 export interface SupportLogDraft {
   /** 利用者名（不明なら「要確認」） */
   clientName: string;
   /** 経過記録エントリ（時系列。別の日・別の案件は分割する） */
   entries: SupportLogEntry[];
+  /** メモに含まれる今後の予定（無ければ空配列）。旧データには無いので省略可 */
+  appointments?: Appointment[];
+  /** 状態像の変化があれば、アセスメント欄への追記案（無ければ空配列）。旧データには無いので省略可 */
+  assessmentUpdates?: AssessmentUpdate[];
   /** 人間のケアマネジャーの確認が必要な事項 */
   itemsToConfirm: string[];
 }

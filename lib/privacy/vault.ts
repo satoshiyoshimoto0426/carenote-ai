@@ -1,0 +1,84 @@
+/**
+ * 札入れ（PiiVault）: 黒塗りで置き換えた元の値を、そのリクエストの間だけ手元で覚えておく。純粋ロジック。
+ *
+ * なぜ存在するか:
+ *   「消す」と「捨てる」は別（docs/specs/call-pipeline.md §2.5 二枚方式）。
+ *   AIへは〔電話番号1〕のような札だけを送り、返ってきた要約の札を手元で元の番号に戻す。
+ *   札入れはリクエスト内のメモリにだけ存在し、ログ・DB・AIへは出さない。
+ *
+ * 札の付け方:
+ *   同じ値には同じ札（例: 同じ番号が2回出ても〔電話番号1〕）。
+ *   種類ごとに1から連番。フィールドをまたいで1つの札入れを共有すれば番号が衝突しない。
+ *
+ * 注意（独立審査 2026-09-11 critical #1）:
+ *   キーの区切りに生の NUL 文字を埋めると git がこのファイルをバイナリ扱いし、差分がレビューに届かない。
+ *   区切りは JSON 配列で表す（可視文字のみ）。ソースに 0x00 を入れないことは CI の Iron Rules が検査する。
+ */
+import { PII_TOKEN, type PiiKind } from "./patterns";
+
+export interface PiiVault {
+  /** 元の値に対応する札を返す（初出なら新しい札を発行） */
+  tokenFor(kind: PiiKind, original: string): string;
+  /** テキスト中の札を元の値へ戻す */
+  restore(text: string): string;
+  /** 発行した札の数（ログ用。中身は出さない） */
+  readonly size: number;
+}
+
+export function createPiiVault(): PiiVault {
+  const byOriginal = new Map<string, string>(); // JSON([kind, original]) → token
+  const byToken = new Map<string, string>(); // token → original
+  const counts = new Map<PiiKind, number>();
+
+  return {
+    tokenFor(kind, original) {
+      const key = JSON.stringify([kind, original]);
+      const existing = byOriginal.get(key);
+      if (existing) return existing;
+      const n = (counts.get(kind) ?? 0) + 1;
+      counts.set(kind, n);
+      // 〔電話番号〕 → 〔電話番号1〕
+      const token = `${PII_TOKEN[kind].slice(0, -1)}${n}〕`;
+      byOriginal.set(key, token);
+      byToken.set(token, original);
+      return token;
+    },
+    restore(text) {
+      let out = text;
+      for (const [token, original] of byToken) {
+        // 同じ札が何度出ても全部戻す（replace は最初の1回だけなので使わない）
+        out = out.split(token).join(original);
+      }
+      return out;
+    },
+    get size() {
+      return byToken.size;
+    },
+  };
+}
+
+export interface RestoreDeepOptions {
+  /**
+   * 戻さないキー（そのキー以下は札のまま残す）。
+   * 例: supportLog の appointments はカレンダーへ渡すので実番号を戻さない（不変条件⑥・独立審査 D22）。
+   */
+  skipKeys?: string[];
+}
+
+/**
+ * オブジェクト・配列の中の文字列をすべて戻す（AIの返事＝帳票JSONに使う）。
+ * 文字列以外（数値・真偽・null）はそのまま。skipKeys 配下は触らない。
+ */
+export function restoreDeep<T>(value: T, vault: PiiVault, options: RestoreDeepOptions = {}): T {
+  const skip = options.skipKeys ?? [];
+  if (typeof value === "string") return vault.restore(value) as T;
+  if (Array.isArray(value)) return value.map((v) => restoreDeep(v, vault, options)) as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = skip.includes(k) ? v : restoreDeep(v, vault, options);
+    }
+    return out as T;
+  }
+  return value;
+}

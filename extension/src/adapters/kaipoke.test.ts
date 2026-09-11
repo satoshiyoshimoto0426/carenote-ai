@@ -30,7 +30,8 @@ describe("CareNoteKaipoke 文字幅・行数計測", () => {
       maxRows: 2,
       maxColsFullWidth: 5,
     };
-    const ok = adapter.measureText("あいうえ\nかきくけ", mapping);
+    // 2行×5字の欄。総文字数の安全上限は 行×字−行数=8 なので、改行込み9字ではなく7字で「収まる」を確かめる
+    const ok = adapter.measureText("あいう\nかきく", mapping);
     expect(ok.rows).toBe(2);
     expect(ok.overRows).toBe(false);
     expect(ok.overCols).toBe(false);
@@ -40,7 +41,8 @@ describe("CareNoteKaipoke 文字幅・行数計測", () => {
     expect(over.rows).toBe(3);
     expect(over.overRows).toBe(true); // 3 > 2
     expect(over.overCols).toBe(true); // 6 > 5
-    expect(over.warnings.length).toBe(2);
+    expect(over.overTotal).toBe(true); // 13字 > 安全上限8字
+    expect(over.warnings.length).toBe(3);
   });
 });
 
@@ -343,5 +345,180 @@ describe("CareNoteKaipoke モニタリング（monitoring）", () => {
       .map((m: { baseName?: string }) => m.baseName)
       .filter(Boolean);
     expect(baseNames).not.toContain("form:enforcementYmd");
+  });
+});
+
+describe("CareNoteKaipoke 追記モード（buildAppendedValue・純粋関数）", () => {
+  it("既存の末尾に改行で足し、末尾の空白は詰める", () => {
+    expect(
+      adapter.buildAppendedValue("既存の記録。\n\n", "2026-09-10 電話（長女）: 夜間の失敗が増加。"),
+    ).toBe("既存の記録。\n2026-09-10 電話（長女）: 夜間の失敗が増加。");
+  });
+
+  it("既存が空なら追記文だけ、追記文が空なら null", () => {
+    expect(adapter.buildAppendedValue("", "追記")).toBe("追記");
+    expect(adapter.buildAppendedValue("既存", "   ")).toBeNull();
+  });
+
+  it("同じ文が既に入っていれば null（二重追記を防ぐ）", () => {
+    expect(
+      adapter.buildAppendedValue("既存。\n2026-09-10 電話: 同じ文。", "2026-09-10 電話: 同じ文。"),
+    ).toBeNull();
+  });
+});
+
+describe("CareNoteKaipoke 保存できない文字の正規化（normalizeForKaipoke・純粋関数）", () => {
+  it("波ダッシュを全角チルダに、丸数字とローマ数字を括弧数字・英字にする", () => {
+    expect(adapter.normalizeForKaipoke("R8.07.10〜R8.09.30")).toBe("R8.07.10～R8.09.30");
+    expect(adapter.normalizeForKaipoke("①転倒 ②服薬 ㉑その他")).toBe("(1)転倒 (2)服薬 (21)その他");
+    expect(adapter.normalizeForKaipoke("要介護Ⅱ・ⅲ期")).toBe("要介護II・iii期");
+  });
+
+  it("組文字と大量の空白を整える。普通の文章はそのまま", () => {
+    expect(adapter.normalizeForKaipoke("居室12㎡、体重52㎏")).toBe("居室12m2、体重52kg");
+    expect(adapter.normalizeForKaipoke("A様　　　来所")).toBe("A様 来所");
+    expect(adapter.normalizeForKaipoke("夜間の排泄で失敗が増えた。\n翌朝に確認。")).toBe(
+      "夜間の排泄で失敗が増えた。\n翌朝に確認。",
+    );
+  });
+});
+
+describe("CareNoteKaipoke measureText 総文字数の安全上限", () => {
+  it("行×字−行数 を超えると警告する（画面2行×20字の欄で40字は登録エラーになった実例）", () => {
+    const mapping = { key: "x", label: "緊急連絡", names: [], maxRows: 2, maxColsFullWidth: 20 };
+    const ok = adapter.measureText(`${"あ".repeat(18)}\n${"い".repeat(18)}`, mapping); // 37字
+    expect(ok.overTotal).toBe(false);
+    const over = adapter.measureText(`${"あ".repeat(20)}\n${"い".repeat(19)}`, mapping); // 40字
+    expect(over.overTotal).toBe(true);
+    expect(over.warnings.some((w) => w.includes("安全上限38字"))).toBe(true);
+  });
+});
+
+describe("CareNoteKaipoke カイポケ転記シート（kaipokePageFields・純粋関数）", () => {
+  it("指定ページの欄だけを返し、空文字の欄は除く", () => {
+    const sheet = {
+      fields: [
+        { page: 4, formName: "form:caseOrMedicalHistorySubject", text: "脳梗塞の既往。" },
+        { page: 4, formName: "form:specialMentionMatterSubject1", text: "   " },
+        { page: 10, formName: "form:summarySubject", text: "全体像。" },
+      ],
+    };
+    expect(adapter.kaipokePageFields(sheet, 4).map((f) => f.formName)).toEqual([
+      "form:caseOrMedicalHistorySubject",
+    ]);
+    expect(adapter.kaipokePageFields(sheet, 10)).toHaveLength(1);
+    expect(adapter.kaipokePageFields({}, 1)).toEqual([]);
+  });
+});
+
+describe("CareNoteKaipoke readFieldValue（欄の今の文章を読む）", () => {
+  it("要素の value を返す。value が無ければ空文字（getValue(draft,key) と取り違えない）", () => {
+    expect(adapter.readFieldValue({ value: "既存の記録。" })).toBe("既存の記録。");
+    expect(adapter.readFieldValue({})).toBe("");
+    expect(adapter.readFieldValue(null)).toBe("");
+    // 取り違えの再発防止: 下書き用 getValue に要素を渡しても空になる＝「既存が空」と誤判定する
+    expect(adapter.getValue({ value: "既存の記録。" }, undefined as unknown as string)).toBe("");
+  });
+});
+
+describe("CareNoteKaipoke 第2表の1件ずつ流し込み（純粋関数）", () => {
+  const draft = {
+    clientName: "A様",
+    needs: [
+      {
+        need: "転ばずに家で暮らしたい",
+        longTermGoal: "自宅内を安全に移動できる",
+        longTermPeriod: "6か月",
+        shortTermGoal: "手すりを使って歩ける",
+        shortTermPeriod: "3か月",
+        services: [
+          {
+            content: "歩行訓練",
+            serviceType: "訪問リハビリテーション",
+            frequency: "週2回",
+            period: "R8.07.10〜R8.09.30",
+            provider: "○○訪問看護ステーション",
+          },
+          {
+            content: "見守り",
+            serviceType: "家族",
+            frequency: "毎日",
+            period: "R8.07.10〜R8.09.30",
+            provider: "長女",
+          },
+        ],
+      },
+    ],
+  };
+
+  it("buildPlan2Steps: ニーズ→長期→短期→(サービス内容→種別→事業所)×件数 の順", () => {
+    const steps = adapter.buildPlan2Steps(draft);
+    expect(steps.map((s) => s.kind)).toEqual([
+      "need",
+      "longTerm",
+      "shortTerm",
+      "serviceContent",
+      "serviceKind",
+      "provider",
+      "serviceContent",
+      "serviceKind",
+      "provider",
+    ]);
+    expect(steps[0].text).toBe("転ばずに家で暮らしたい");
+    expect(steps[5].text).toBe("○○訪問看護ステーション／週2回／R8.07.10〜R8.09.30");
+    expect(adapter.buildPlan2Steps({})).toEqual([]);
+  });
+
+  it("parseFrequency: 週2回→01、毎日→02、その他→03", () => {
+    expect(adapter.parseFrequency("週2回")).toEqual({ mode: "01", unit: "02", count: 2 });
+    expect(adapter.parseFrequency("月1回")).toEqual({ mode: "01", unit: "03", count: 1 });
+    expect(adapter.parseFrequency("1日3回")).toEqual({ mode: "01", unit: "01", count: 3 });
+    expect(adapter.parseFrequency("毎日")).toEqual({ mode: "02", fixed: "01" });
+    expect(adapter.parseFrequency("必要時")).toEqual({ mode: "02", fixed: "04" });
+    expect(adapter.parseFrequency("3か月に1回")).toEqual({ mode: "03", text: "3か月に1回" });
+  });
+
+  it("classifyServiceType: 介護保険サービスは01、本人・家族・医療機関は02", () => {
+    expect(adapter.classifyServiceType("訪問リハビリテーション")).toEqual({
+      category: "01",
+      kindText: "訪問リハビリテーション",
+    });
+    expect(adapter.classifyServiceType("家族")).toEqual({ category: "02", name: "家族" });
+    expect(adapter.classifyServiceType("")).toEqual({ category: "02", name: "その他" });
+  });
+
+  it("plan2ScreenFromNames: 欄名とURLから追加画面を判定する", () => {
+    expect(adapter.plan2ScreenFromNames(["form:longTimePeriodMarkSubject"], "")).toBe("longTerm");
+    expect(adapter.plan2ScreenFromNames(["form:idCompanyDto", "HINDO_KBN"], "")).toBe("provider");
+    expect(
+      adapter.plan2ScreenFromNames(
+        ["form:accept"],
+        "https://r.kaipoke.biz/kaipokebiz/business/care_plan/care/MEM091704.do?x=1",
+      ),
+    ).toBe("need");
+    expect(
+      adapter.plan2ScreenFromNames(
+        [],
+        "https://r.kaipoke.biz/kaipokebiz/business/care_plan/care/MEM091721.do",
+      ),
+    ).toBe("list");
+    expect(adapter.plan2ScreenFromNames([], "")).toBe("unknown");
+  });
+});
+
+describe("再ログイン検知ゲートの対象一覧: WRITE_MESSAGE_TYPES / isWriteMessage", () => {
+  it("書き込み系5種（第2表流し込みを含む）を判定し、PING は書き込みではない", () => {
+    for (const t of [
+      "CARENOTE_INJECT",
+      "CARENOTE_APPEND_PREVIEW",
+      "CARENOTE_APPEND_APPLY",
+      "CARENOTE_APPEND_UNDO",
+      "CARENOTE_PLAN2_FILL",
+    ]) {
+      expect(adapter.isWriteMessage(t)).toBe(true);
+    }
+    expect(adapter.isWriteMessage("CARENOTE_PING")).toBe(false);
+    expect(adapter.isWriteMessage(undefined)).toBe(false);
+    expect(adapter.WRITE_MESSAGE_TYPES).toHaveLength(5);
   });
 });

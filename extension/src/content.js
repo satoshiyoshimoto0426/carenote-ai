@@ -30,8 +30,72 @@
         ok: true,
         isKaipoke: isKaipokeApp(),
         adapterReady: Boolean(adapter),
+        // セッション切れの再ログイン画面が出ていれば true（拡張は書き込まず、職員に再ログインを頼む）
+        reloginRequired: Boolean(adapter?.isReloginRequired?.()),
         url: location.href,
       });
+      return undefined;
+    }
+
+    // 書き込み系はすべて、再ログイン画面が出ていたら止める（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §5-6）。
+    // 一覧は adapters/kaipoke.js の WRITE_MESSAGE_TYPES（第2表流し込みも含む）
+    if (adapter?.isWriteMessage?.(message.type) && adapter.isReloginRequired?.()) {
+      sendResponse({
+        ok: false,
+        error:
+          "カイポケのログインが切れています（30分無操作）。カイポケで再ログインしてから、もう一度押してください。",
+      });
+      return undefined;
+    }
+
+    // 第5段: アセスメント欄への追記（前後の確認 → 退避して追記 → 取り消し）。保存はしない。
+    if (
+      message.type === "CARENOTE_APPEND_PREVIEW" ||
+      message.type === "CARENOTE_APPEND_APPLY" ||
+      message.type === "CARENOTE_APPEND_UNDO"
+    ) {
+      if (!adapter) {
+        sendResponse({
+          ok: false,
+          error: "アダプタの初期化に失敗しました。ページを再読込してください。",
+        });
+        return undefined;
+      }
+      try {
+        const fn =
+          message.type === "CARENOTE_APPEND_PREVIEW"
+            ? adapter.previewAppend
+            : message.type === "CARENOTE_APPEND_APPLY"
+              ? adapter.applyAppend
+              : adapter.undoAppend;
+        const report = fn(message.documentType, message.fieldKey, message.addition);
+        sendResponse({ ok: true, report });
+      } catch (e) {
+        sendResponse({
+          ok: false,
+          error: e instanceof Error ? e.message : "追記中にエラーが発生しました。",
+        });
+      }
+      return undefined;
+    }
+
+    // 第2表: 追加画面1つ分を埋める（画面遷移・登録は人）
+    if (message.type === "CARENOTE_PLAN2_FILL") {
+      if (!adapter) {
+        sendResponse({
+          ok: false,
+          error: "アダプタの初期化に失敗しました。ページを再読込してください。",
+        });
+        return undefined;
+      }
+      try {
+        sendResponse({ ok: true, report: adapter.fillPlan2Step(message.step) });
+      } catch (e) {
+        sendResponse({
+          ok: false,
+          error: e instanceof Error ? e.message : "第2表の流し込み中にエラーが発生しました。",
+        });
+      }
       return undefined;
     }
 

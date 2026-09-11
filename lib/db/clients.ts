@@ -1,5 +1,10 @@
 import { decryptString, encryptString, getPiiKey } from "@/lib/privacy/crypto";
-import { expandAliasVariants, type NameAlias, nextClientCode } from "@/lib/privacy/pseudonymize";
+import {
+  expandAliasVariants,
+  type NameAlias,
+  nextClientCode,
+  relatedAliasCode,
+} from "@/lib/privacy/pseudonymize";
 import type { ClientAttributes, ClientInput, ClientRecord } from "@/types/client";
 import { createServerClient } from "../supabase/server";
 
@@ -104,44 +109,238 @@ export async function getClientById(id: string, userId: string): Promise<ClientR
 }
 
 /**
+ * 名簿が読めなかった時に投げる。呼び出し側（API）は 503 にして**送信を中止**する。
+ * なぜ: 名簿なしで進むと実名が消えないまま AI へ出る（fail-open）。2026-09-09 の実機で
+ * Supabase が一時的に "JWT issued at future" を返し、名簿が空のまま進んだ実例があった。
+ */
+export class AliasLoadError extends Error {
+  constructor(detail: string, publicMessage?: string) {
+    super(
+      publicMessage ??
+        "利用者名簿を読み込めなかったため送信を中止しました。少し待ってからもう一度お試しください。",
+    );
+    this.name = "AliasLoadError";
+    console.error("[db] getClientAliases failed:", detail);
+  }
+}
+
+/**
+ * 関係者名簿の表（client_related_identities）が未作成の環境で投げる内部エラー。
+ * PostgREST は未定義の表に対し code "42P01"（PostgreSQL undefined_table）または "PGRST205" を返す。
+ * これも送信は止める（独立審査 2026-09-11 critical #3: 黙って進むと家族名が消えないまま AI へ出る）。
+ * 文言だけ「管理者が SQL を適用する」案内に変える。
+ */
+class RelatedTableMissingError extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "RelatedTableMissingError";
+  }
+}
+const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
+
+/** 職員に見せる文言（関係者名簿の表が無い時） */
+export const RELATED_TABLE_MISSING_MESSAGE =
+  "関係者名簿の表が未作成のため送信を中止しました。管理者が supabase/client_related.sql を Supabase で実行してください。";
+
+/** 読み直しまでの待ち時間（テストでは短くする） */
+const RETRY_DELAY_MS = process.env.VITEST ? 1 : 500;
+
+/**
  * ログインユーザーの全利用者について「実名⇄記号」の対応表を返す（仮名化用・サーバ専用）。
- * AIへ送る前の実名マスキング（maskNames）に使う。復号できない行はスキップ。
- * 対応表が作れない場合は空配列＋エラーログ（マスキングは劣化するが生成は止めない。
- * 第一の防御は運用ルール「メモに実名を書かない」であり、本機能はその安全網）。
+ * AIへ送る前の実名マスキング（maskPii）に使う。復号できない行はスキップ。
+ * 対応表が作れない場合は AliasLoadError を投げ、呼び出し側が送信を止める（fail-closed）。
+ * 旧仕様「空配列を返して生成は止めない」は 2026-09-09 に廃止（実名が消えないまま送られる穴）。
  */
 export async function getClientAliases(userId: string): Promise<NameAlias[]> {
+  // 一時的な失敗（ネットワーク・ゲートウェイの揺らぎ）は1回だけ読み直す
   try {
-    const db = createServerClient();
-    const [clientsRes, idsRes] = await Promise.all([
-      db.from("clients").select("id, code").eq("created_by", userId),
-      db.from("client_identities").select("client_id, name_encrypted").eq("created_by", userId),
-    ]);
-    if (clientsRes.error || idsRes.error) {
-      console.error(
-        "[db] getClientAliases error:",
-        clientsRes.error?.message ?? idsRes.error?.message,
-      );
-      return [];
+    return await loadAliases(userId);
+  } catch (first) {
+    // 表が無いのは待っても直らないので読み直さない
+    if (first instanceof RelatedTableMissingError) {
+      throw new AliasLoadError(first.message, RELATED_TABLE_MISSING_MESSAGE);
     }
-    const codeById = new Map(
-      (clientsRes.data as { id: string; code: string }[]).map((c) => [c.id, c.code]),
-    );
-    const key = getPiiKey();
-    const aliases: NameAlias[] = [];
-    for (const row of idsRes.data as { client_id: string; name_encrypted: string }[]) {
-      const code = codeById.get(row.client_id);
-      if (!code) continue;
-      try {
-        aliases.push({ real: decryptString(row.name_encrypted, key), code: `${code}様` });
-      } catch {
-        // 復号失敗行はスキップ（鍵ローテーション時など）
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    try {
+      return await loadAliases(userId);
+    } catch (second) {
+      const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+      if (second instanceof RelatedTableMissingError) {
+        throw new AliasLoadError(second.message, RELATED_TABLE_MISSING_MESSAGE);
       }
+      throw new AliasLoadError(`${msg(first)} / retry: ${msg(second)}`);
     }
-    return expandAliasVariants(aliases);
-  } catch (e) {
-    console.error("[db] getClientAliases failed:", e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function loadAliases(userId: string): Promise<NameAlias[]> {
+  const db = createServerClient();
+  const [clientsRes, idsRes, relRes] = await Promise.all([
+    db.from("clients").select("id, code").eq("created_by", userId),
+    db.from("client_identities").select("client_id, name_encrypted").eq("created_by", userId),
+    // 関係者名簿（D4）。読めなければ利用者名簿と同じく送信を止める（警告で続行しない）
+    db
+      .from("client_related_identities")
+      .select("client_id, relation, name_encrypted")
+      .eq("created_by", userId),
+  ]);
+  if (clientsRes.error || idsRes.error) {
+    throw new Error(clientsRes.error?.message ?? idsRes.error?.message ?? "unknown");
+  }
+  if (relRes.error) {
+    const code = (relRes.error as { code?: string }).code ?? "";
+    if (MISSING_TABLE_CODES.has(code)) {
+      throw new RelatedTableMissingError(`related table missing: ${relRes.error.message}`);
+    }
+    throw new Error(`client_related_identities: ${relRes.error.message}`);
+  }
+  const codeById = new Map(
+    (clientsRes.data as { id: string; code: string }[]).map((c) => [c.id, c.code]),
+  );
+  const key = getPiiKey();
+  const aliases: NameAlias[] = [];
+  for (const row of idsRes.data as { client_id: string; name_encrypted: string }[]) {
+    const code = codeById.get(row.client_id);
+    if (!code) continue;
+    try {
+      aliases.push({ real: decryptString(row.name_encrypted, key), code: `${code}様` });
+    } catch {
+      // 復号失敗行はスキップ（鍵ローテーション時など）
+    }
+  }
+  for (const row of (relRes.data ?? []) as {
+    client_id: string;
+    relation: string;
+    name_encrypted: string;
+  }[]) {
+    const code = codeById.get(row.client_id);
+    if (!code) continue;
+    try {
+      aliases.push({
+        real: decryptString(row.name_encrypted, key),
+        code: relatedAliasCode(code, row.relation),
+      });
+    } catch {
+      // 復号失敗行はスキップ
+    }
+  }
+  return expandAliasVariants(aliases);
+}
+
+// ---- 関係者名簿（D4・2026-09-10）: 家族・担当者・主治医などを利用者ごとに登録し、黒塗りの対象にする ----
+
+export interface RelatedPerson {
+  id: string;
+  clientId: string;
+  relation: string;
+  /** 実名（権限内の画面表示用。AIへは渡さない） */
+  name: string;
+  createdAt: string;
+}
+
+interface RelatedRow {
+  id: string;
+  client_id: string;
+  relation: string;
+  name_encrypted: string;
+  created_at: string;
+}
+
+/** 利用者の関係者一覧（所有者チェック込み・実名は復号して返す）。 */
+export async function getRelatedPeople(clientId: string, userId: string): Promise<RelatedPerson[]> {
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("client_related_identities")
+    .select("id, client_id, relation, name_encrypted, created_at")
+    .eq("client_id", clientId)
+    .eq("created_by", userId)
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error("[db] getRelatedPeople error:", error.message);
     return [];
   }
+  const key = getPiiKey();
+  const out: RelatedPerson[] = [];
+  for (const r of data as RelatedRow[]) {
+    try {
+      out.push({
+        id: r.id,
+        clientId: r.client_id,
+        relation: r.relation,
+        name: decryptString(r.name_encrypted, key),
+        createdAt: r.created_at,
+      });
+    } catch {
+      // 復号失敗行はスキップ
+    }
+  }
+  return out;
+}
+
+/** 関係者を追加する。同じ利用者に同じ続柄は登録できない（記号が重なるため）。 */
+export async function addRelatedPerson(params: {
+  clientId: string;
+  userId: string;
+  orgId: string | null;
+  relation: string;
+  name: string;
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const relation = params.relation.replace(/[\r\n]+/g, " ").trim();
+  const name = params.name.trim();
+  if (!relation || !name) return { ok: false, error: "続柄と氏名を入力してください。" };
+  if (relation.length > 20) return { ok: false, error: "続柄は20文字以内にしてください。" };
+
+  const owner = await getClientById(params.clientId, params.userId);
+  if (!owner) return { ok: false, error: "利用者が見つかりません。" };
+
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("client_related_identities")
+    .insert({
+      client_id: params.clientId,
+      org_id: params.orgId,
+      relation,
+      name_encrypted: encryptString(name, getPiiKey()),
+      created_by: params.userId,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    const dup = /duplicate|unique/i.test(error?.message ?? "");
+    console.error("[db] addRelatedPerson error:", error?.message);
+    return {
+      ok: false,
+      error: dup
+        ? `「${relation}」は既に登録されています。続柄を変えてください（例: 長女・次女）。`
+        : "登録に失敗しました。",
+    };
+  }
+  return { ok: true, id: (data as { id: string }).id };
+}
+
+/**
+ * 関係者を削除する（所有者チェック込み・利用者IDでも絞る）。
+ * 0件（他人の id・存在しない id・別の利用者の id）は "not_found" にして、画面に「消えた」と誤って伝えない
+ * （独立審査 2026-09-11 D8）。
+ */
+export async function deleteRelatedPerson(
+  id: string,
+  clientId: string,
+  userId: string,
+): Promise<"ok" | "not_found" | "error"> {
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("client_related_identities")
+    .delete()
+    .eq("id", id)
+    .eq("client_id", clientId)
+    .eq("created_by", userId)
+    .select("id");
+  if (error) {
+    console.error("[db] deleteRelatedPerson error:", error.message);
+    return "error";
+  }
+  return (data ?? []).length > 0 ? "ok" : "not_found";
 }
 
 /** 実名を復号して返す（権限内・必要時のみ）。失敗時は null。 */
