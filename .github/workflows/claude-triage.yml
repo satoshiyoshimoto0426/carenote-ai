@@ -44,12 +44,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 2026-09-12: review-pr と同じく @beta では `prompt` が無視されるため @v1 へ（横展開・§2.7-D）
       - name: Claude AI Triage
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: |
+            --model claude-sonnet-5
+            --max-turns 40
           prompt: |
+            REPO: ${{ github.repository }}
+            ISSUE NUMBER: ${{ github.event.issue.number }}
+
             あなたは cortex-lite ハーネスの「Alert-Fix エージェント」です。
             次の Issue を調査し、根本原因の仮説と修正案をコメントしてください。
 
@@ -85,17 +92,29 @@ jobs:
   review-pr:
     if: github.event_name == 'pull_request' || github.event_name == 'pull_request_review_comment'
     runs-on: ubuntu-latest
+    timeout-minutes: 20 # 暴走時の予算ゲート（v1 で timeout_minutes 入力は廃止・job 側で持つ）
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # 2026-09-12: @beta は `prompt` 入力を受け付けず（valid inputs に無い）、review-pr が 9 秒で「成功」扱いのまま
+      # 何も審査していなかった（PR #9 で発覚＝独立審査 critical #2 の実体）。MaouCastle 本体と同じ @v1 構成へ揃える。
       - name: Claude PR Auto Review
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # pull_request_review_comment は track_progress の対応外イベントのため立てない
+          track_progress: ${{ github.event_name == 'pull_request' }}
+          # --max-turns 15 では実物 PR の審査が完走しない（2026-09-06 decisions-log）。予算ゲートは job の timeout-minutes
+          claude_args: |
+            --model claude-sonnet-5
+            --max-turns 40
           prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
             あなたは cortex-lite ハーネスの「Auto Reviewer」です。
             この PR の差分を、以下4カテゴリで評価してください：
 

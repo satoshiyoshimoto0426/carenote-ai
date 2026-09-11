@@ -58,3 +58,8 @@
   4. **テストが呼び出し側を守っていない**: 純粋関数は緑でも、ルート層（SSRF・再黒塗り・vault 復元）は1行消しても緑。
 - **対策**: ①センサー `tools/check-invisible.mjs`（CI＋Stop フック） ②関係者表も 503（テストで固定） ③規約「戻した帳票を再び AI へ送る API は maskDeep を通す」を CONTEXT-MAP へ ④ルート層テスト4本＋偽 Supabase テスト＋jsdom DOM テスト。
 - **学び**: (a) 慎重領域は「自分で合格判定しない」（§2.7-E）が実効性を持った初回。graph-doubt 30 エージェント・約 24 分・8件確定。(b) 「既存も同じだから安全」と思った箇所（Blob 公開ストア）が一番重い指摘だった。(c) Write ツールでエスケープ列を書く時は、書いた直後に `node tools/check-invisible.mjs` を回す。(d) `git stash` / `pop` は autocrlf=true の環境で作業ファイルを CRLF に戻し biome を赤にする ── 使った後は `sed -i 's/\r$//'` で戻す。
+
+## 2026-09-12 CI の自動審査（claude-triage review-pr）が「成功」のまま何も審査していなかった
+- **事象**: PR #9 の review-pr が 9 秒で success。ログに `Unexpected input(s) 'prompt'` の警告があり、`@beta` 版のアクションは `prompt` 入力を受け付けず、Claude の実行ステップが全部 skipped。独立審査 critical #2「PR＋triage が一度も走った証拠がない」の実体。
+- **対策**: MaouCastle 本体（2026-09-06 に実 PR で疎通済み）と同じ `@v1`＋`claude_args`（--max-turns 40）＋`timeout-minutes: 20` へ揃える。triage-issue 側も同じ穴なので同時に修正（横展開）。
+- **学び**: 「CI が緑」は「検査が走った」と同義ではない。所要秒数が異常に短い job は疑う（Observe before Act §2.6-C）。センサー候補: review-pr の成功条件に「レビュー投稿の有無」を加える。
