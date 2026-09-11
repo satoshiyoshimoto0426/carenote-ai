@@ -166,7 +166,9 @@ AIの返事は `restoreDeep` で手元に戻してから返す。名前（A様�
 取り込み済: `kaipoke.js` `normalizeForKaipoke`（〜→～・丸数字→(n)・ローマ数字・組文字・空白）を `writeField` で必ず通す／`writeField` が keyup も dispatch／`measureText` に総文字数の安全上限（行×字−行数）／
 `isReloginRequired`（再ログイン画面検知）→ `content.js` が書き込み系を拒否・`panel.js` バッジ「再ログインが必要」／FIELD_MAPS.assessment に P1 の26字幅と P2 `form:supportSubject` を追加。
 **カイポケ転記シート (同日)**: `lib/kaipoke/assessmentLayout.ts`（10ページ31欄・安全上限・純粋）→ `lib/generation/kaipokeAssessment.ts`（下書き→欄別文章・`isInferred`）→ `POST /api/kaipoke/assessment`
-→ `/create` の「カイポケの欄に合わせる」→ `KaipokeSheetView`（欄ごとコピー／拡張用JSON）→ 拡張 documentType `kaipokeAssessment`（`injectKaipokeSheet`：ページ単位・既存文章は消さない）。未着手: 第2表の階層入力。
+→ `/create` の「カイポケの欄に合わせる」→ `KaipokeSheetView`（欄ごとコピー／拡張用JSON）→ 拡張 documentType `kaipokeAssessment`（`injectKaipokeSheet`：ページ単位・既存文章は消さない）。
+**第2表の半自動化 (同日)**: 拡張 `kaipoke.js` `buildPlan2Steps`／`plan2ScreenFromNames`／`parseFrequency`／`classifyServiceType`／`fillPlan2Step`（追加画面1つ分だけ埋める・画面違いは書かない）
+→ `content.js` CARENOTE_PLAN2_FILL → `panel.js` 「第2表を1件ずつ流し込む」（案内→流し込む→登録は人→次へ、進捗は storage）。`readFieldValue(el)` が欄の今の文章（`getValue(draft,key)` と別物）。第3表は未対応。
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
 ## 4. 更新トリガ（いつここを直すか）

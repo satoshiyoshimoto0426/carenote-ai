@@ -420,3 +420,88 @@ describe("CareNoteKaipoke readFieldValue（欄の今の文章を読む）", () =
     expect(adapter.getValue({ value: "既存の記録。" }, undefined as unknown as string)).toBe("");
   });
 });
+
+describe("CareNoteKaipoke 第2表の1件ずつ流し込み（純粋関数）", () => {
+  const draft = {
+    clientName: "A様",
+    needs: [
+      {
+        need: "転ばずに家で暮らしたい",
+        longTermGoal: "自宅内を安全に移動できる",
+        longTermPeriod: "6か月",
+        shortTermGoal: "手すりを使って歩ける",
+        shortTermPeriod: "3か月",
+        services: [
+          {
+            content: "歩行訓練",
+            serviceType: "訪問リハビリテーション",
+            frequency: "週2回",
+            period: "R8.07.10〜R8.09.30",
+            provider: "○○訪問看護ステーション",
+          },
+          {
+            content: "見守り",
+            serviceType: "家族",
+            frequency: "毎日",
+            period: "R8.07.10〜R8.09.30",
+            provider: "長女",
+          },
+        ],
+      },
+    ],
+  };
+
+  it("buildPlan2Steps: ニーズ→長期→短期→(サービス内容→種別→事業所)×件数 の順", () => {
+    const steps = adapter.buildPlan2Steps(draft);
+    expect(steps.map((s) => s.kind)).toEqual([
+      "need",
+      "longTerm",
+      "shortTerm",
+      "serviceContent",
+      "serviceKind",
+      "provider",
+      "serviceContent",
+      "serviceKind",
+      "provider",
+    ]);
+    expect(steps[0].text).toBe("転ばずに家で暮らしたい");
+    expect(steps[5].text).toBe("○○訪問看護ステーション／週2回／R8.07.10〜R8.09.30");
+    expect(adapter.buildPlan2Steps({})).toEqual([]);
+  });
+
+  it("parseFrequency: 週2回→01、毎日→02、その他→03", () => {
+    expect(adapter.parseFrequency("週2回")).toEqual({ mode: "01", unit: "02", count: 2 });
+    expect(adapter.parseFrequency("月1回")).toEqual({ mode: "01", unit: "03", count: 1 });
+    expect(adapter.parseFrequency("1日3回")).toEqual({ mode: "01", unit: "01", count: 3 });
+    expect(adapter.parseFrequency("毎日")).toEqual({ mode: "02", fixed: "01" });
+    expect(adapter.parseFrequency("必要時")).toEqual({ mode: "02", fixed: "04" });
+    expect(adapter.parseFrequency("3か月に1回")).toEqual({ mode: "03", text: "3か月に1回" });
+  });
+
+  it("classifyServiceType: 介護保険サービスは01、本人・家族・医療機関は02", () => {
+    expect(adapter.classifyServiceType("訪問リハビリテーション")).toEqual({
+      category: "01",
+      kindText: "訪問リハビリテーション",
+    });
+    expect(adapter.classifyServiceType("家族")).toEqual({ category: "02", name: "家族" });
+    expect(adapter.classifyServiceType("")).toEqual({ category: "02", name: "その他" });
+  });
+
+  it("plan2ScreenFromNames: 欄名とURLから追加画面を判定する", () => {
+    expect(adapter.plan2ScreenFromNames(["form:longTimePeriodMarkSubject"], "")).toBe("longTerm");
+    expect(adapter.plan2ScreenFromNames(["form:idCompanyDto", "HINDO_KBN"], "")).toBe("provider");
+    expect(
+      adapter.plan2ScreenFromNames(
+        ["form:accept"],
+        "https://r.kaipoke.biz/kaipokebiz/business/care_plan/care/MEM091704.do?x=1",
+      ),
+    ).toBe("need");
+    expect(
+      adapter.plan2ScreenFromNames(
+        [],
+        "https://r.kaipoke.biz/kaipokebiz/business/care_plan/care/MEM091721.do",
+      ),
+    ).toBe("list");
+    expect(adapter.plan2ScreenFromNames([], "")).toBe("unknown");
+  });
+});

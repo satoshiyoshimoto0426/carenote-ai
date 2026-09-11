@@ -51,11 +51,27 @@
         </div>
         <p class="hint">
           開いているカイポケの編集画面の該当欄に下書きを入力します。対象帳票:
-          アセスメント・第1表・第4表・第5表（記録ごと）・モニタリング／第2表はコピー貼り付け。<strong>保存・登録は必ずご自身で確認のうえ</strong>行ってください。
+          アセスメント・第1表・第4表・第5表（記録ごと）・モニタリング・カイポケ転記シート（ページごと）／第2表は下の「1件ずつ流し込む」。<strong>保存・登録は必ずご自身で確認のうえ</strong>行ってください。
         </p>
         <div id="entry-list" class="entry-list" hidden></div>
         <button id="inject" class="btn btn-accent" type="button" disabled>この画面に流し込む</button>
         <div id="inject-report" class="report"></div>
+        <!-- 第2表: 6階層を1手順ずつ（画面遷移と登録は人） -->
+        <div id="plan2-block" hidden>
+          <h3 class="card-subtitle">第2表を1件ずつ流し込む</h3>
+          <p class="hint">
+            カイポケの第2表一覧で、案内どおりの「+項目を追加」を押して追加画面を開き、「この画面に流し込む」→ 内容を確かめて「登録する」→ 一覧に戻ったら「次へ」。
+          </p>
+          <div id="plan2-progress" class="hint"></div>
+          <div id="plan2-step" class="append-text"></div>
+          <div class="append-actions">
+            <button id="plan2-prev" class="btn" type="button">前へ</button>
+            <button id="plan2-fill" class="btn btn-accent" type="button" disabled>この画面に流し込む</button>
+            <button id="plan2-next" class="btn" type="button">次へ</button>
+            <button id="plan2-reset" class="btn" type="button">最初から</button>
+          </div>
+          <div id="plan2-report" class="report"></div>
+        </div>
         <!-- 第5段: アセスメント欄への追記（前後を見てから足す・元に戻せる） -->
         <div id="append-block" hidden>
           <h3 class="card-subtitle">アセスメントへの追記</h3>

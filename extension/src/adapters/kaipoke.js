@@ -999,6 +999,287 @@
     return { filled, results };
   }
 
+  // ---- 第2表（居宅サービス計画書(2)）を1件ずつ流し込む（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §4） ----
+  //
+  // カイポケの第2表は「ニーズ→長期→短期→サービス内容→種別→事業所」の6階層で、1階層ごとに追加画面へ遷移する。
+  // 拡張は画面遷移も登録ボタンも押さない。職員が「+項目を追加」で追加画面を開き、パネルの「この画面に流し込む」で
+  // その画面の欄だけを埋め、職員が「登録する」を押して一覧に戻る──を1手順ずつ繰り返す（登録は常に人・SPEC F7）。
+
+  /** 手順の種類と、職員への案内文・追加画面の特徴（欄名） */
+  const PLAN2_KINDS = {
+    need: { label: "ニーズ", hint: "一覧の最下段、ニーズ列の「+項目を追加」を押す" },
+    longTerm: { label: "長期目標", hint: "そのニーズ行の長期目標列の「+項目を追加」を押す" },
+    shortTerm: { label: "短期目標", hint: "その長期目標行の短期目標列の「+項目を追加」を押す" },
+    serviceContent: {
+      label: "サービス内容",
+      hint: "その短期目標行のサービス内容列の「+項目を追加」を押す",
+    },
+    serviceKind: {
+      label: "サービス種別",
+      hint: "そのサービス内容行の種別列の「+項目を追加」を押す",
+    },
+    provider: {
+      label: "サービス事業所・頻度・期間",
+      hint: "その種別行の事業所列の「+項目を追加」を押す",
+    },
+  };
+
+  /**
+   * CarePlanDraft（needs[]）から手順の列を作る純粋関数（テスト対象）。
+   * @returns {{kind:string, label:string, hint:string, needIndex:number, serviceIndex:number|null, text:string, service?:object, need?:object}[]}
+   */
+  function buildPlan2Steps(draft) {
+    const needs = Array.isArray(draft?.needs) ? draft.needs : [];
+    const steps = [];
+    needs.forEach((n, i) => {
+      const base = { needIndex: i, serviceIndex: null, need: n };
+      steps.push({ kind: "need", ...PLAN2_KINDS.need, ...base, text: String(n.need ?? "") });
+      steps.push({
+        kind: "longTerm",
+        ...PLAN2_KINDS.longTerm,
+        ...base,
+        text: String(n.longTermGoal ?? ""),
+        period: String(n.longTermPeriod ?? ""),
+      });
+      steps.push({
+        kind: "shortTerm",
+        ...PLAN2_KINDS.shortTerm,
+        ...base,
+        text: String(n.shortTermGoal ?? ""),
+        period: String(n.shortTermPeriod ?? ""),
+      });
+      (Array.isArray(n.services) ? n.services : []).forEach((s, j) => {
+        const sb = { needIndex: i, serviceIndex: j, service: s };
+        steps.push({
+          kind: "serviceContent",
+          ...PLAN2_KINDS.serviceContent,
+          ...sb,
+          text: String(s.content ?? ""),
+        });
+        steps.push({
+          kind: "serviceKind",
+          ...PLAN2_KINDS.serviceKind,
+          ...sb,
+          text: String(s.serviceType ?? ""),
+        });
+        steps.push({
+          kind: "provider",
+          ...PLAN2_KINDS.provider,
+          ...sb,
+          text: `${s.provider ?? ""}／${s.frequency ?? ""}／${s.period ?? ""}`,
+        });
+      });
+    });
+    return steps;
+  }
+
+  /**
+   * 頻度の文章をカイポケの入力に直す純粋関数（テスト対象）。
+   * 01=「N（日/週/月）にM回」、02=定期（毎日/毎週/随時/必要時）、03=その他（自由記述）
+   */
+  function parseFrequency(text) {
+    const s = normalizeForKaipoke(String(text ?? "")).trim();
+    if (!s) return { mode: "03", text: "" };
+    const fixed = { 毎日: "01", 毎週: "02", 随時: "03", 必要時: "04" };
+    for (const [k, v] of Object.entries(fixed)) {
+      if (s === k || s === `${k}に` || s.startsWith(`${k}（`) || s.startsWith(`${k}(`)) {
+        return { mode: "02", fixed: v };
+      }
+    }
+    const m = /^(?:1)?([日週月])(?:に|あたり)?\s*(\d+)\s*回$/.exec(s.replace(/\s+/g, ""));
+    if (m) {
+      const unit = { 日: "01", 週: "02", 月: "03" }[m[1]];
+      return { mode: "01", unit, count: Number(m[2]) };
+    }
+    return { mode: "03", text: s };
+  }
+
+  /** 介護保険サービスらしい種別名か（それ以外は「任意サービス」＝本人・家族・医療機関など） */
+  const INSURANCE_KIND_WORDS = [
+    "訪問介護",
+    "訪問入浴",
+    "訪問看護",
+    "訪問リハ",
+    "居宅療養",
+    "通所介護",
+    "通所リハ",
+    "短期入所",
+    "特定施設",
+    "福祉用具",
+    "住宅改修",
+    "夜間対応",
+    "認知症対応",
+    "小規模多機能",
+    "定期巡回",
+    "看護小規模",
+    "居宅介護支援",
+    "介護予防",
+    "地域密着",
+  ];
+  /** 種別名 → 介護サービス(01)か任意サービス(02)か（純粋関数・テスト対象） */
+  function classifyServiceType(text) {
+    const s = String(text ?? "").trim();
+    const insurance = INSURANCE_KIND_WORDS.some((w) => s.includes(w));
+    return insurance ? { category: "01", kindText: s } : { category: "02", name: s || "その他" };
+  }
+
+  /**
+   * 今の画面がどの追加画面かを、存在する欄名と URL から判定する純粋関数（テスト対象）。
+   * @param {string[]} names - document 内の input/select/textarea の name 一覧
+   * @param {string} url
+   */
+  function plan2ScreenFromNames(names, url) {
+    const has = (n) => names.includes(n);
+    if (has("form:longTimePeriodMarkSubject")) return "longTerm";
+    if (has("form:shortTermMarkSubject")) return "shortTerm";
+    if (has("form:assistanceSubjectServiceSubject")) return "serviceContent";
+    if (
+      has("service_category") ||
+      has("form:serviceKindInternalId") ||
+      has("form:arbitraryServiceName")
+    )
+      return "serviceKind";
+    if (has("provider_category") || has("form:idCompanyDto") || has("form:othersPlantName"))
+      return "provider";
+    if (/MEM091704\.do/.test(url || "")) return "need";
+    if (/MEM09170[3579]\.do|MEM09172[135]\.do/.test(url || "")) return "list";
+    return "unknown";
+  }
+
+  function byName(name) {
+    return document.querySelector(`[name="${CSS.escape(name)}"]`);
+  }
+  function allNames() {
+    return [...document.querySelectorAll("input[name], select[name], textarea[name]")].map(
+      (el) => el.name,
+    );
+  }
+  /** ラジオを選ぶ（click で画面側の有効化処理も走らせる） */
+  function setRadio(name, value) {
+    const el = document.querySelector(
+      `input[type="radio"][name="${CSS.escape(name)}"][value="${CSS.escape(value)}"]`,
+    );
+    if (!el) return false;
+    el.click();
+    if (!el.checked) {
+      el.checked = true;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    return true;
+  }
+  /** セレクトを「表示文字に含まれる語」で選ぶ（値が不明でも選べる） */
+  function setSelectByText(el, text) {
+    const t = String(text ?? "").trim();
+    if (!el || !t) return false;
+    const opt = [...el.options].find(
+      (o) => o.textContent?.replace(/\s+/g, "").includes(t.replace(/\s+/g, "")),
+    );
+    if (!opt) return false;
+    el.value = opt.value;
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+
+  /**
+   * 第2表の追加画面1つ分を埋める。画面が手順と違えば書かずに知らせる。登録は押さない。
+   * @returns {{status:"filled"|"screen_mismatch"|"not_found"|"unknown", screen:string, expected:string, notes:string[]}}
+   */
+  function fillPlan2Step(step) {
+    const screen = plan2ScreenFromNames(allNames(), location.href);
+    const notes = [];
+    if (!step || !PLAN2_KINDS[step.kind])
+      return { status: "unknown", screen, expected: "", notes: ["手順が不正です。"] };
+    if (screen !== step.kind) {
+      return {
+        status: "screen_mismatch",
+        screen,
+        expected: step.kind,
+        notes: [
+          `今の画面は「${PLAN2_KINDS[screen]?.label ?? (screen === "list" ? "一覧" : "不明")}」です。${PLAN2_KINDS[step.kind].hint}。`,
+        ],
+      };
+    }
+    const write = (name, value, label) => {
+      const el = byName(name);
+      if (!el) {
+        notes.push(`${label}の欄が見つかりません（${name}）。`);
+        return false;
+      }
+      writeField(el, value);
+      highlight(el, "filled");
+      return true;
+    };
+
+    if (step.kind === "need") {
+      const ta = document.querySelector("textarea");
+      if (!ta)
+        return {
+          status: "not_found",
+          screen,
+          expected: step.kind,
+          notes: ["ニーズの欄が見つかりません。"],
+        };
+      writeField(ta, step.text);
+      highlight(ta, "filled");
+    } else if (step.kind === "longTerm") {
+      write("form:longTimePeriodMarkSubject", step.text, "長期目標");
+      if (step.period)
+        notes.push(
+          `期間「${step.period}」はセレクト（年月日）なので手で合わせてください（初期値は当月1日〜月末）。`,
+        );
+    } else if (step.kind === "shortTerm") {
+      write("form:shortTermMarkSubject", step.text, "短期目標");
+      if (step.period)
+        notes.push(`期間「${step.period}」はセレクト（年月日）なので手で合わせてください。`);
+    } else if (step.kind === "serviceContent") {
+      write("form:assistanceSubjectServiceSubject", step.text, "サービス内容");
+    } else if (step.kind === "serviceKind") {
+      const c = classifyServiceType(step.text);
+      if (!setRadio("service_category", c.category))
+        notes.push("種別のラジオ（介護／任意）が見つかりません。");
+      if (c.category === "01") {
+        const cb = document.querySelector('input[type="checkbox"]');
+        if (cb && !cb.checked) cb.click(); // ※1 保険給付対象（画面内唯一のチェックボックス）
+        const sel = byName("form:serviceKindInternalId");
+        if (!sel || !setSelectByText(sel, c.kindText)) {
+          notes.push(
+            `サービス種別「${c.kindText}」に合う選択肢が見つかりません。手で選んでください。`,
+          );
+        }
+      } else {
+        write("form:arbitraryServiceName", c.name, "任意サービス名");
+      }
+    } else if (step.kind === "provider") {
+      const s = step.service || {};
+      const provider = String(s.provider ?? "").trim();
+      const sel = byName("form:idCompanyDto");
+      let usedCompany = false;
+      if (sel && provider && setRadio("provider_category", "01")) {
+        usedCompany = setSelectByText(sel, provider);
+      }
+      if (!usedCompany) {
+        setRadio("provider_category", "02");
+        write("form:othersPlantName", provider || "要確認", "事業所名（その他）"); // writeField が keyup も送る＝隠し欄同期
+        if (provider)
+          notes.push(
+            `「${provider}」は取引先一覧に無かったため「その他」に入れました。取引先にあるなら手で選び直してください。`,
+          );
+      }
+      const f = parseFrequency(s.frequency);
+      if (!setRadio("HINDO_KBN", f.mode)) notes.push("頻度のラジオが見つかりません。");
+      if (f.mode === "01") {
+        setRadio("form:frequencyScheduleDivision", f.unit);
+        write("form:count", String(f.count), "回数");
+      } else if (f.mode === "02") {
+        setRadio("form:frequencyFixedTermDivision", f.fixed);
+      } else {
+        write("form:othersFrequencyName", f.text, "頻度（その他）");
+      }
+      write("form:periodSubject", String(s.period ?? ""), "期間");
+    }
+    return { status: "filled", screen, expected: step.kind, notes };
+  }
+
   // ---- 追記モード（第5段: アセスメント欄の末尾に足す。既存の文章は消さない） ----
   //
   // なぜ inject と分けるか: inject は欄を「上書き」する。アセスメントは過去の記録が入っている欄に
@@ -1088,6 +1369,11 @@
     isReloginRequired,
     kaipokePageFields,
     readFieldValue,
+    buildPlan2Steps,
+    parseFrequency,
+    classifyServiceType,
+    plan2ScreenFromNames,
+    fillPlan2Step,
     charWidth,
     lineFullWidth,
     measureText,

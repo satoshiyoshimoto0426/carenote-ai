@@ -81,6 +81,26 @@
       return undefined;
     }
 
+    // 第2表: 追加画面1つ分を埋める（画面遷移・登録は人）
+    if (message.type === "CARENOTE_PLAN2_FILL") {
+      if (!adapter) {
+        sendResponse({
+          ok: false,
+          error: "アダプタの初期化に失敗しました。ページを再読込してください。",
+        });
+        return undefined;
+      }
+      try {
+        sendResponse({ ok: true, report: adapter.fillPlan2Step(message.step) });
+      } catch (e) {
+        sendResponse({
+          ok: false,
+          error: e instanceof Error ? e.message : "第2表の流し込み中にエラーが発生しました。",
+        });
+      }
+      return undefined;
+    }
+
     if (message.type === "CARENOTE_INJECT") {
       if (!adapter) {
         sendResponse({
