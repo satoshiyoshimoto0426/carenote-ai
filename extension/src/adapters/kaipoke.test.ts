@@ -30,7 +30,8 @@ describe("CareNoteKaipoke 文字幅・行数計測", () => {
       maxRows: 2,
       maxColsFullWidth: 5,
     };
-    const ok = adapter.measureText("あいうえ\nかきくけ", mapping);
+    // 2行×5字の欄。総文字数の安全上限は 行×字−行数=8 なので、改行込み9字ではなく7字で「収まる」を確かめる
+    const ok = adapter.measureText("あいう\nかきく", mapping);
     expect(ok.rows).toBe(2);
     expect(ok.overRows).toBe(false);
     expect(ok.overCols).toBe(false);
@@ -40,7 +41,8 @@ describe("CareNoteKaipoke 文字幅・行数計測", () => {
     expect(over.rows).toBe(3);
     expect(over.overRows).toBe(true); // 3 > 2
     expect(over.overCols).toBe(true); // 6 > 5
-    expect(over.warnings.length).toBe(2);
+    expect(over.overTotal).toBe(true); // 13字 > 安全上限8字
+    expect(over.warnings.length).toBe(3);
   });
 });
 
@@ -362,5 +364,32 @@ describe("CareNoteKaipoke 追記モード（buildAppendedValue・純粋関数）
     expect(
       adapter.buildAppendedValue("既存。\n2026-09-10 電話: 同じ文。", "2026-09-10 電話: 同じ文。"),
     ).toBeNull();
+  });
+});
+
+describe("CareNoteKaipoke 保存できない文字の正規化（normalizeForKaipoke・純粋関数）", () => {
+  it("波ダッシュを全角チルダに、丸数字とローマ数字を括弧数字・英字にする", () => {
+    expect(adapter.normalizeForKaipoke("R8.07.10〜R8.09.30")).toBe("R8.07.10～R8.09.30");
+    expect(adapter.normalizeForKaipoke("①転倒 ②服薬 ㉑その他")).toBe("(1)転倒 (2)服薬 (21)その他");
+    expect(adapter.normalizeForKaipoke("要介護Ⅱ・ⅲ期")).toBe("要介護II・iii期");
+  });
+
+  it("組文字と大量の空白を整える。普通の文章はそのまま", () => {
+    expect(adapter.normalizeForKaipoke("居室12㎡、体重52㎏")).toBe("居室12m2、体重52kg");
+    expect(adapter.normalizeForKaipoke("A様　　　来所")).toBe("A様 来所");
+    expect(adapter.normalizeForKaipoke("夜間の排泄で失敗が増えた。\n翌朝に確認。")).toBe(
+      "夜間の排泄で失敗が増えた。\n翌朝に確認。",
+    );
+  });
+});
+
+describe("CareNoteKaipoke measureText 総文字数の安全上限", () => {
+  it("行×字−行数 を超えると警告する（画面2行×20字の欄で40字は登録エラーになった実例）", () => {
+    const mapping = { key: "x", label: "緊急連絡", names: [], maxRows: 2, maxColsFullWidth: 20 };
+    const ok = adapter.measureText(`${"あ".repeat(18)}\n${"い".repeat(18)}`, mapping); // 37字
+    expect(ok.overTotal).toBe(false);
+    const over = adapter.measureText(`${"あ".repeat(20)}\n${"い".repeat(19)}`, mapping); // 40字
+    expect(over.overTotal).toBe(true);
+    expect(over.warnings.some((w) => w.includes("安全上限38字"))).toBe(true);
   });
 });

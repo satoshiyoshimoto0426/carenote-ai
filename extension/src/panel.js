@@ -418,7 +418,11 @@
         return;
       }
       const res = await chrome.tabs.sendMessage(tab.id, { type: "CARENOTE_PING" });
-      if (res?.ok && res.adapterReady) {
+      if (res?.ok && res.adapterReady && res.reloginRequired) {
+        badge.textContent = "再ログインが必要";
+        badge.className = "badge off";
+        setInjectDisabled(true);
+      } else if (res?.ok && res.adapterReady) {
         badge.textContent = "カイポケ接続OK";
         badge.className = "badge ok";
         setInjectDisabled(false);

@@ -30,7 +30,22 @@
         ok: true,
         isKaipoke: isKaipokeApp(),
         adapterReady: Boolean(adapter),
+        // セッション切れの再ログイン画面が出ていれば true（拡張は書き込まず、職員に再ログインを頼む）
+        reloginRequired: Boolean(adapter?.isReloginRequired?.()),
         url: location.href,
+      });
+      return undefined;
+    }
+
+    // 書き込み系はすべて、再ログイン画面が出ていたら止める（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §5-6）
+    if (
+      adapter?.isReloginRequired?.() &&
+      /^CARENOTE_(INJECT|APPEND_PREVIEW|APPEND_APPLY|APPEND_UNDO)$/.test(message.type)
+    ) {
+      sendResponse({
+        ok: false,
+        error:
+          "カイポケのログインが切れています（30分無操作）。カイポケで再ログインしてから、もう一度押してください。",
       });
       return undefined;
     }

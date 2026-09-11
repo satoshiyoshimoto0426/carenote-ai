@@ -67,15 +67,28 @@
         label: "主訴・意向（P1 本人欄）",
         names: ["form:consultationSubjectPersonHimself"],
         maxRows: 10,
+        maxColsFullWidth: 26,
         confidence: "caution",
-        note: "本人欄に全文を入力します。家族の主訴は手作業で家族欄へ分けてください。",
+        note: "本人欄に全文を入力します。家族の主訴は手作業で家族欄（4行×26字）へ分けてください。",
       },
       {
         key: "lifeHistory",
         label: "生活歴・経過（P1）",
         names: ["form:progressSubject"],
         maxRows: 16,
+        maxColsFullWidth: 26,
         confidence: "clean",
+      },
+      {
+        // docs/KAIPOKE-TRANSCRIPTION-SPEC.md §1 2枚目。CareNote の currentServices は公的サービスも含むが、
+        // カイポケ側の公的サービスはチェック欄（homeuse01〜）なので、文章はインフォーマル支援欄に入れて人が振り分ける
+        key: "currentServices",
+        label: "活用している支援内容（P2 インフォーマル欄）",
+        names: ["form:supportSubject"],
+        maxRows: 9,
+        maxColsFullWidth: 16,
+        confidence: "caution",
+        note: "公的サービスはP2のチェック欄（訪問介護・通所介護…）へ手作業で。文章はインフォーマル支援欄に入ります。",
       },
       {
         key: "overview",
@@ -254,7 +267,20 @@
         `1行が上限(全角${mapping.maxColsFullWidth}文字)を超えています（最長${maxLineWidth}相当）。`,
       );
     }
-    return { rows, maxLineWidth, overRows, overCols, warnings };
+    // サーバ側は「改行を含む総文字数」で検証する欄がある（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §5-2:
+    // 画面「2行×20字」の欄が42字でも40字でもNG・30字でOK）。行×字−行数 を安全上限にして警告する
+    let overTotal = false;
+    if (typeof mapping.maxRows === "number" && typeof mapping.maxColsFullWidth === "number") {
+      const total = String(value ?? "").length;
+      const safeTotal = mapping.maxRows * mapping.maxColsFullWidth - mapping.maxRows;
+      if (total > safeTotal) {
+        overTotal = true;
+        warnings.push(
+          `文字数がサーバ側の上限を超える可能性があります（${total}字・安全上限${safeTotal}字）。登録エラーになったら削ってください。`,
+        );
+      }
+    }
+    return { rows, maxLineWidth, overRows, overCols, overTotal, warnings };
   }
 
   /**
@@ -755,18 +781,64 @@
    * @param {string} value
    */
   function writeField(el, value) {
+    // カイポケで保存エラーになる文字（波ダッシュ・丸数字等）を先に置き換える（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §2）
+    const safe = normalizeForKaipoke(value);
     el.focus();
     const proto =
       el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const descriptor = Object.getOwnPropertyDescriptor(proto, "value");
     if (descriptor?.set) {
-      descriptor.set.call(el, value);
+      descriptor.set.call(el, safe);
     } else {
-      el.value = value;
+      el.value = safe;
     }
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
+    // 第2表の一部の欄は onkeyup で隠し欄に同期する（同 §3）。keyup も送らないと保存時に検証で落ちる
+    el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
     el.blur();
+  }
+
+  /**
+   * カイポケに保存できない／崩れる文字を置き換える純粋関数（テスト対象・docs/KAIPOKE-TRANSCRIPTION-SPEC.md §2）。
+   * - 波ダッシュ 〜(U+301C)・⁓・∼ → 全角チルダ ～(U+FF5E)：VAL_0206「利用できない文字」の実例
+   * - 丸数字 ①〜⑳・㉑〜㉟ → (1)〜(35)、ローマ数字 Ⅰ〜Ⅻ／ⅰ〜ⅻ → I〜XII／i〜xii：機種依存文字の予防
+   * - ㎡・㎝・㎏ 等の組文字 → m2・cm・kg
+   * - 3個以上続く空白 → 1個（第1表画面の注意「大量の空白はレイアウトが崩れる」）
+   * @param {unknown} value
+   * @returns {string}
+   */
+  function normalizeForKaipoke(value) {
+    let s = String(value ?? "");
+    s = s.replace(/[〜⁓∼]/g, "～");
+    s = s.replace(/[①-⑳]/g, (c) => `(${c.charCodeAt(0) - 0x2460 + 1})`);
+    s = s.replace(/[㉑-㉟]/g, (c) => `(${c.charCodeAt(0) - 0x3251 + 21})`);
+    const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+    s = s.replace(/[Ⅰ-Ⅻ]/g, (c) => ROMAN[c.charCodeAt(0) - 0x2160]);
+    s = s.replace(/[ⅰ-ⅻ]/g, (c) => ROMAN[c.charCodeAt(0) - 0x2170].toLowerCase());
+    s = s.replace(/㎡/g, "m2").replace(/㎝/g, "cm").replace(/㎏/g, "kg").replace(/㎖/g, "ml");
+    s = s.replace(/[ 　]{3,}/g, " ");
+    return s;
+  }
+
+  /**
+   * セッション切れの再ログイン画面が出ているか（同 §5-6）。
+   * 30分無操作で「再度ユーザー認証が必要です」のフォームが表示される。拡張はパスワードを扱わないので、
+   * 出ていたら書き込まず、職員に再ログインを頼む。
+   */
+  function isReloginRequired() {
+    const root = typeof document !== "undefined" ? document.body : null;
+    if (!root) return false;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      if (node.nodeValue?.includes("再度ユーザー認証が必要")) {
+        const el = node.parentElement;
+        if (el && el.offsetParent !== null) return true;
+      }
+      node = walker.nextNode();
+    }
+    return false;
   }
 
   /** 欄が見つからない＝開いている画面が違う可能性が高い時の共通メッセージ。 */
@@ -937,6 +1009,8 @@
     previewAppend,
     applyAppend,
     undoAppend,
+    normalizeForKaipoke,
+    isReloginRequired,
     charWidth,
     lineFullWidth,
     measureText,
