@@ -9,7 +9,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       body,
       request,
       onBeforeGenerateToken: async () => ({
-        allowedContentTypes: ["application/pdf"],
+        // 第6段（OCR統合）: 紙の書類をスマホで撮った画像も受け付ける。処理後に削除する運用は PDF と同じ
+        allowedContentTypes: ["application/pdf", "image/jpeg", "image/png", "image/webp"],
         maximumSizeInBytes: 30 * 1024 * 1024, // 30MB
       }),
       onUploadCompleted: async () => {

@@ -7,7 +7,16 @@ import {
   generateRescueBundle,
   type RescuePersona,
 } from "@/lib/generation/rescue";
-import { generateIntake, type IntakeDocument } from "@/lib/generation/rescueIntake";
+import {
+  composeIntakeNotes,
+  generateIntake,
+  INTAKE_DOC_TYPES,
+  INTAKE_MEDIA_TYPES,
+  type IntakeDocType,
+  type IntakeDocument,
+  type IntakeMediaType,
+  type IntakeResult,
+} from "@/lib/generation/rescueIntake";
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskPii } from "@/lib/privacy/maskPii";
 import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
@@ -24,10 +33,14 @@ const MAX_SOURCE_DOCS = 5;
  */
 const MAX_TOTAL_DOC_BYTES = 20 * 1024 * 1024;
 
-/** リクエストボディの sourceDocs 1件（Vercel Blob にアップロード済みのPDF）。 */
+/** リクエストボディの sourceDocs 1件（Vercel Blob にアップロード済みの PDF または画像）。 */
 interface SourceDoc {
   name: string;
   url: string;
+  /** PDF か画像か（第6段）。不正値は 400 */
+  contentType: IntakeMediaType;
+  /** 職員が選んだ資料の種別（未指定は「その他」） */
+  docType: IntakeDocType;
 }
 
 /**
@@ -51,9 +64,21 @@ function parseSourceDocs(value: unknown): SourceDoc[] | null {
   const docs: SourceDoc[] = [];
   for (const item of value) {
     if (typeof item !== "object" || item === null) return null;
-    const { name, url } = item as Record<string, unknown>;
+    const { name, url, contentType, docType } = item as Record<string, unknown>;
     if (typeof name !== "string" || typeof url !== "string" || !isBlobUrl(url)) return null;
-    docs.push({ name, url });
+    // 形式は許可リストのみ（画像は image ブロック、PDF は document ブロックで AI へ渡す）
+    const ct =
+      typeof contentType === "string" && (INTAKE_MEDIA_TYPES as string[]).includes(contentType)
+        ? (contentType as IntakeMediaType)
+        : name.toLowerCase().endsWith(".pdf")
+          ? "application/pdf"
+          : null;
+    if (!ct) return null;
+    const dt =
+      typeof docType === "string" && (INTAKE_DOC_TYPES as string[]).includes(docType)
+        ? (docType as IntakeDocType)
+        : "その他";
+    docs.push({ name, url, contentType: ct, docType: dt });
   }
   return docs;
 }
@@ -120,7 +145,7 @@ export async function POST(req: NextRequest) {
   const sourceDocs = parseSourceDocs(body.sourceDocs);
   if (sourceDocs === null) {
     return NextResponse.json(
-      { error: `提供書類の指定が不正です（PDFのアップロードは最大${MAX_SOURCE_DOCS}件）。` },
+      { error: `提供書類の指定が不正です（PDF・画像のアップロードは最大${MAX_SOURCE_DOCS}件）。` },
       { status: 400 },
     );
   }
@@ -130,7 +155,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "利用者の人物像（性格・生活歴・診断など）を1つ以上入力するか、PDF資料を添付してください。",
+          "利用者の人物像（性格・生活歴・診断など）を1つ以上入力するか、資料（PDF・画像）を添付してください。",
       },
       { status: 400 },
     );
@@ -140,7 +165,7 @@ export async function POST(req: NextRequest) {
   const blobUrls = sourceDocs.map((d) => d.url);
 
   try {
-    let intake: { summary: string; cautions: string[] } | undefined;
+    let intake: IntakeResult | undefined;
 
     if (sourceDocs.length > 0) {
       // ── Stage0: Blob取得 → base64 → 統合読解（evaluate と同じ流儀） ──
@@ -157,22 +182,39 @@ export async function POST(req: NextRequest) {
           return NextResponse.json(
             {
               error:
-                "PDF資料の合計サイズが大きすぎます（合計20MBまで）。ページ数の少ないPDFでお試しください。",
+                "資料の合計サイズが大きすぎます（合計20MBまで）。ページ数の少ないPDFや、枚数を減らした写真でお試しください。",
             },
             { status: 413 },
           );
         }
-        docs.push({ name: doc.name, base64: Buffer.from(arrayBuffer).toString("base64") });
+        docs.push({
+          name: doc.name,
+          base64: Buffer.from(arrayBuffer).toString("base64"),
+          mediaType: doc.contentType,
+          docType: doc.docType,
+        });
       }
-      intake = await generateIntake(docs, persona);
-      // 読解サマリにも黒塗りを適用（PDF由来の実名・番号がサマリ経由で下流プロンプトへ流れる穴を塞ぐ）
+      const raw = await generateIntake(docs, persona);
+      // 読み取り結果の文章すべてに黒塗りを適用（資料由来の実名・番号が下流プロンプトへ流れる穴を塞ぐ）
+      const m = (s: string) => maskPii(s, aliases, vault).text;
       intake = {
-        summary: maskPii(intake.summary, aliases, vault).text,
-        cautions: intake.cautions.map((c) => maskPii(c, aliases, vault).text),
+        summary: m(raw.summary),
+        cautions: raw.cautions.map(m),
+        facts: raw.facts.map((f) => ({ ...f, text: m(f.text), source: m(f.source) })),
+        conflicts: raw.conflicts.map((c) => ({
+          topic: m(c.topic),
+          advice: m(c.advice),
+          statements: c.statements.map((s) => ({ source: m(s.source), text: m(s.text) })),
+        })),
+        documents: raw.documents.map((d) => ({ ...d, name: m(d.name) })),
       };
     }
 
-    const bundle = await generateRescueBundle(persona, intake?.summary);
+    // 第6段: 分類別の事実メモ（出典つき・食い違いは冒頭）を帳票生成の入力にする
+    const bundle = await generateRescueBundle(
+      persona,
+      intake ? composeIntakeNotes(intake) : undefined,
+    );
     // AIの返事に残る札（〔電話番号1〕等）を手元で元の値に戻してから返す（名前の記号はそのまま）
     return NextResponse.json(restoreDeep(intake ? { ...bundle, intake } : bundle, vault));
   } catch (e: unknown) {

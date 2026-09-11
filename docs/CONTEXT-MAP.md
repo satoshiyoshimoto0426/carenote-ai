@@ -159,6 +159,9 @@ AIの返事は `restoreDeep` で手元に戻してから返す。名前（A様�
 `content.js` CARENOTE_APPEND_*、`panel.js` 「前後を見る／この欄に追記する／元に戻す」。inject（上書き）とは別経路。登録は人。
 **D4 関係者名簿 (2026-09-10)**: `supabase/client_related.sql`（`client_related_identities`・暗号化・続柄一意）→ `lib/db/clients.ts` `getRelatedPeople/addRelatedPerson/deleteRelatedPerson`＋`loadAliases` が関係者を含める
 （記号＝`pseudonymize.relatedAliasCode`「A様の長女」）→ `GET/POST/DELETE /api/clients/[id]/related` → `components/clients/RelatedPeople.tsx`（利用者詳細ページ）。SQL は手動実行が要る。
+**第6段 OCR統合 (2026-09-11)**: `/rescue` 参考資料に画像（JPEG/PNG/WebP・`blob-upload` 許可）＋資料ごとの種別 → `/api/rescue`（`contentType`/`docType` を検証）
+→ `lib/generation/rescueIntake.ts`（PDF=document ブロック／画像=image ブロック・種別ごとの読みどころ・`facts`〔分類＋出典＋日付〕・`conflicts`・`documents`）
+→ `composeIntakeNotes`（食い違い→分類別事実）を `generateRescueBundle` の入力に。結果の全文章に maskPii。画面に読み取り報告・食い違い・事実（分類別）。
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
 ## 4. 更新トリガ（いつここを直すか）

@@ -45,8 +45,18 @@ import {
   monitoringToText,
   supportLogToText,
 } from "@/lib/draftText";
+import {
+  INTAKE_CATEGORIES,
+  INTAKE_DOC_TYPES,
+  INTAKE_MEDIA_TYPES,
+  type IntakeDocType,
+  type IntakeResult,
+} from "@/lib/generation/intakeTypes";
 import type { RescueBundle } from "@/lib/generation/rescue";
-import type { IntakeResult } from "@/lib/generation/rescueIntake";
+
+/** 受け付ける資料の形式（blob-upload・rescueIntake と一致） */
+const ACCEPTED_TYPES: readonly string[] = INTAKE_MEDIA_TYPES;
+
 import type { ClientRecord } from "@/types/client";
 
 type DocKey = keyof RescueBundle;
@@ -55,7 +65,7 @@ type DocKey = keyof RescueBundle;
  * /api/rescue 契約の追加分。sourceDocs = Vercel Blob にアップロード済みPDF、
  * intake = 提供書類のAI統合読解（lib/generation/rescueIntake の IntakeResult）。
  */
-type SourceDoc = { name: string; url: string };
+type SourceDoc = { name: string; url: string; contentType: string; docType: IntakeDocType };
 type RescueResponse = RescueBundle & { intake?: IntakeResult };
 
 /** 参考資料PDFのクライアント側上限（API契約: sourceDocs 最大5件・1件10MB目安）。 */
@@ -227,6 +237,9 @@ export default function RescuePage() {
   const [error, setError] = useState<string | null>(null);
   const [bundle, setBundle] = useState<RescueBundle | null>(null);
   const [intake, setIntake] = useState<IntakeResult | null>(null);
+  /** 第6段: 資料ごとの種別（職員が選ぶ。読みどころが変わる）。キーは name+size */
+  const [docTypes, setDocTypes] = useState<Record<string, IntakeDocType>>({});
+  const fileKey = (f: File) => `${f.name}-${f.size}`;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [targetClientId, setTargetClientId] = useState("");
@@ -250,13 +263,13 @@ export default function RescuePage() {
   const setField = (key: keyof PersonaForm, value: string) =>
     setPersona((p) => ({ ...p, [key]: value }));
 
-  // 参考資料PDFの選択（クリック・ドロップ共通）。PDF以外/10MB超/6件目以降は弾く
+  // 参考資料の選択（クリック・ドロップ共通）。PDF・画像以外/10MB超/6件目以降は弾く
   const addFiles = (incoming: File[]) => {
     setError(null);
     const next = [...files];
     for (const f of incoming) {
-      if (f.type !== "application/pdf") {
-        setError("参考資料はPDFファイルのみ追加できます。");
+      if (!ACCEPTED_TYPES.includes(f.type)) {
+        setError("参考資料は PDF か画像（JPEG・PNG・WebP）のみ追加できます。");
         continue;
       }
       const mb = f.size / 1024 / 1024;
@@ -312,7 +325,12 @@ export default function RescuePage() {
               access: "public",
               handleUploadUrl: "/api/blob-upload",
             });
-            uploaded.push({ name: f.name, url: blob.url });
+            uploaded.push({
+              name: f.name,
+              url: blob.url,
+              contentType: f.type,
+              docType: docTypes[fileKey(f)] ?? "その他",
+            });
           }
           sourceDocs = uploaded;
         } catch {
@@ -475,10 +493,11 @@ export default function RescuePage() {
 
           <div className="space-y-4 border-t border-[var(--line-soft)] pt-5">
             <div>
-              <SectionTitle>参考資料（PDF・任意）</SectionTitle>
+              <SectionTitle>参考資料（PDF・画像・任意）</SectionTitle>
               <p className="mt-1.5 text-xs text-[var(--faint)]">
-                主治医意見書・診療情報提供書などのPDFを最大{MAX_SOURCE_DOCS}件（1件
-                {MAX_SOURCE_DOC_MB}MB目安）。AIが内容を統合して下書きに反映します。
+                主治医意見書・診療情報提供書・看護サマリーなどを最大{MAX_SOURCE_DOCS}件（1件
+                {MAX_SOURCE_DOC_MB}MB目安）。紙はスマホで撮った写真（JPEG・PNG）でも読み取れます。
+                資料ごとに種別を選ぶと、AIがその書類の「読みどころ」を押さえて事実を抜き出し、資料どうしの食い違いも指摘します。
               </p>
             </div>
 
@@ -504,7 +523,7 @@ export default function RescuePage() {
               }}
               role="button"
               tabIndex={0}
-              aria-label="参考資料のPDFを選択、またはドラッグ＆ドロップ"
+              aria-label="参考資料（PDF・画像）を選択、またはドラッグ＆ドロップ"
               className={`cursor-pointer rounded-2xl border-2 border-dashed p-6 text-center transition-colors duration-300 ${
                 dragOver
                   ? "border-[var(--green)] bg-[var(--green-soft)]"
@@ -514,7 +533,7 @@ export default function RescuePage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                 multiple
                 className="hidden"
                 onChange={handleFileChange}
@@ -522,7 +541,9 @@ export default function RescuePage() {
               <div className="mb-2 flex justify-center text-[var(--faint)]">
                 <IconUpload size={26} />
               </div>
-              <div className="text-sm font-semibold text-[var(--ink)]">PDFをドラッグ＆ドロップ</div>
+              <div className="text-sm font-semibold text-[var(--ink)]">
+                PDF・写真をドラッグ＆ドロップ
+              </div>
               <div className="mt-1 text-xs text-[var(--muted)]">
                 またはクリックしてファイルを選択（複数可）
               </div>
@@ -539,6 +560,23 @@ export default function RescuePage() {
                     <span className="min-w-0 flex-1 truncate text-sm text-[var(--ink)]">
                       {f.name}
                     </span>
+                    <select
+                      value={docTypes[fileKey(f)] ?? "その他"}
+                      onChange={(e) =>
+                        setDocTypes((prev) => ({
+                          ...prev,
+                          [fileKey(f)]: e.target.value as IntakeDocType,
+                        }))
+                      }
+                      aria-label={`${f.name} の種別`}
+                      className="shrink-0 rounded-md border border-[var(--line)] bg-white px-2 py-1 text-xs"
+                    >
+                      {INTAKE_DOC_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
                     <span className="shrink-0 text-xs text-[var(--faint)]">
                       {(f.size / 1024 / 1024).toFixed(1)} MB
                     </span>
@@ -583,6 +621,80 @@ export default function RescuePage() {
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--ink)]">
                 {intake.summary}
               </p>
+
+              {/* 第6段: 資料ごとの読み取り報告（種別の食い違い・判読の状態） */}
+              {(intake.documents?.length ?? 0) > 0 && (
+                <ul className="flex flex-wrap gap-2">
+                  {intake.documents.map((d) => (
+                    <li
+                      key={d.name}
+                      className={`rounded-full border px-2.5 py-0.5 text-xs ${
+                        d.readability === "良好"
+                          ? "border-[var(--green-line)] bg-[var(--green-soft)] text-[var(--green)]"
+                          : "border-[var(--clay)] bg-white text-[var(--clay)]"
+                      }`}
+                    >
+                      {d.name}：{d.detectedType}・{d.readability}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* 資料どうしの食い違い（人が確かめる） */}
+              {(intake.conflicts?.length ?? 0) > 0 && (
+                <div className="rounded-r-[10px] border-l-4 border-[var(--clay)] bg-white px-4 py-3">
+                  <p className="text-xs font-semibold text-[var(--clay)]">
+                    資料どうしの食い違い（{intake.conflicts.length}件・確かめてから使う）
+                  </p>
+                  <ul className="mt-1.5 space-y-2">
+                    {intake.conflicts.map((c) => (
+                      <li key={c.topic} className="text-xs leading-relaxed text-[var(--ink)]">
+                        <span className="font-medium">{c.topic}</span>
+                        <ul className="ml-3 mt-0.5 list-disc">
+                          {c.statements.map((s) => (
+                            <li key={`${s.source}-${s.text}`}>
+                              {s.source}：{s.text}
+                            </li>
+                          ))}
+                        </ul>
+                        <span className="text-[var(--muted)]">確認方法：{c.advice}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* 出典つきの事実（分類別） */}
+              {(intake.facts?.length ?? 0) > 0 && (
+                <details className="rounded-[10px] border border-[var(--line)] bg-white px-4 py-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-[var(--ink)]">
+                    読み取った事実（{intake.facts.length}件・出典つき）
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    {INTAKE_CATEGORIES.filter((cat) =>
+                      intake.facts.some((f) => f.category === cat),
+                    ).map((cat) => (
+                      <div key={cat}>
+                        <p className="text-xs font-medium text-[var(--green)]">【{cat}】</p>
+                        <ul className="ml-3 list-disc">
+                          {intake.facts
+                            .filter((f) => f.category === cat)
+                            .map((f) => (
+                              <li
+                                key={`${f.source}-${f.text}`}
+                                className="text-xs leading-relaxed text-[var(--ink)]"
+                              >
+                                {f.date ? `[${f.date}] ` : ""}
+                                {f.text}
+                                <span className="text-[var(--faint)]">（出典: {f.source}）</span>
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
               {intake.cautions.length > 0 && (
                 <div className="rounded-r-[10px] border-l-4 border-[var(--amber)] bg-[var(--amber-soft)] px-4 py-3">
                   <p className="text-xs font-semibold text-[#7A5B1E]">要注意点</p>

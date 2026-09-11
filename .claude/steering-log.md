@@ -39,3 +39,8 @@
 
 - 汎用ガード（force push・reset --hard/clean -f・supabase db reset・.env の git add）はグローバル層 `~/.claude/hooks/pre-bash-guard.py` が ask/block で所有するため、プロジェクト側の複製（旧式・`-f` 短縮形を素通しするドリフト版）を撤去し settings.json の登録も削除。固有分が残らないためフック自体を廃止し、再ドリフト検知の空打ちテスト `test_project_hooks.sh` を新設（7/7 PASS）。正本= HARNESS-RUNBOOK §5・決定= decisions-log 2026-07-08。
 - **横展開（maoucastle-game PR#5 独立審査 Critical への対処）**: グローバル層未導入環境（CIランナー・新規マシン）では撤去したガードが完全素通しになるため、「フック全撤去」から「fail-safe 専用フックに縮退」へ変更 ── 存在チェックで所有者がいる環境では休眠し、不在時のみ旧4ガード相当（force push の -f 素通し穴は修正済）で block。settings.json に再登録。空打ちテスト16/16 PASS。あわせて main 由来の .claude/launch.json biome フォーマット違反（quality-gate を赤にしていた既存違反）を同PRで修正。
+
+## 2026-09-11 画面（"use client"）がサーバー専用モジュールを値 import してビルド断
+- 事象: `app/(dashboard)/rescue/page.tsx` が `lib/generation/rescueIntake.ts` から定数（種別一覧）を import → 同ファイルが Anthropic SDK を読むため `node:fs` 等がブラウザ向けビルドに混ざり `Module build failed`。tsc・vitest は通るので build まで回さないと気づけない。
+- 対策: 型と定数を `lib/generation/intakeTypes.ts`（純粋）へ分離し、画面はそちらを読む。rescueIntake.ts は `export *` で再輸出。
+- 学び: 画面から `lib/generation/*` を **値 import する時は純粋モジュールか確認**（`import type` なら消えるので安全）。完了報告前の `npm run build` は省略しない（§2.8-B）。
