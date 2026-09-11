@@ -45,6 +45,10 @@ describe("置換と検査の同一原点を断つ（独立審査 2026-09-11 crit
   it("置換ルールが拾えない0落ちの番号でも、10桁以上の数字列として止める", () => {
     expect(findLeaks("折り返し 90-1234-5678", aliases).patterns).toEqual(["number"]);
     expect(() => assertNoLeak("番号は 0901234-5678", aliases)).toThrow(PiiLeakError);
+    expect(findLeaks("折り返し 90 ・ 1234 ・ 5678", aliases).patterns).toEqual(["number"]);
+    expect(findLeaks("2026-09-11 14:30 に訪問、次回 2026-09-30 10:00", aliases).patterns).toEqual(
+      [],
+    );
   });
 
   it("実名の途中に空白・ゼロ幅文字・旧字体の揺れがあっても検出する", () => {

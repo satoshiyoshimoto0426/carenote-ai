@@ -51,6 +51,12 @@ export function normalizeDigitSeparators(s: string): string {
   return s.replace(/[\u200b-\u200d\ufeff]/g, "").replace(/(?<=\d)[ー‐−–—](?=\d)/g, "-");
 }
 
+/**
+ * 電話番号の区切りとして許す文字（ハイフン類・括弧・ドット・中黒・空白）。
+ * 置換ルールと漏れ検査（hasLongDigitRun）が**同じ定数**を使い、片方だけ広げて穴が空くのを防ぐ（CI 審査 2026-09-12）。
+ */
+const PHONE_SEP = "[-−‐()（）.・\\s]";
+
 /** 区切りを無視して数字だけ数える（TEL: 直後などの判定用） */
 function digitCount(s: string): number {
   return (s.match(/\d/g) ?? []).length;
@@ -78,7 +84,13 @@ const RULES: { kind: PiiKind; re: RegExp; valid?: (m: string) => boolean }[] = [
   // 国際表記 +81（0落ち）
   { kind: "phone", re: /\+81[\s-]?\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}(?!\d)/g },
   // 0始まり・市外局番1〜4桁・ハイフン／括弧／ドット／中黒／空白の区切りが1つ以上あるもの
-  { kind: "phone", re: /(?<!\d)0\d{1,4}[-−‐(（.・\s]\d{1,4}[-−‐)）.・\s]?\d{3,4}(?!\d)/g },
+  {
+    kind: "phone",
+    re: new RegExp(
+      `(?<!\\d)0\\d{1,4}${PHONE_SEP}{1,3}\\d{1,4}${PHONE_SEP}{0,3}\\d{3,4}(?!\\d)`,
+      "g",
+    ),
+  },
   // 「TEL:」「電話」「携帯」の直後は区切りが乱れていても（0901234-5678）10〜11桁なら電話番号とみなす
   {
     kind: "phone",
@@ -130,13 +142,19 @@ export function detectPatterns(text: string): PiiKind[] {
 }
 
 /**
- * 置換ルールとは別系統の保守的な検査: 区切り（- ( ) .）を無視して10桁以上の数字が続いていれば
+ * 置換ルールとは別系統の保守的な検査: 区切り（PHONE_SEP・3文字まで）を無視して10桁以上の数字が続いていれば
  * 「番号らしきもの」とみなす。置換ルールの取りこぼしがそのまま検査漏れになる同一原点を断つ
  * （独立審査 2026-09-11 critical #8）。日付「2026-09-11」は8桁なので当たらない。
  */
 export function hasLongDigitRun(text: string): boolean {
-  for (const m of text.matchAll(/\d(?:[\d\-()（）.]*\d)?/g)) {
+  // 日付と時刻（2026-09-11 14:30）は数字が多くても番号ではないので先に除く
+  const stripped = text
+    .replace(/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/g, " ")
+    .replace(/\d{1,2}:\d{2}/g, " ");
+  for (const m of stripped.matchAll(LONG_DIGIT_RUN)) {
     if (digitCount(m[0]) >= 10) return true;
   }
   return false;
 }
+/** 数字が区切り（3文字まで）を挟んで続く塊。区切りの定義は電話番号ルールと共有 */
+const LONG_DIGIT_RUN = new RegExp(`\\d(?:${PHONE_SEP}{0,3}\\d)*`, "g");

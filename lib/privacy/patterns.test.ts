@@ -90,7 +90,15 @@ describe("表記ゆれ（独立審査 2026-09-11 critical #8・D24）", () => {
     expect(normalizeDigitSeparators("2〜3回")).toBe("2〜3回"); // 波ダッシュは対象外（範囲の意味を保つ）
   });
 
-  it("hasLongDigitRun: 区切りを無視して10桁以上なら true、日付は false", () => {
+  it("中黒や複数の空白で区切られた番号も電話番号として消す（CI 審査 2026-09-12）", () => {
+    expect(mask("連絡先 090 ・ 1234 ・ 5678 と 06 - 1234 - 5678").text).toBe(
+      "連絡先 〔電話番号1〕 と 〔電話番号2〕",
+    );
+  });
+
+  it("hasLongDigitRun: 区切りを無視して10桁以上なら true、日付・時刻は false", () => {
+    expect(hasLongDigitRun("90 ・ 1234 ・ 5678")).toBe(true);
+    expect(hasLongDigitRun("2026-09-11 14:30 に 2026-09-30 10:00 訪問")).toBe(false);
     expect(hasLongDigitRun("90-1234-5678")).toBe(true);
     expect(hasLongDigitRun("0901234-5678")).toBe(true);
     expect(hasLongDigitRun("2026-09-11 14:30 に 2026-09-30")).toBe(false);
