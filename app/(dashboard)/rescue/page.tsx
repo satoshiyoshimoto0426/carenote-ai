@@ -53,6 +53,7 @@ import {
   type IntakeResult,
 } from "@/lib/generation/intakeTypes";
 import type { RescueBundle } from "@/lib/generation/rescue";
+import { safeExtension } from "@/lib/rescue/sourceDocs";
 
 /** 受け付ける資料の形式（blob-upload・rescueIntake と一致） */
 const ACCEPTED_TYPES: readonly string[] = INTAKE_MEDIA_TYPES;
@@ -321,7 +322,8 @@ export default function RescuePage() {
         try {
           const uploaded: SourceDoc[] = [];
           for (const f of files) {
-            const blob = await upload(f.name, f, {
+            // 一時保管先の URL に元ファイル名（実名入りのことがある）を出さない: 拡張子だけの名前で上げる
+            const blob = await upload(`intake/${Date.now()}.${safeExtension(f.name)}`, f, {
               access: "public",
               handleUploadUrl: "/api/blob-upload",
             });

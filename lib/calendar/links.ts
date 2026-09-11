@@ -104,25 +104,54 @@ export function googleCalendarUrl(p: CalendarPayload): string {
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
-/** 標準形式 .ics（RFC 5545）。Google・iPhone・Outlook で開ける */
-export function buildIcs(p: CalendarPayload, uid: string): string {
+/** RFC 5545 §3.1: 1行は75オクテット以内。超える分は CRLF＋空白1つで折り返す（マルチバイトの途中で切らない） */
+export function foldIcsLine(line: string): string {
+  const enc = new TextEncoder();
+  const out: string[] = [];
+  let cur = "";
+  let curBytes = 0;
+  for (const ch of line) {
+    const n = enc.encode(ch).length;
+    if (curBytes + n > 75) {
+      out.push(cur);
+      cur = ` ${ch}`;
+      curBytes = 1 + n;
+      continue;
+    }
+    cur += ch;
+    curBytes += n;
+  }
+  out.push(cur);
+  return out.join("\r\n");
+}
+
+/** 標準形式 .ics（RFC 5545）。Google・iPhone・Outlook で開ける。now は DTSTAMP（省略時は現在時刻） */
+export function buildIcs(p: CalendarPayload, uid: string, now: Date = new Date()): string {
   const esc = (s: string) =>
     s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
   const dt = p.allDay
     ? [`DTSTART;VALUE=DATE:${p.start}`, `DTEND;VALUE=DATE:${p.end}`]
     : [`DTSTART:${p.start}`, `DTEND:${p.end}`];
+  // DTSTAMP は VEVENT の必須項目（RFC 5545 §3.6.1）。無いと厳格なクライアント（Outlook 等）が取り込めない
+  const stamp = now
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//CareNote AI//JA",
     "BEGIN:VEVENT",
     `UID:${uid}`,
+    `DTSTAMP:${stamp}`,
     ...dt,
     `SUMMARY:${esc(p.title)}`,
     p.location ? `LOCATION:${esc(p.location)}` : "",
     p.description ? `DESCRIPTION:${esc(p.description)}` : "",
     "END:VEVENT",
     "END:VCALENDAR",
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .map(foldIcsLine);
   return `${lines.join("\r\n")}\r\n`;
 }

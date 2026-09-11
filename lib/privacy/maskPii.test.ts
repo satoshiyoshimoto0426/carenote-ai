@@ -59,3 +59,19 @@ describe("黒塗りの入口: maskPii（名簿 → 型 → 自己点検）", () 
     );
   });
 });
+
+describe("入力側の癖（文字起こし・OCR）を吸収する", () => {
+  it("長音区切りの番号・空白入りの実名・旧字体も消える", () => {
+    const a = expandAliasVariants([{ real: "髙橋一郎", code: "C様" }]);
+    const { text, findings } = maskPii("高橋 一郎 さん ０９０ー１２３４ー５６７８", a);
+    expect(text).toBe("C様 さん 〔電話番号1〕");
+    expect(findings.names).toBe(1);
+  });
+
+  it("札の予約語にぶつからず、AI が同じ札を2回書いても両方戻る", () => {
+    const { vault } = maskPii("自宅 06-1111-2222", []);
+    expect(vault.restore("〔電話番号1〕へ。再度〔電話番号1〕へ。")).toBe(
+      "06-1111-2222へ。再度06-1111-2222へ。",
+    );
+  });
+});

@@ -5,6 +5,11 @@
  *   /api/generate（AIへ送る）と /api/preview（送らずに見せる）が同じ黒塗りを通らないと、
  *   画面で見せた文章とAIに送る文章がずれる。ここ1か所を両方が呼ぶ（docs/specs/call-pipeline.md §2.1）。
  *   件数は種類ごとに合算し、原文は持たない。
+ *
+ * maskDeep（独立審査 2026-09-11 critical #7）:
+ *   /api/generate が二枚方式で実値に戻した帳票（draft）を、後段の API（/api/kaipoke/assessment 等）が
+ *   再び AI へ送る経路がある。入れ子の JSON をそのまま渡すと黒塗りも漏れ検査も通らないため、
+ *   restoreDeep の逆＝入れ子の文字列すべてに maskPii をかける関数をここに置く。
  */
 import { maskPii } from "./maskPii";
 import type { PatternFinding, PiiKind } from "./patterns";
@@ -41,4 +46,21 @@ export function maskRequestBody(
 
   const patterns = [...byKind.entries()].map(([kind, count]) => ({ kind, count }));
   return { body: out, fields, findings: { names, patterns } };
+}
+
+/**
+ * 入れ子の JSON（帳票の下書きなど）の文字列をすべて黒塗りする。
+ * 実名や型が残っていれば maskPii が PiiLeakError を投げる（fail-closed）。文字列以外はそのまま。
+ */
+export function maskDeep<T>(value: T, aliases: NameAlias[], vault: PiiVault): T {
+  if (typeof value === "string") return maskPii(value, aliases, vault).text as T;
+  if (Array.isArray(value)) return value.map((v) => maskDeep(v, aliases, vault)) as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = maskDeep(v, aliases, vault);
+    }
+    return out as T;
+  }
+  return value;
 }

@@ -21,6 +21,15 @@ if [[ -f "$PROJECT_ROOT/biome.json" ]]; then
   }
 fi
 
+# 見えない文字（NUL・ゼロ幅）の混入（独立審査 2026-09-11: git がバイナリ扱いし差分がレビューに届かない）
+if [[ -f "$PROJECT_ROOT/tools/check-invisible.mjs" ]]; then
+  INVISIBLE_OUTPUT=$(cd "$PROJECT_ROOT" && node tools/check-invisible.mjs 2>&1) || {
+    ERRORS+=$'
+[Invisible characters (NUL / zero-width) in source]
+'"$INVISIBLE_OUTPUT"
+  }
+fi
+
 if [[ -n "$ERRORS" ]]; then
   printf '🛑 Quality gates failed before stopping. Please fix:\n%s\n' "$ERRORS" >&2
   exit 1

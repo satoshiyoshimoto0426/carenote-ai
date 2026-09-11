@@ -4,6 +4,10 @@
  * なぜ存在するか:
  *   Claude API（海外）へは**記号のみ**を送るため、送信前に実名→記号へ置換する。
  *   画面表示時は権限内でのみ記号→実名に復元する。
+ *
+ * 表記ゆれ（独立審査 2026-09-11 D23）:
+ *   文字起こし・OCR・コピー元は実名の途中に空白やゼロ幅文字を挟み、旧字体（髙→高）を新字体で出すことがある。
+ *   nameRegex は「文字の間に空白類を許し、旧字体と新字体を同一視する」正規表現を作り、置換と漏れ検査の両方が使う。
  */
 
 /** 実名と表示記号の対応。 */
@@ -14,17 +18,88 @@ export interface NameAlias {
   code: string;
 }
 
+/** 旧字体⇄新字体の同一視表（よく名前に使われるもの。片方が登録・もう片方が入力でも当てる） */
+const CHAR_VARIANTS: string[][] = [
+  ["高", "髙"],
+  ["崎", "﨑", "嵜"],
+  ["辺", "邊", "邉"],
+  ["斎", "齋", "斉", "齊"],
+  ["沢", "澤"],
+  ["浜", "濱", "濵"],
+  ["桜", "櫻"],
+  ["国", "國"],
+  ["広", "廣"],
+  ["恵", "惠"],
+  ["徳", "德"],
+  ["瀬", "瀨"],
+  ["青", "靑"],
+  ["野", "埜"],
+  ["富", "冨"],
+  ["島", "嶋", "嶌"],
+  ["竜", "龍"],
+  ["曽", "曾"],
+  ["条", "條"],
+  ["浅", "淺"],
+  ["渕", "淵"],
+  ["柳", "栁"],
+];
+const VARIANT_OF = new Map<string, string[]>();
+for (const group of CHAR_VARIANTS) for (const ch of group) VARIANT_OF.set(ch, group);
+
+const SPACE_CHARS = /[\s\u3000\u200b-\u200d\ufeff]+/g;
+const SPACES = "[\\s\\u3000\\u200b-\\u200d\\ufeff]*";
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * 実名にゆるく一致する正規表現（g フラグ）。文字の間の空白類を許し、旧字体・新字体を同一視する。
+ * 空白を除いて2文字未満なら null（1文字は誤置換が多いため対象外）。
+ */
+export function nameRegex(real: string): RegExp | null {
+  const chars = [...real.replace(SPACE_CHARS, "")];
+  if (chars.length < 2) return null;
+  const body = chars
+    .map((ch) => {
+      const group = VARIANT_OF.get(ch);
+      return group ? `[${group.map(escapeRegExp).join("")}]` : escapeRegExp(ch);
+    })
+    .join(SPACES);
+  return new RegExp(body, "gu");
+}
+
 /**
  * テキスト中の実名を記号へ置換する。
  * 長い実名から先に置換し、姓だけが別名に巻き込まれる取りこぼしを防ぐ。
  */
 export function maskNames(text: string, aliases: NameAlias[]): string {
+  return maskNamesWithCount(text, aliases).text;
+}
+
+/** maskNames と同じ置換を行い、置換した箇所の数も返す（findings 用。原文は持たない）。 */
+export function maskNamesWithCount(
+  text: string,
+  aliases: NameAlias[],
+): { text: string; count: number } {
   let out = text;
+  let count = 0;
   for (const { real, code } of [...aliases].sort((a, b) => b.real.length - a.real.length)) {
     if (!real) continue;
-    out = out.split(real).join(code);
+    const re = nameRegex(real);
+    if (re) {
+      out = out.replace(re, () => {
+        count++;
+        return code;
+      });
+    } else {
+      // 1文字の実名は完全一致のみ（ゆるい一致は誤置換が多い）
+      const parts = out.split(real);
+      count += parts.length - 1;
+      out = parts.join(code);
+    }
   }
-  return out;
+  return { text: out, count };
 }
 
 /** テキスト中の記号を実名へ復元する（表示用・権限内でのみ使用）。 */
@@ -59,6 +134,7 @@ export function restoreNamesDeep<T>(value: T, aliases: NameAlias[]): T {
  * 例:「山田 花子」→「山田 花子」「山田花子」の両方を A様 に対応付ける。
  * 2文字未満（過剰置換の危険）や記号と同値は除外。姓のみは誤置換リスクが高いため展開しない
  * （運用ルール「メモに実名を書かない」が第一の防御・本関数はその安全網）。
+ * ※ 空白ゆれ・旧字体は nameRegex でも吸収するが、対応表の見た目（復元時の実名）を保つため展開は残す。
  */
 export function expandAliasVariants(aliases: NameAlias[]): NameAlias[] {
   const seen = new Set<string>();

@@ -55,8 +55,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const draft = await generateFromBody(body);
-    // AIの返事に残る札（〔電話番号1〕等）を手元で元の値に戻してから返す（名前の記号はそのまま）
-    return NextResponse.json(restoreDeep(draft, vault));
+    // AIの返事に残る札（〔電話番号1〕等）を手元で元の値に戻してから返す（名前の記号はそのまま）。
+    // 予定（appointments）はカレンダーへ渡すので戻さない（不変条件⑥「記号＋用件のみ」・独立審査 D22）
+    return NextResponse.json(restoreDeep(draft, vault, { skipKeys: ["appointments"] }));
   } catch (e: unknown) {
     if (e instanceof GenerateRequestError) {
       return NextResponse.json({ error: e.message }, { status: e.status });

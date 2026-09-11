@@ -3,6 +3,7 @@ import {
   expandAliasVariants,
   maskNames,
   type NameAlias,
+  nameRegex,
   nextClientCode,
   restoreNames,
 } from "./pseudonymize";
@@ -58,5 +59,21 @@ describe("仮名化: nextClientCode", () => {
     expect(nextClientCode(25)).toBe("Z");
     expect(nextClientCode(26)).toBe("AA");
     expect(nextClientCode(27)).toBe("AB");
+  });
+});
+
+describe("nameRegex: ゆるい一致（空白・ゼロ幅・旧字体）", () => {
+  it("2文字未満は null、それ以外は空白類を挟んでも当たる", () => {
+    expect(nameRegex("李")).toBeNull();
+    const re = nameRegex("山田 花子");
+    expect(re).not.toBeNull();
+    expect("山田　花子".replace(re as RegExp, "A様")).toBe("A様");
+    expect("山田花子".replace(re as RegExp, "A様")).toBe("A様");
+  });
+
+  it("旧字体・新字体を同一視し、正規表現の特殊文字も安全", () => {
+    expect("齋藤".replace(nameRegex("斎藤") as RegExp, "B様")).toBe("B様");
+    expect("a.b".replace(nameRegex("a.b") as RegExp, "X")).toBe("X");
+    expect("axb".replace(nameRegex("a.b") as RegExp, "X")).toBe("axb");
   });
 });

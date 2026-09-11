@@ -10,6 +10,10 @@
  * 設計上の線引き:
  *   予定の日付（「9月12日に面談」）は**消さない**。消すとカレンダー登録と支援経過の日付が壊れる。
  *   生年月日は文脈語（生年月日・生まれ・誕生）がある場合と、昭和・大正・明治の年月日のみ対象。
+ *
+ * 表記ゆれ（独立審査 2026-09-11 critical #8）:
+ *   IME の長音「ー」やダッシュ類で区切った番号、ドット区切り、+81、「TEL:」直後の詰めた番号も拾う。
+ *   ここで拾えない形は leakCheck の「長い数字列」検査が止める（置換と検査を同じ正規表現に頼らない）。
  */
 import type { PiiVault } from "./vault";
 
@@ -38,11 +42,27 @@ const PREFECTURES =
   "大分県|宮崎県|鹿児島県|沖縄県";
 
 /**
+ * 数字の間の区切りゆれを揃える前処理（maskPii の正規化から呼ぶ）。
+ * - ゼロ幅文字（U+200B〜200D・FEFF）を除く（文字起こし・コピー元が挟むことがある）
+ * - 数字に挟まれた長音「ー」・ダッシュ類（‐ − – —）を半角ハイフンにする（「090ー1234ー5678」）
+ * ドット「.」は小数（52.3kg）を壊すので揃えず、電話番号ルール側の区切りとして扱う。
+ */
+export function normalizeDigitSeparators(s: string): string {
+  return s.replace(/[\u200b-\u200d\ufeff]/g, "").replace(/(?<=\d)[ー‐−–—](?=\d)/g, "-");
+}
+
+/** 区切りを無視して数字だけ数える（TEL: 直後などの判定用） */
+function digitCount(s: string): number {
+  return (s.match(/\d/g) ?? []).length;
+}
+
+/**
  * 適用順に意味がある（メール→住所→郵便番号→番号類→電話）。
  * 区切りの無い10〜11桁は「被保険者番号」か「電話番号」か判別できないため、先に〔番号〕として消す
  * （種類の精度より「必ず消える」ことを優先）。区切りのある電話番号だけを〔電話番号〕にする。
+ * valid を持つルールは、一致しても valid が false なら置換・検出しない（数字の数などの追加判定）。
  */
-const RULES: { kind: PiiKind; re: RegExp }[] = [
+const RULES: { kind: PiiKind; re: RegExp; valid?: (m: string) => boolean }[] = [
   { kind: "email", re: /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g },
   // 都道府県から番地（数字を含む）まで。「大阪府の事業所」のように数字が無ければ消さない
   {
@@ -51,14 +71,24 @@ const RULES: { kind: PiiKind; re: RegExp }[] = [
   },
   // 前に数字が無く、後ろに「区切り＋数字」が続かないものだけ（電話番号の一部「090-1234」を食わない）
   { kind: "postal", re: /〒?\s?(?<!\d)\d{3}[-−‐]\d{4}(?![-−‐]?\d)/g },
+  // 4桁-4桁-4桁（空白・ハイフン区切りのマイナンバー等）
+  { kind: "number", re: /(?<!\d)\d{4}[\s-]\d{4}[\s-]\d{4}(?!\d)/g },
   // 被保険者番号（10桁）・マイナンバー（12桁）など、区切り無しで並ぶ8〜12桁
   { kind: "number", re: /(?<!\d)\d{8,12}(?!\d)/g },
-  // 0始まり・市外局番1〜4桁・ハイフン／括弧／空白の区切りが1つ以上あるもの
-  { kind: "phone", re: /(?<!\d)0\d{1,4}[-−‐(（\s]\d{1,4}[-−‐)）\s]?\d{3,4}(?!\d)/g },
-  // 文脈語つきの西暦・和暦、または昭和以前の年月日（予定にはなり得ない）
+  // 国際表記 +81（0落ち）
+  { kind: "phone", re: /\+81[\s-]?\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}(?!\d)/g },
+  // 0始まり・市外局番1〜4桁・ハイフン／括弧／ドット／中黒／空白の区切りが1つ以上あるもの
+  { kind: "phone", re: /(?<!\d)0\d{1,4}[-−‐(（.・\s]\d{1,4}[-−‐)）.・\s]?\d{3,4}(?!\d)/g },
+  // 「TEL:」「電話」「携帯」の直後は区切りが乱れていても（0901234-5678）10〜11桁なら電話番号とみなす
+  {
+    kind: "phone",
+    re: /(?<=(?:TEL|Tel|tel|℡|電話|携帯)[番号:：\s]{0,4})0[\d\-()（）. ]{8,14}\d(?!\d)/g,
+    valid: (m) => digitCount(m) === 10 || digitCount(m) === 11,
+  },
+  // 文脈語つきの西暦（年／／.／- 区切り）・和暦、または昭和以前の年月日（予定にはなり得ない）
   {
     kind: "birthdate",
-    re: /(?:生年月日|生まれ|誕生日?)[：:\s]*(?:(?:19|20)\d{2}|(?:昭和|平成|令和|大正|明治|[SHRTM])\s?\d{1,2})\s?年?\s?\d{1,2}\s?[月/.-]\s?\d{1,2}\s?日?/g,
+    re: /(?:生年月日|生まれ|誕生日?)[：:\s]*(?:(?:19|20)\d{2}\s?[年/.-]?\s?|(?:昭和|平成|令和|大正|明治|[SHRTM])\s?\d{1,2}\s?年?\s?)\d{1,2}\s?[月/.-]\s?\d{1,2}\s?日?/g,
   },
   { kind: "birthdate", re: /(?:昭和|大正|明治)\s?\d{1,2}\s?年\s?\d{1,2}\s?月\s?\d{1,2}\s?日/g },
 ];
@@ -73,8 +103,9 @@ export function maskPatterns(
 ): { text: string; findings: PatternFinding[] } {
   let out = text;
   const counts = new Map<PiiKind, number>();
-  for (const { kind, re } of RULES) {
+  for (const { kind, re, valid } of RULES) {
     out = out.replace(re, (match) => {
+      if (valid && !valid(match)) return match;
       counts.set(kind, (counts.get(kind) ?? 0) + 1);
       return vault.tokenFor(kind, match);
     });
@@ -86,10 +117,26 @@ export function maskPatterns(
 /** 置換せず「型に当たるものが残っているか」だけを調べる（漏れ検査用）。 */
 export function detectPatterns(text: string): PiiKind[] {
   const kinds = new Set<PiiKind>();
-  for (const { kind, re } of RULES) {
+  for (const { kind, re, valid } of RULES) {
     re.lastIndex = 0;
-    if (re.test(text)) kinds.add(kind);
+    for (const m of text.matchAll(re)) {
+      if (valid && !valid(m[0])) continue;
+      kinds.add(kind);
+      break;
+    }
     re.lastIndex = 0;
   }
   return [...kinds];
+}
+
+/**
+ * 置換ルールとは別系統の保守的な検査: 区切り（- ( ) .）を無視して10桁以上の数字が続いていれば
+ * 「番号らしきもの」とみなす。置換ルールの取りこぼしがそのまま検査漏れになる同一原点を断つ
+ * （独立審査 2026-09-11 critical #8）。日付「2026-09-11」は8桁なので当たらない。
+ */
+export function hasLongDigitRun(text: string): boolean {
+  for (const m of text.matchAll(/\d(?:[\d\-()（）.]*\d)?/g)) {
+    if (digitCount(m[0]) >= 10) return true;
+  }
+  return false;
 }

@@ -505,3 +505,20 @@ describe("CareNoteKaipoke 第2表の1件ずつ流し込み（純粋関数）", (
     expect(adapter.plan2ScreenFromNames([], "")).toBe("unknown");
   });
 });
+
+describe("再ログイン検知ゲートの対象一覧: WRITE_MESSAGE_TYPES / isWriteMessage", () => {
+  it("書き込み系5種（第2表流し込みを含む）を判定し、PING は書き込みではない", () => {
+    for (const t of [
+      "CARENOTE_INJECT",
+      "CARENOTE_APPEND_PREVIEW",
+      "CARENOTE_APPEND_APPLY",
+      "CARENOTE_APPEND_UNDO",
+      "CARENOTE_PLAN2_FILL",
+    ]) {
+      expect(adapter.isWriteMessage(t)).toBe(true);
+    }
+    expect(adapter.isWriteMessage("CARENOTE_PING")).toBe(false);
+    expect(adapter.isWriteMessage(undefined)).toBe(false);
+    expect(adapter.WRITE_MESSAGE_TYPES).toHaveLength(5);
+  });
+});

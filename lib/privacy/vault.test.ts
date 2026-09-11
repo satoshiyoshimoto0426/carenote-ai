@@ -38,3 +38,23 @@ describe("札入れ: restoreDeep（帳票JSONの中の文字列をすべて戻�
     });
   });
 });
+
+describe("札入れ: 戻さないキー（不変条件⑥ カレンダーには記号＋用件のみ）", () => {
+  it("skipKeys 配下は札のまま残し、それ以外は戻す", () => {
+    const v = createPiiVault();
+    const t = v.tokenFor("phone", "090-1111-2222");
+    const draft = {
+      entries: [{ body: `折り返し ${t}` }],
+      appointments: [{ title: "A様 面談", note: `持参 ${t}` }],
+    };
+    const r = restoreDeep(draft, v, { skipKeys: ["appointments"] });
+    expect(r.entries[0].body).toBe("折り返し 090-1111-2222");
+    expect(r.appointments[0].note).toBe(`持参 ${t}`);
+  });
+
+  it("同じ札が2回出る文章を restore すると2回とも戻る", () => {
+    const v = createPiiVault();
+    const t = v.tokenFor("phone", "090-1111-2222");
+    expect(v.restore(`${t} と ${t}`)).toBe("090-1111-2222 と 090-1111-2222");
+  });
+});

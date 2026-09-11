@@ -114,14 +114,36 @@ export async function getClientById(id: string, userId: string): Promise<ClientR
  * Supabase が一時的に "JWT issued at future" を返し、名簿が空のまま進んだ実例があった。
  */
 export class AliasLoadError extends Error {
-  constructor(detail: string) {
+  constructor(detail: string, publicMessage?: string) {
     super(
-      "利用者名簿を読み込めなかったため送信を中止しました。少し待ってからもう一度お試しください。",
+      publicMessage ??
+        "利用者名簿を読み込めなかったため送信を中止しました。少し待ってからもう一度お試しください。",
     );
     this.name = "AliasLoadError";
     console.error("[db] getClientAliases failed:", detail);
   }
 }
+
+/**
+ * 関係者名簿の表（client_related_identities）が未作成の環境で投げる内部エラー。
+ * PostgREST は未定義の表に対し code "42P01"（PostgreSQL undefined_table）または "PGRST205" を返す。
+ * これも送信は止める（独立審査 2026-09-11 critical #3: 黙って進むと家族名が消えないまま AI へ出る）。
+ * 文言だけ「管理者が SQL を適用する」案内に変える。
+ */
+class RelatedTableMissingError extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "RelatedTableMissingError";
+  }
+}
+const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
+
+/** 職員に見せる文言（関係者名簿の表が無い時） */
+export const RELATED_TABLE_MISSING_MESSAGE =
+  "関係者名簿の表が未作成のため送信を中止しました。管理者が supabase/client_related.sql を Supabase で実行してください。";
+
+/** 読み直しまでの待ち時間（テストでは短くする） */
+const RETRY_DELAY_MS = process.env.VITEST ? 1 : 500;
 
 /**
  * ログインユーザーの全利用者について「実名⇄記号」の対応表を返す（仮名化用・サーバ専用）。
@@ -134,11 +156,18 @@ export async function getClientAliases(userId: string): Promise<NameAlias[]> {
   try {
     return await loadAliases(userId);
   } catch (first) {
-    await new Promise((r) => setTimeout(r, 500));
+    // 表が無いのは待っても直らないので読み直さない
+    if (first instanceof RelatedTableMissingError) {
+      throw new AliasLoadError(first.message, RELATED_TABLE_MISSING_MESSAGE);
+    }
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
     try {
       return await loadAliases(userId);
     } catch (second) {
       const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+      if (second instanceof RelatedTableMissingError) {
+        throw new AliasLoadError(second.message, RELATED_TABLE_MISSING_MESSAGE);
+      }
       throw new AliasLoadError(`${msg(first)} / retry: ${msg(second)}`);
     }
   }
@@ -149,7 +178,7 @@ async function loadAliases(userId: string): Promise<NameAlias[]> {
   const [clientsRes, idsRes, relRes] = await Promise.all([
     db.from("clients").select("id, code").eq("created_by", userId),
     db.from("client_identities").select("client_id, name_encrypted").eq("created_by", userId),
-    // 関係者名簿（D4）。表が未作成の環境でも名簿本体は動くよう、こちらの失敗は警告に留める
+    // 関係者名簿（D4）。読めなければ利用者名簿と同じく送信を止める（警告で続行しない）
     db
       .from("client_related_identities")
       .select("client_id, relation, name_encrypted")
@@ -159,7 +188,11 @@ async function loadAliases(userId: string): Promise<NameAlias[]> {
     throw new Error(clientsRes.error?.message ?? idsRes.error?.message ?? "unknown");
   }
   if (relRes.error) {
-    console.warn("[db] client_related_identities unavailable:", relRes.error.message);
+    const code = (relRes.error as { code?: string }).code ?? "";
+    if (MISSING_TABLE_CODES.has(code)) {
+      throw new RelatedTableMissingError(`related table missing: ${relRes.error.message}`);
+    }
+    throw new Error(`client_related_identities: ${relRes.error.message}`);
   }
   const codeById = new Map(
     (clientsRes.data as { id: string; code: string }[]).map((c) => [c.id, c.code]),
@@ -285,19 +318,29 @@ export async function addRelatedPerson(params: {
   return { ok: true, id: (data as { id: string }).id };
 }
 
-/** 関係者を削除する（所有者チェック込み）。 */
-export async function deleteRelatedPerson(id: string, userId: string): Promise<boolean> {
+/**
+ * 関係者を削除する（所有者チェック込み・利用者IDでも絞る）。
+ * 0件（他人の id・存在しない id・別の利用者の id）は "not_found" にして、画面に「消えた」と誤って伝えない
+ * （独立審査 2026-09-11 D8）。
+ */
+export async function deleteRelatedPerson(
+  id: string,
+  clientId: string,
+  userId: string,
+): Promise<"ok" | "not_found" | "error"> {
   const db = createServerClient();
-  const { error } = await db
+  const { data, error } = await db
     .from("client_related_identities")
     .delete()
     .eq("id", id)
-    .eq("created_by", userId);
+    .eq("client_id", clientId)
+    .eq("created_by", userId)
+    .select("id");
   if (error) {
     console.error("[db] deleteRelatedPerson error:", error.message);
-    return false;
+    return "error";
   }
-  return true;
+  return (data ?? []).length > 0 ? "ok" : "not_found";
 }
 
 /** 実名を復号して返す（権限内・必要時のみ）。失敗時は null。 */

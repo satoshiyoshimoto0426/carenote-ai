@@ -40,3 +40,21 @@ describe("漏れ検査: findLeaks / assertNoLeak", () => {
     expect(findLeaks("李さん", aliases).names).toEqual([]);
   });
 });
+
+describe("置換と検査の同一原点を断つ（独立審査 2026-09-11 critical #8・D23）", () => {
+  it("置換ルールが拾えない0落ちの番号でも、10桁以上の数字列として止める", () => {
+    expect(findLeaks("折り返し 90-1234-5678", aliases).patterns).toEqual(["number"]);
+    expect(() => assertNoLeak("番号は 0901234-5678", aliases)).toThrow(PiiLeakError);
+  });
+
+  it("実名の途中に空白・ゼロ幅文字・旧字体の揺れがあっても検出する", () => {
+    const a: NameAlias[] = [{ real: "高橋一郎", code: "C様" }];
+    expect(findLeaks("髙橋 一郎さん", a).names).toEqual(["高橋一郎"]);
+    expect(findLeaks("高\u200b橋一郎", a).names).toEqual(["高橋一郎"]);
+    expect(findLeaks("高橋さん", a).names).toEqual([]);
+  });
+
+  it("2文字の実名も判定対象になる（境界値）", () => {
+    expect(findLeaks("田中さんより", [{ real: "田中", code: "D様" }]).names).toEqual(["田中"]);
+  });
+});

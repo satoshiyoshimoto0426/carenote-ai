@@ -85,6 +85,13 @@ jobs:
             violations=$((violations+1))
           fi
 
+          # ソースに見えない文字（NUL 0x00・ゼロ幅 U+200B〜200D/FEFF）を入れない
+          # ── 独立審査 2026-09-11: vault.ts の生 NUL で git がバイナリ扱いし、差分がレビューに届かなかった
+          if ! node tools/check-invisible.mjs; then
+            echo "::error::Invisible characters (NUL / zero-width) in source"
+            violations=$((violations+1))
+          fi
+
           if [ $violations -gt 0 ]; then
             echo ""
             echo "Iron Rules violations: $violations"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Appointment } from "@/types/supportLog";
-import { buildIcs, googleCalendarUrl, toCalendarPayload } from "./links";
+import { buildIcs, foldIcsLine, googleCalendarUrl, toCalendarPayload } from "./links";
 
 const base: Appointment = {
   title: "A様 自宅で面談",
@@ -69,5 +69,29 @@ describe("リンクと .ics", () => {
     expect(ics).toContain("SUMMARY:A様 自宅で面談");
     expect(ics).toContain("DESCRIPTION:持ち物: 保険証\\, 印鑑");
     expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
+  });
+});
+
+describe(".ics の RFC 5545 準拠（独立審査 2026-09-11 D17）", () => {
+  it("DTSTAMP（必須）を UTC で入れる", () => {
+    const ics = buildIcs(payloadOf(base), "uid-1", new Date("2026-09-11T05:06:07Z"));
+    expect(ics).toContain("DTSTAMP:20260911T050607Z\r\n");
+  });
+
+  it("75オクテットを超える行は CRLF＋空白で折り返し、マルチバイトの途中で切らない", () => {
+    const long = `DESCRIPTION:${"あ".repeat(40)}`; // 12 + 120 バイト
+    const folded = foldIcsLine(long);
+    const parts = folded.split("\r\n");
+    expect(parts.length).toBeGreaterThan(1);
+    for (const part of parts) expect(new TextEncoder().encode(part).length).toBeLessThanOrEqual(75);
+    for (const part of parts.slice(1)) expect(part.startsWith(" ")).toBe(true);
+    // 折り返しを戻すと元に戻る（RFC の unfolding）
+    expect(folded.replace(/\r\n /g, "")).toBe(long);
+    expect(foldIcsLine("SUMMARY:短い")).toBe("SUMMARY:短い");
+  });
+
+  it("件名に番号が混ざっても札になる（title の二重安全網）", () => {
+    const p = toCalendarPayload({ ...base, title: "A様 面談 090-1234-5678" });
+    expect(p?.title).toBe("A様 面談 〔電話番号1〕");
   });
 });

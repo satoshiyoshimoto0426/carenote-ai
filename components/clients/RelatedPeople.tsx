@@ -86,7 +86,10 @@ export default function RelatedPeople({
           method: "DELETE",
         },
       );
-      if (!resp.ok) throw new Error("削除に失敗しました");
+      if (!resp.ok) {
+        const d = (await resp.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error || "削除に失敗しました");
+      }
       await load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "削除に失敗しました");

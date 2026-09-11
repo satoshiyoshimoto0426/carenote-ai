@@ -852,6 +852,24 @@
     return false;
   }
 
+  /**
+   * カイポケ画面へ「書く」メッセージ種別の一覧（content.js の再ログイン検知ゲートが参照）。
+   * 種別を増やしたらここに足す。ゲートは isWriteMessage で判定するので、ここに無い種別は素通りする
+   * （独立審査 2026-09-11 D11: 第2表流し込みがゲートから漏れていた）。
+   */
+  const WRITE_MESSAGE_TYPES = Object.freeze([
+    "CARENOTE_INJECT",
+    "CARENOTE_APPEND_PREVIEW",
+    "CARENOTE_APPEND_APPLY",
+    "CARENOTE_APPEND_UNDO",
+    "CARENOTE_PLAN2_FILL",
+  ]);
+
+  /** @param {unknown} type */
+  function isWriteMessage(type) {
+    return typeof type === "string" && WRITE_MESSAGE_TYPES.includes(type);
+  }
+
   /** 欄が見つからない＝開いている画面が違う可能性が高い時の共通メッセージ。 */
   const NOT_FOUND_NOTE =
     "この画面に該当欄が見つかりませんでした（対象の編集画面を開いてください）。";
@@ -1171,8 +1189,8 @@
   function setSelectByText(el, text) {
     const t = String(text ?? "").trim();
     if (!el || !t) return false;
-    const opt = [...el.options].find(
-      (o) => o.textContent?.replace(/\s+/g, "").includes(t.replace(/\s+/g, "")),
+    const opt = [...el.options].find((o) =>
+      o.textContent?.replace(/\s+/g, "").includes(t.replace(/\s+/g, "")),
     );
     if (!opt) return false;
     el.value = opt.value;
@@ -1361,6 +1379,8 @@
   return {
     FIELD_MAPS,
     INJECTABLE_TYPES,
+    WRITE_MESSAGE_TYPES,
+    isWriteMessage,
     buildAppendedValue,
     previewAppend,
     applyAppend,

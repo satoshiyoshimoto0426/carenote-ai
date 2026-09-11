@@ -37,11 +37,9 @@
       return undefined;
     }
 
-    // 書き込み系はすべて、再ログイン画面が出ていたら止める（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §5-6）
-    if (
-      adapter?.isReloginRequired?.() &&
-      /^CARENOTE_(INJECT|APPEND_PREVIEW|APPEND_APPLY|APPEND_UNDO)$/.test(message.type)
-    ) {
+    // 書き込み系はすべて、再ログイン画面が出ていたら止める（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §5-6）。
+    // 一覧は adapters/kaipoke.js の WRITE_MESSAGE_TYPES（第2表流し込みも含む）
+    if (adapter?.isWriteMessage?.(message.type) && adapter.isReloginRequired?.()) {
       sendResponse({
         ok: false,
         error:

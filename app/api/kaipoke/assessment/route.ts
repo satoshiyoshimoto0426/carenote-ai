@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { AliasLoadError, getClientAliases } from "@/lib/db/clients";
 import { generateKaipokeAssessmentSheet } from "@/lib/generation/kaipokeAssessment";
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
+import { maskDeep } from "@/lib/privacy/maskBody";
 import { maskPii } from "@/lib/privacy/maskPii";
 import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
 import type { AssessmentDraft } from "@/types/assessment";
@@ -11,7 +12,9 @@ export const maxDuration = 300;
 
 /**
  * アセスメント下書き → カイポケ10ページの欄に合わせた転記用シート（docs/KAIPOKE-TRANSCRIPTION-SPEC.md §6）。
- * 下書きは /api/generate を通っているので記号化済だが、補足メモは黒塗りを通す。
+ * 下書きは /api/generate の二枚方式で**電話番号・住所が実値に戻った版**が来る（名前だけ記号）。
+ * そのまま AI へ送ると黒塗りが破れるので、draft の入れ子すべてと補足メモを maskDeep/maskPii で黒塗りし直し、
+ * 残っていれば 422 で止める（独立審査 2026-09-11 critical #7）。返事は同じ札入れで戻す。
  */
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -38,9 +41,10 @@ export async function POST(req: NextRequest) {
   }
   const vault = createPiiVault();
   try {
+    const maskedDraft = maskDeep(draft, aliases, vault);
     const notes =
       typeof body.notes === "string" ? maskPii(body.notes, aliases, vault).text : undefined;
-    const sheet = await generateKaipokeAssessmentSheet(draft, notes);
+    const sheet = await generateKaipokeAssessmentSheet(maskedDraft, notes);
     return NextResponse.json(restoreDeep(sheet, vault));
   } catch (e: unknown) {
     if (e instanceof PiiLeakError) return NextResponse.json({ error: e.message }, { status: 422 });

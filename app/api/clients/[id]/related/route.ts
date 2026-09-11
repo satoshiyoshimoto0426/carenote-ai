@@ -36,13 +36,20 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   return NextResponse.json({ id: r.id }, { status: 201 });
 }
 
-export async function DELETE(req: NextRequest) {
+export async function DELETE(req: NextRequest, { params }: Ctx) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  const { id } = await params;
   const relatedId = req.nextUrl.searchParams.get("relatedId") ?? "";
   if (!relatedId)
     return NextResponse.json({ error: "対象が指定されていません。" }, { status: 400 });
-  const ok = await deleteRelatedPerson(relatedId, userId);
-  if (!ok) return NextResponse.json({ error: "削除に失敗しました。" }, { status: 500 });
+  const r = await deleteRelatedPerson(relatedId, id, userId);
+  if (r === "error") return NextResponse.json({ error: "削除に失敗しました。" }, { status: 500 });
+  if (r === "not_found") {
+    return NextResponse.json(
+      { error: "対象が見つかりません（既に削除済みか、権限がありません）。" },
+      { status: 404 },
+    );
+  }
   return NextResponse.json({ ok: true });
 }
