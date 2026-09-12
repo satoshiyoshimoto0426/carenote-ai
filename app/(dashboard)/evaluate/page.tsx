@@ -127,6 +127,7 @@ export default function EvaluatePage() {
         kicker="Evaluate"
         title="ケアプラン評価"
         description="書類一式PDFをアップロードしてAI評価を実行します"
+        helpAnchor="ch1"
       />
 
       {!result ? (

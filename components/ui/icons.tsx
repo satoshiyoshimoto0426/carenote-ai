@@ -217,3 +217,57 @@ export function IconClock(props: IconProps) {
     </Svg>
   );
 }
+
+/** Circled question mark — 使い方（マニュアル）nav and per-screen help links. */
+export function IconHelpCircle(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.4 9.2a2.7 2.7 0 0 1 5.2.9c0 1.8-2.6 2.4-2.6 3.9" />
+      <path d="M12 17.5h.01" />
+    </Svg>
+  );
+}
+
+/** Circled play triangle — manual video sections. */
+export function IconPlayCircle(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M10.2 8.6 15.6 12l-5.4 3.4Z" />
+    </Svg>
+  );
+}
+
+/** Printer outline — print / PDF handout links. */
+export function IconPrinter(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6.5 9V3.5h11V9" />
+      <path d="M6.5 17.5H5a2 2 0 0 1-2-2v-4.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2V15.5a2 2 0 0 1-2 2h-1.5" />
+      <rect x="6.5" y="14" width="11" height="6.5" rx="1" />
+    </Svg>
+  );
+}
+
+/** Tray with a down arrow — file downloads (mirror of IconUpload). */
+export function IconDownload(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7.5 11 12 15.5 16.5 11" />
+      <path d="M12 3v12.5" />
+    </Svg>
+  );
+}
+
+/** Circled "i" — explanatory callouts inside the manual. */
+export function IconInfo(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5.5" />
+      <path d="M12 7.8h.01" />
+    </Svg>
+  );
+}

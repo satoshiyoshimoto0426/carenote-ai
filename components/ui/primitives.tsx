@@ -1,4 +1,6 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
+import { IconHelpCircle } from "./icons";
 
 /**
  * CareNote AI layout/form primitives (design system v0).
@@ -34,25 +36,43 @@ export const btnSecondary =
 /**
  * Page heading block: small tracked kicker above a mincho (serif) title.
  * Every dashboard page opens with this so the hierarchy reads the same everywhere.
+ *
+ * helpAnchor: 使い方ページの章アンカー（例 "ch3"）。渡すと見出しの右に
+ * 「この画面の使い方」リンクが出て /guide#ch3 へ飛ぶ（迷った職員がその場で手順を open できる）。
  */
 export function PageHeader({
   kicker,
   title,
   description,
+  helpAnchor,
 }: {
   kicker: string;
   title: string;
   description?: string;
+  helpAnchor?: string;
 }) {
   return (
     <header className="mb-8">
-      <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--faint)]">{kicker}</p>
-      <h1
-        className="mt-1.5 text-[26px] font-medium leading-snug text-[var(--ink)]"
-        style={{ fontFamily: "var(--serif)" }}
-      >
-        {title}
-      </h1>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--faint)]">{kicker}</p>
+          <h1
+            className="mt-1.5 text-[26px] font-medium leading-snug text-[var(--ink)]"
+            style={{ fontFamily: "var(--serif)" }}
+          >
+            {title}
+          </h1>
+        </div>
+        {helpAnchor ? (
+          <Link
+            href={`/guide#${helpAnchor}`}
+            className="mt-1 inline-flex flex-shrink-0 items-center gap-1.5 rounded-[10px] border border-[var(--line)] bg-white px-3 py-1.5 text-xs text-[var(--muted)] transition-colors hover:border-[var(--green-line)] hover:bg-[var(--green-soft)] hover:text-[var(--green)]"
+          >
+            <IconHelpCircle size={14} />
+            この画面の使い方
+          </Link>
+        ) : null}
+      </div>
       {description ? <p className="mt-2 text-sm text-[var(--muted)]">{description}</p> : null}
     </header>
   );
