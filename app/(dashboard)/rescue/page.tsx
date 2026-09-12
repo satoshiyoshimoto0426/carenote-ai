@@ -424,6 +424,7 @@ export default function RescuePage() {
         kicker="救済モード"
         title="書類一式をつくる"
         description="利用者の人物像・診療情報などを入力すると、アセスメントからモニタリングまで5帳票の下書きを一括で作成します。"
+        helpAnchor="ch6"
       />
 
       {!bundle ? (

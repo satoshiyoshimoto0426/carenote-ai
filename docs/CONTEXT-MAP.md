@@ -173,6 +173,15 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 → `/create` の「カイポケの欄に合わせる」→ `KaipokeSheetView`（欄ごとコピー／拡張用JSON）→ 拡張 documentType `kaipokeAssessment`（`injectKaipokeSheet`：ページ単位・既存文章は消さない）。
 **第2表の半自動化 (同日)**: 拡張 `kaipoke.js` `buildPlan2Steps`／`plan2ScreenFromNames`／`parseFrequency`／`classifyServiceType`／`fillPlan2Step`（追加画面1つ分だけ埋める・画面違いは書かない）
 → `content.js` CARENOTE_PLAN2_FILL → `panel.js` 「第2表を1件ずつ流し込む」（案内→流し込む→登録は人→次へ、進捗は storage）。`readFieldValue(el)` が欄の今の文章（`getValue(draft,key)` と別物）。第3表は未対応。
+**職員向けマニュアル (2026-09-12・ROADMAP 第4版 P-MANUAL)**: 本文の正本は `lib/manual/content.ts`（7章・手順145・よくある質問65。実画面の棚卸し→執筆→「実在しないラベルを潰す」検証の産物）。
+同じデータを3つの形で出す: ①アプリ内 `app/(dashboard)/guide/page.tsx`（`/guide`・目次・章ごとの動画枠・手順・注意・FAQ）
+②印刷/PDF `tools/build-manual.mjs` → `public/manual/index.html`（`npm run manual` で再生成・**生成物なので手で直さない**）＋ Chrome ヘッドレスで `public/manual/CareNote-AI-操作マニュアル.pdf`（本文を直したら HTML→PDF の順で作り直す）
+③動画 `docs/MANUAL-VIDEO-SPEC.md`（スクリーンキャスト型の収録台本・91場面）。動画は未収録なので `video.status: "planned"` ＝画面に「準備中」と出る。
+各画面の見出しからは `PageHeader` の `helpAnchor` で `/guide#chN` へ飛べる。開閉の要る FAQ だけ `components/manual/FaqAccordion.tsx`（"use client"）。
+**UI の文字を変えたら content.ts も同じ PR で直す**（Doc-as-Code）。
+**決定（2026-09-12）**: `public/manual/` は Next.js の public 配下＝**ログイン無しで URL を知っていれば閲覧できる**（middleware の matcher がドット付きパスを除外）。秘密情報は含めない前提で、研修配布と PDF 生成のためこの形を採る。検索避けは `noindex` と `public/robots.txt`。
+**限界（2026-09-12・ROADMAP G3b）**: 名簿は `created_by` スコープ＝**登録した職員本人にしか効かない**。マニュアル第①章の例外④・第②章の注意に明記済。
+
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
 ## 4. 更新トリガ（いつここを直すか）

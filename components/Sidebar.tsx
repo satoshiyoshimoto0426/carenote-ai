@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   IconFileText,
+  IconHelpCircle,
   IconHome,
   IconLayers,
   type IconProps,
@@ -22,6 +23,7 @@ const NAV: { href: string; label: string; icon: (props: IconProps) => React.JSX.
   { href: "/create", label: "作成する", icon: IconFileText },
   { href: "/rescue", label: "救済モード", icon: IconLayers },
   { href: "/evaluate", label: "評価する", icon: IconSearch },
+  { href: "/guide", label: "使い方", icon: IconHelpCircle },
 ];
 
 /**

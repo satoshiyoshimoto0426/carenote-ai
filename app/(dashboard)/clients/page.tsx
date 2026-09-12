@@ -82,6 +82,7 @@ export default function ClientsPage() {
           kicker="Clients"
           title="利用者"
           description="利用者ごとに書類が貯まります（氏名は記号で表示）"
+          helpAnchor="ch2"
         />
         <button
           type="button"

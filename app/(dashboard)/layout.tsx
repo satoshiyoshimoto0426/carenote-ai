@@ -1,5 +1,5 @@
 import Sidebar from "@/components/Sidebar";
-import { IconHome, IconSearch } from "@/components/ui/icons";
+import { IconHelpCircle, IconHome, IconSearch } from "@/components/ui/icons";
 
 /**
  * Dashboard shell (design system v0): paper background, sticky 220px sidebar on
@@ -59,6 +59,14 @@ function MobileNav() {
         className="flex items-center justify-center rounded-[9px] p-2 text-[var(--muted)] hover:bg-[var(--green-soft)] hover:text-[var(--green)]"
       >
         <IconSearch size={18} />
+      </a>
+      {/* 迷った職員がスマホからでも手引きへ行けるように（左メニューは 768px 未満で消えるため） */}
+      <a
+        href="/guide"
+        aria-label="使い方"
+        className="flex items-center justify-center rounded-[9px] p-2 text-[var(--muted)] hover:bg-[var(--green-soft)] hover:text-[var(--green)]"
+      >
+        <IconHelpCircle size={18} />
       </a>
     </nav>
   );

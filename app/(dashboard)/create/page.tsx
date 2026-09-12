@@ -314,6 +314,7 @@ export default function CreatePage() {
         kicker="Create"
         title="帳票作成（下書き）"
         description="メモを入力すると、AIがルールに沿って帳票の下書きを作成します"
+        helpAnchor="ch3"
       />
 
       {/* 帳票セレクタ（白カードのセグメント） */}
