@@ -126,6 +126,7 @@ describe("deleteRelatedPerson: 所有者・利用者で絞り、0件は not_foun
   });
 
   it("削除できたら ok、条件に created_by と client_id が付く", async () => {
+    ok("clients", { id: "c1", code: "A" });
     ok("client_related_identities", [{ id: "r1" }]);
     expect(await deleteRelatedPerson("r1", "c1", SOLO)).toBe("ok");
     const eqs = calls.filter((c) => c.op === "eq").map((c) => c.args);
@@ -137,10 +138,18 @@ describe("deleteRelatedPerson: 所有者・利用者で絞り、0件は not_foun
   });
 
   it("対象が無ければ not_found、DB エラーは error", async () => {
+    ok("clients", { id: "c1", code: "A" });
     ok("client_related_identities", []);
     expect(await deleteRelatedPerson("other", "c1", SOLO)).toBe("not_found");
     fail("client_related_identities", "boom");
     expect(await deleteRelatedPerson("r1", "c1", SOLO)).toBe("error");
+  });
+
+  it("親の利用者が範囲外なら、関係者の表に触れずに not_found", async () => {
+    results.set("clients", { data: null, error: { message: "no rows" } });
+    ok("client_related_identities", [{ id: "r1" }]);
+    expect(await deleteRelatedPerson("r1", "c1", SOLO)).toBe("not_found");
+    expect(calls.some((c) => c.table === "client_related_identities")).toBe(false);
   });
 });
 

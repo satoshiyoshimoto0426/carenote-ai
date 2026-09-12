@@ -485,6 +485,10 @@ export async function deleteRelatedPerson(
   clientId: string,
   scope: DataScope,
 ): Promise<"ok" | "not_found" | "error"> {
+  // 読み出し（getRelatedPeople）と同じく、親の利用者が範囲内かを先に確かめる。
+  // 消す操作は取り返しがつかないので、関係者行の側の条件だけに頼らない。
+  const parent = await getClientById(clientId, scope);
+  if (!parent) return "not_found";
   const db = createServerClient();
   const { data, error } = await db
     .from("client_related_identities")
