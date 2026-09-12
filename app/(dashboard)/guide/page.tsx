@@ -1,5 +1,12 @@
 import FaqAccordion from "@/components/manual/FaqAccordion";
-import { IconAlert, IconCheck, IconInfo, IconPlayCircle, IconPrinter } from "@/components/ui/icons";
+import {
+  IconAlert,
+  IconCheck,
+  IconDownload,
+  IconInfo,
+  IconPlayCircle,
+  IconPrinter,
+} from "@/components/ui/icons";
 import { Card, PageHeader, SectionTitle } from "@/components/ui/primitives";
 import {
   MANUAL_CHAPTERS,
@@ -84,11 +91,10 @@ function ToolbarCard() {
           </a>
           <a
             href="/manual/CareNote-AI-操作マニュアル.pdf"
-            target="_blank"
-            rel="noopener noreferrer"
+            download
             className="inline-flex items-center gap-2 rounded-[10px] bg-[var(--green)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0F4A3B]"
           >
-            <IconPrinter size={16} />
+            <IconDownload size={16} />
             PDFをダウンロード
           </a>
         </div>
@@ -138,7 +144,8 @@ function TableOfContents() {
 
 function ChapterBlock({ chapter }: { chapter: ManualChapter }) {
   return (
-    <section id={chapter.id} className="mb-10 scroll-mt-6">
+    // モバイルは上の固定バー（約59px）に隠れるので余白を多めに取る
+    <section id={chapter.id} className="mb-10 scroll-mt-[76px] md:scroll-mt-6">
       <div className="mb-3 flex items-baseline gap-2">
         <span className="text-lg text-[var(--faint)]" style={{ fontFamily: "var(--serif)" }}>
           {chapter.no}
@@ -155,7 +162,7 @@ function ChapterBlock({ chapter }: { chapter: ManualChapter }) {
       <VideoBlock chapter={chapter} />
 
       <Card className="mb-4 p-5">
-        <SectionTitle>手順</SectionTitle>
+        <SectionTitle as="h3">手順</SectionTitle>
         <ol className="mt-3 space-y-3">
           {chapter.steps.map((step, i) => (
             <li key={step.text} className="flex gap-3 text-sm leading-relaxed">
@@ -216,7 +223,7 @@ function VideoBlock({ chapter }: { chapter: ManualChapter }) {
         <span className="text-[var(--green)]">
           <IconPlayCircle size={18} />
         </span>
-        <SectionTitle>動画で見る（約{video.minutes}分）</SectionTitle>
+        <SectionTitle as="h3">動画で見る（約{video.minutes}分）</SectionTitle>
       </div>
       <video
         controls

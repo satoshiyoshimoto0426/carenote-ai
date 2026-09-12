@@ -14,10 +14,12 @@
  *
  * 注意:
  *   public/manual/index.html は**生成物**。手で直さず、lib/manual/content.ts を直して再生成すること。
+ *   ノンブル（ページ番号）は入れていない ── 章の頭出しは目次のリンクと画面側の /guide#chN で足り、
+ *   ページ番号を入れると改訂のたびにズレて紙とPDFで食い違うため（検品 2026-09-12 の判断）。
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { MANUAL_CHAPTERS, MANUAL_META, MANUAL_PROMISES } from "../lib/manual/content.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -54,10 +56,16 @@ function chapterHtml(ch) {
     )
     .join("\n");
 
-  return `  <section id="${ch.id}">
-    <h2><span class="no">${ch.no}</span> ${esc(ch.title)}</h2>
+  // 動画の案内は status で出し分ける（録画していないものを「ある」と書かない）
+  const videoNote =
+    ch.video.status === "ready"
+      ? `この章には約${esc(String(ch.video.minutes))}分の操作動画があります。CareNote の「使い方」画面（画面左のメニュー）でご覧ください。`
+      : `この章の操作動画（約${esc(String(ch.video.minutes))}分）は準備中です。公開までは、下の手順と画面の文字を見ながら操作してください。`;
+
+  return `  <section id="${esc(ch.id)}">
+    <h2><span class="no">${esc(ch.no)}</span> ${esc(ch.title)}</h2>
     <p class="lead">${esc(ch.lead)}</p>
-    <div class="video-note">この章には約${ch.minutesLabel}分の操作動画があります。CareNote の「使い方」画面（画面左のメニュー）でご覧ください。</div>
+    <div class="video-note">${videoNote}</div>
     <h3>手順</h3>
     <ol>
 ${steps}
@@ -68,24 +76,31 @@ ${faq}
   </section>`;
 }
 
-const toc = MANUAL_CHAPTERS.map(
-  (ch) => `      <li><a href="#${ch.id}">${ch.no} ${esc(ch.short)}</a></li>`,
-).join("\n");
+/**
+ * 本文データから印刷用HTMLを組み立てる（副作用なし・テスト対象）。
+ * lib/manual/manualHtml.test.ts が「準備中の章を『あります』と書かない」等をここで固定する。
+ */
+export function buildManualHtml(
+  chaptersData = MANUAL_CHAPTERS,
+  meta = MANUAL_META,
+  promisesData = MANUAL_PROMISES,
+) {
+  const toc = chaptersData
+    .map((ch) => `      <li><a href="#${esc(ch.id)}">${esc(ch.no)} ${esc(ch.short)}</a></li>`)
+    .join("\n");
 
-const promises = MANUAL_PROMISES.map((p) => `      <li>${esc(p)}</li>`).join("\n");
+  const promises = promisesData.map((p) => `      <li>${esc(p)}</li>`).join("\n");
 
-const chapters = MANUAL_CHAPTERS.map((ch) =>
-  chapterHtml({ ...ch, minutesLabel: ch.video.minutes }),
-).join("\n\n");
+  const chapters = chaptersData.map((ch) => chapterHtml(ch)).join("\n\n");
 
-const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- 事業所内の配布物なので検索結果には出さない（認証は掛けていない・ROADMAP 第4版 P-MANUAL の判断） -->
 <meta name="robots" content="noindex,nofollow">
-<title>${esc(MANUAL_META.title)}（印刷用）</title>
+<title>${esc(meta.title)}（印刷用）</title>
 <!-- このファイルは tools/build-manual.mjs の生成物です。手で直さず lib/manual/content.ts を直して再生成してください。 -->
 <style>
   * { box-sizing: border-box; }
@@ -164,11 +179,15 @@ const html = `<!DOCTYPE html>
 
   @media print {
     .toolbar { display: none; }
-    body { background: #fff; }
+    /* callout の種別は背景色で示すので、職員がブラウザから刷るときも色を落とさない */
+    body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .sheet { box-shadow: none; margin: 0; padding: 0; max-width: 100%; }
     h2 { break-after: avoid; }
     h3 { break-after: avoid; }
-    ol, .faq, .callout { break-inside: avoid; }
+    .faq, .callout { break-inside: avoid; }
+    /* ol 全体に avoid を掛けると34手順の章が丸ごと次ページへ送られて大きな空白が出る（検品 2026-09-12）。
+       割れてはいけないのは1手順なので li に掛ける */
+    ol li { break-inside: avoid; }
     a { color: inherit; text-decoration: none; }
   }
   @page { size: A4; margin: 16mm 14mm; }
@@ -176,15 +195,15 @@ const html = `<!DOCTYPE html>
 </head>
 <body>
   <div class="toolbar">
-    <h1>${esc(MANUAL_META.title)}</h1>
+    <h1>${esc(meta.title)}</h1>
     <a href="/guide">アプリの「使い方」へ戻る（動画つき）</a>
     <button type="button" onclick="window.print()">印刷する / PDFとして保存する</button>
   </div>
 
   <div class="sheet">
-    <h1 class="doc-title">${esc(MANUAL_META.title)}</h1>
-    <p class="subtitle">${esc(MANUAL_META.subtitle)}</p>
-    <p class="meta">${esc(MANUAL_META.audience)} ／ ${esc(MANUAL_META.version)}</p>
+    <h1 class="doc-title">${esc(meta.title)}</h1>
+    <p class="subtitle">${esc(meta.subtitle)}</p>
+    <p class="meta">${esc(meta.audience)} ／ ${esc(meta.version)}（最終更新 ${esc(meta.updatedAt)}）</p>
 
     <div class="promises">
       <h3>この道具の3つの約束</h3>
@@ -202,17 +221,22 @@ ${toc}
 
 ${chapters}
 
-    <p class="footer">${esc(MANUAL_META.title)} ${esc(MANUAL_META.version)}<br>
+    <p class="footer">${esc(meta.title)} ${esc(meta.version)}<br>
     画面が変わったときは、このマニュアルも同時に差し替えます。最新版はアプリの「使い方」画面から入手できます。</p>
   </div>
 </body>
 </html>
 `;
+}
 
-mkdirSync(dirname(OUT), { recursive: true });
-writeFileSync(OUT, html, "utf8");
-const steps = MANUAL_CHAPTERS.reduce((n, c) => n + c.steps.length, 0);
-const faq = MANUAL_CHAPTERS.reduce((n, c) => n + c.faq.length, 0);
-console.log(
-  `wrote ${OUT} (${MANUAL_CHAPTERS.length}章 / 手順${steps} / よくある質問${faq} / ${html.length} bytes)`,
-);
+/** 直接実行したときだけ書き出す（テストから import しても副作用を出さない） */
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const html = buildManualHtml();
+  mkdirSync(dirname(OUT), { recursive: true });
+  writeFileSync(OUT, html, "utf8");
+  const steps = MANUAL_CHAPTERS.reduce((n, c) => n + c.steps.length, 0);
+  const faq = MANUAL_CHAPTERS.reduce((n, c) => n + c.faq.length, 0);
+  console.log(
+    `wrote ${OUT} (${MANUAL_CHAPTERS.length}章 / 手順${steps} / よくある質問${faq} / ${Buffer.byteLength(html, "utf8")} bytes)`,
+  );
+}

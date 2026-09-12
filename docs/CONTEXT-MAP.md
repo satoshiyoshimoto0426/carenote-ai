@@ -175,7 +175,7 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 → `content.js` CARENOTE_PLAN2_FILL → `panel.js` 「第2表を1件ずつ流し込む」（案内→流し込む→登録は人→次へ、進捗は storage）。`readFieldValue(el)` が欄の今の文章（`getValue(draft,key)` と別物）。第3表は未対応。
 **職員向けマニュアル (2026-09-12・ROADMAP 第4版 P-MANUAL)**: 本文の正本は `lib/manual/content.ts`（7章・手順145・よくある質問65。実画面の棚卸し→執筆→「実在しないラベルを潰す」検証の産物）。
 同じデータを3つの形で出す: ①アプリ内 `app/(dashboard)/guide/page.tsx`（`/guide`・目次・章ごとの動画枠・手順・注意・FAQ）
-②印刷/PDF `tools/build-manual.mjs` → `public/manual/index.html`（`npm run manual` で再生成・**生成物なので手で直さない**）＋ Chrome ヘッドレスで `public/manual/CareNote-AI-操作マニュアル.pdf`（25ページ）
+②印刷/PDF `tools/build-manual.mjs` → `public/manual/index.html`（`npm run manual` で再生成・**生成物なので手で直さない**）＋ Chrome ヘッドレスで `public/manual/CareNote-AI-操作マニュアル.pdf`（本文を直したら HTML→PDF の順で作り直す）
 ③動画 `docs/MANUAL-VIDEO-SPEC.md`（スクリーンキャスト型の収録台本・91場面）。動画は未収録なので `video.status: "planned"` ＝画面に「準備中」と出る。
 各画面の見出しからは `PageHeader` の `helpAnchor` で `/guide#chN` へ飛べる。開閉の要る FAQ だけ `components/manual/FaqAccordion.tsx`（"use client"）。
 **UI の文字を変えたら content.ts も同じ PR で直す**（Doc-as-Code）。

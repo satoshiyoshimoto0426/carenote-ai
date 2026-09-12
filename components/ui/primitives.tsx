@@ -93,15 +93,27 @@ export function Card({ className, children }: { className?: string; children: Re
   );
 }
 
-/** Mincho section heading (15px) — separates groups inside a page or card. */
-export function SectionTitle({ className, children }: { className?: string; children: ReactNode }) {
+/**
+ * Mincho section heading (15px) — separates groups inside a page or card.
+ * `as` で見出しレベルを選べる。既定 h2。章見出し（h2）の中に置く小見出しは h3 を渡して、
+ * 読み上げソフトの見出しジャンプが平坦にならないようにする（検品 2026-09-12）。
+ */
+export function SectionTitle({
+  className,
+  children,
+  as: Tag = "h2",
+}: {
+  className?: string;
+  children: ReactNode;
+  as?: "h2" | "h3";
+}) {
   return (
-    <h2
+    <Tag
       className={`text-[15px] font-medium text-[var(--ink)] ${className ?? ""}`}
       style={{ fontFamily: "var(--serif)" }}
     >
       {children}
-    </h2>
+    </Tag>
   );
 }
 

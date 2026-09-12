@@ -21,7 +21,7 @@ export default function FaqAccordion({ faq }: { faq: ManualFaq[] }) {
         <span className="text-[var(--muted)]">
           <IconHelpCircle size={17} />
         </span>
-        <SectionTitle>よくある質問</SectionTitle>
+        <SectionTitle as="h3">よくある質問</SectionTitle>
       </div>
       <div className="divide-y divide-[var(--line-soft)]">
         {faq.map((item) => {
