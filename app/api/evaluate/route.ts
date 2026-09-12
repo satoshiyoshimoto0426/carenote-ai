@@ -45,6 +45,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "PDFデータがありません。" }, { status: 400 });
     }
   } catch {
+    // 読み取れなかった時も一時保管を残さない（許可したホストの URL のみ削除を試みる）
+    if (blobUrl && isBlobUrl(blobUrl)) del(blobUrl).catch(() => {});
     return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
   }
 
