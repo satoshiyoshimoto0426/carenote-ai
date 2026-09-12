@@ -32,10 +32,14 @@ create index if not exists client_related_org_idx on client_related_identities (
 -- ============================================================
 -- ここで 0 件でなければ【手順3】を実行しないこと。
 -- 同じ記号の利用者が2人できると、黒塗りを戻すときに**他人の氏名**が帳票に入る。
+--
+-- ⚠ 'org_ここを置き換える' は手順3と同じ値に直してから実行すること。
+--   （すでに事業所へ移した行と、これから移す行の**両方**をまとめて見る必要があるため。
+--     職員が1人ずつ順番に組織へ入る場合、あとから入る職員の記号が既存とぶつかる）
 
 select code, count(*) as 同じ記号の数
 from clients
-where org_id is null
+where org_id is null or org_id = 'org_ここを置き換える'
 group by code
 having count(*) > 1;
 
@@ -46,27 +50,47 @@ having count(*) > 1;
 -- ============================================================
 -- 【手順3】既存の利用者を事業所のものにする（移行・backfill）
 -- ============================================================
--- ⚠ 手順2が 0 件だったときだけ実行する。
--- ⚠ '<ここに Clerk の組織IDを入れる>' を実際の値（org_ で始まる文字列）に置き換えてから実行する。
---    組織IDは Clerk のダッシュボード → Organizations → 対象の組織 → ID で確認できる。
+-- ⚠ 直したのは**1か所だけ**です。下の 'org_ここを置き換える' を実際の組織IDにしてから、
+--    このブロックをまるごとコピーして実行してください。
+--    組織IDは Clerk のダッシュボード → Organizations → 対象の組織 → ID で確認できます（org_ で始まります）。
 --
--- 3つの表を**同じ組織IDで**そろえる（1つでも漏れると名簿が半分だけ共有される）。
+-- このブロックは**まとめて1つ**として実行されます。途中で問題が見つかったら何も変更せずに止まります:
+--   - 組織IDを置き換え忘れていたら止まる
+--   - 手順2の重複（同じ記号の利用者が2人）が残っていたら止まる
+--   - 3つの表のどれかで失敗したら、3つとも元に戻る（半分だけ移行された状態にならない）
 
--- begin;  -- ← まとめて取り消せるようにしたい場合は、この行と末尾の commit; のコメントを外す
+do $$
+declare
+  org text := 'org_ここを置き換える';
+  moved_clients int;
+  moved_names int;
+  moved_related int;
+begin
+  if org !~ '^org_[A-Za-z0-9_-]+$' or org = 'org_ここを置き換える' then
+    raise exception '組織IDを実際の値に置き換えてから実行してください（いまの値: %）', org;
+  end if;
 
-update clients
-   set org_id = '<ここに Clerk の組織IDを入れる>'
- where org_id is null;
+  -- すでに事業所にある行と、これから移す行を**合わせて**見る
+  -- （職員が1人ずつ順番に組織へ入るとき、あとの職員の記号が既存とぶつかる）
+  if exists (
+    select 1 from clients
+     where org_id is null or org_id = org
+     group by code having count(*) > 1
+  ) then
+    raise exception '同じ記号の利用者が複数います（手順2を見てください）。移行を中止しました。';
+  end if;
 
-update client_identities
-   set org_id = '<ここに Clerk の組織IDを入れる>'
- where org_id is null;
+  update clients set org_id = org where org_id is null;
+  get diagnostics moved_clients = row_count;
 
-update client_related_identities
-   set org_id = '<ここに Clerk の組織IDを入れる>'
- where org_id is null;
+  update client_identities set org_id = org where org_id is null;
+  get diagnostics moved_names = row_count;
 
--- commit;
+  update client_related_identities set org_id = org where org_id is null;
+  get diagnostics moved_related = row_count;
+
+  raise notice '移行しました: 利用者 % 件 / 氏名 % 件 / 関係者 % 件', moved_clients, moved_names, moved_related;
+end $$;
 
 -- ============================================================
 -- 【手順4】終わったら確かめる
