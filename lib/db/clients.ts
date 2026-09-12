@@ -14,6 +14,46 @@ import { createServerClient } from "../supabase/server";
  * 実名は client_identities に暗号化保存し、Claude へは渡さない。
  */
 
+/**
+ * 読み書きの範囲（G3b・2026-09-12 吉本さん決定「事業所で共有します」）。
+ *
+ * なぜ必要か:
+ *   黒塗りは名簿にある名前しか消せない。名簿が「登録した職員本人」の中だけで効くと、
+ *   職員Bが職員Aの登録した利用者の実名をメモに書いたとき、置換も漏れ検査も反応せず
+ *   実名がそのまま AI へ出る（docs/ROADMAP.md G3b / Issue #13）。
+ *
+ * 決め方:
+ *   - Clerk の組織に所属していれば（orgId あり）**事業所の行**を対象にする
+ *   - 所属していなければ（orgId なし）従来どおり**自分の行だけ**
+ *   - 組織に入る前に自分が作った行（org_id が null）は、自分には引き続き見える
+ *   org_id が null 同士を「同じ事業所」とみなすことはしない（将来テナントが増えたとき全員が混ざるため）。
+ */
+export interface DataScope {
+  userId: string;
+  orgId: string | null;
+}
+
+/** Clerk の id は英数字・_・- のみ。想定外の文字は絞り込み式（or）を壊すので弾く。 */
+function isSafeId(v: string): boolean {
+  return /^[A-Za-z0-9_-]{1,128}$/.test(v);
+}
+
+/**
+ * 絞り込みの式を1か所で作る。読み出し系はすべて `.or(scopeExpr(scope))` を通す
+ * （片方だけ直して穴が開くのを防ぐ）。
+ *   - 事業所に所属している: 事業所の行 ＋ 組織に入る前に自分が作った行
+ *   - 所属していない: 自分の行だけ
+ * userId が想定外の形なら例外にする（絞り込みが外れて他人の行が混ざるより止める方が安全）。
+ */
+export function scopeExpr(scope: DataScope): string {
+  const { userId, orgId } = scope;
+  if (!isSafeId(userId)) throw new Error("invalid userId");
+  if (orgId && isSafeId(orgId)) {
+    return `org_id.eq.${orgId},and(org_id.is.null,created_by.eq.${userId})`;
+  }
+  return `created_by.eq.${userId}`;
+}
+
 interface ClientRow {
   id: string;
   org_id: string | null;
@@ -43,10 +83,12 @@ export async function createClientRecord(params: {
   input: ClientInput;
 }): Promise<ClientRecord | null> {
   const db = createServerClient();
+  // 記号（A様・B様…）は**名簿を共有する範囲で**一意でなければならない。
+  // 職員ごとに採番すると、事業所で共有した瞬間に別人が同じ「A様」になり、黒塗りが取り違える。
   const { count } = await db
     .from("clients")
     .select("id", { count: "exact", head: true })
-    .eq("created_by", params.userId);
+    .or(scopeExpr({ userId: params.userId, orgId: params.orgId }));
   const code = nextClientCode(count ?? 0);
 
   const { data, error } = await db
@@ -79,13 +121,13 @@ export async function createClientRecord(params: {
   return toRecord(row);
 }
 
-/** 自分が作成した利用者の一覧。 */
-export async function getClients(userId: string): Promise<ClientRecord[]> {
+/** 利用者の一覧（事業所に所属していれば事業所ぶん・していなければ自分ぶん）。 */
+export async function getClients(scope: DataScope): Promise<ClientRecord[]> {
   const db = createServerClient();
   const { data, error } = await db
     .from("clients")
     .select("*")
-    .eq("created_by", userId)
+    .or(scopeExpr(scope))
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) {
@@ -95,14 +137,14 @@ export async function getClients(userId: string): Promise<ClientRecord[]> {
   return (data as ClientRow[]).map(toRecord);
 }
 
-/** 利用者を1件取得（所有者チェック込み）。 */
-export async function getClientById(id: string, userId: string): Promise<ClientRecord | null> {
+/** 利用者を1件取得（範囲チェック込み）。 */
+export async function getClientById(id: string, scope: DataScope): Promise<ClientRecord | null> {
   const db = createServerClient();
   const { data, error } = await db
     .from("clients")
     .select("*")
     .eq("id", id)
-    .eq("created_by", userId)
+    .or(scopeExpr(scope))
     .single();
   if (error || !data) return null;
   return toRecord(data as ClientRow);
@@ -151,10 +193,10 @@ const RETRY_DELAY_MS = process.env.VITEST ? 1 : 500;
  * 対応表が作れない場合は AliasLoadError を投げ、呼び出し側が送信を止める（fail-closed）。
  * 旧仕様「空配列を返して生成は止めない」は 2026-09-09 に廃止（実名が消えないまま送られる穴）。
  */
-export async function getClientAliases(userId: string): Promise<NameAlias[]> {
+export async function getClientAliases(scope: DataScope): Promise<NameAlias[]> {
   // 一時的な失敗（ネットワーク・ゲートウェイの揺らぎ）は1回だけ読み直す
   try {
-    return await loadAliases(userId);
+    return await loadAliases(scope);
   } catch (first) {
     // 表が無いのは待っても直らないので読み直さない
     if (first instanceof RelatedTableMissingError) {
@@ -162,7 +204,7 @@ export async function getClientAliases(userId: string): Promise<NameAlias[]> {
     }
     await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
     try {
-      return await loadAliases(userId);
+      return await loadAliases(scope);
     } catch (second) {
       const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
       if (second instanceof RelatedTableMissingError) {
@@ -173,16 +215,16 @@ export async function getClientAliases(userId: string): Promise<NameAlias[]> {
   }
 }
 
-async function loadAliases(userId: string): Promise<NameAlias[]> {
+async function loadAliases(scope: DataScope): Promise<NameAlias[]> {
   const db = createServerClient();
   const [clientsRes, idsRes, relRes] = await Promise.all([
-    db.from("clients").select("id, code").eq("created_by", userId),
-    db.from("client_identities").select("client_id, name_encrypted").eq("created_by", userId),
+    db.from("clients").select("id, code").or(scopeExpr(scope)),
+    db.from("client_identities").select("client_id, name_encrypted").or(scopeExpr(scope)),
     // 関係者名簿（D4）。読めなければ利用者名簿と同じく送信を止める（警告で続行しない）
     db
       .from("client_related_identities")
       .select("client_id, relation, name_encrypted")
-      .eq("created_by", userId),
+      .or(scopeExpr(scope)),
   ]);
   if (clientsRes.error || idsRes.error) {
     throw new Error(clientsRes.error?.message ?? idsRes.error?.message ?? "unknown");
@@ -247,13 +289,16 @@ interface RelatedRow {
 }
 
 /** 利用者の関係者一覧（所有者チェック込み・実名は復号して返す）。 */
-export async function getRelatedPeople(clientId: string, userId: string): Promise<RelatedPerson[]> {
+export async function getRelatedPeople(
+  clientId: string,
+  scope: DataScope,
+): Promise<RelatedPerson[]> {
   const db = createServerClient();
   const { data, error } = await db
     .from("client_related_identities")
     .select("id, client_id, relation, name_encrypted, created_at")
     .eq("client_id", clientId)
-    .eq("created_by", userId)
+    .or(scopeExpr(scope))
     .order("created_at", { ascending: true });
   if (error) {
     console.error("[db] getRelatedPeople error:", error.message);
@@ -290,7 +335,10 @@ export async function addRelatedPerson(params: {
   if (!relation || !name) return { ok: false, error: "続柄と氏名を入力してください。" };
   if (relation.length > 20) return { ok: false, error: "続柄は20文字以内にしてください。" };
 
-  const owner = await getClientById(params.clientId, params.userId);
+  const owner = await getClientById(params.clientId, {
+    userId: params.userId,
+    orgId: params.orgId,
+  });
   if (!owner) return { ok: false, error: "利用者が見つかりません。" };
 
   const db = createServerClient();
@@ -326,7 +374,7 @@ export async function addRelatedPerson(params: {
 export async function deleteRelatedPerson(
   id: string,
   clientId: string,
-  userId: string,
+  scope: DataScope,
 ): Promise<"ok" | "not_found" | "error"> {
   const db = createServerClient();
   const { data, error } = await db
@@ -334,7 +382,7 @@ export async function deleteRelatedPerson(
     .delete()
     .eq("id", id)
     .eq("client_id", clientId)
-    .eq("created_by", userId)
+    .or(scopeExpr(scope))
     .select("id");
   if (error) {
     console.error("[db] deleteRelatedPerson error:", error.message);
@@ -344,13 +392,13 @@ export async function deleteRelatedPerson(
 }
 
 /** 実名を復号して返す（権限内・必要時のみ）。失敗時は null。 */
-export async function getClientName(clientId: string, userId: string): Promise<string | null> {
+export async function getClientName(clientId: string, scope: DataScope): Promise<string | null> {
   const db = createServerClient();
   const { data, error } = await db
     .from("client_identities")
     .select("name_encrypted")
     .eq("client_id", clientId)
-    .eq("created_by", userId)
+    .or(scopeExpr(scope))
     .single();
   if (error || !data) return null;
   try {

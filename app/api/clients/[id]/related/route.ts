@@ -9,10 +9,10 @@ import { addRelatedPerson, deleteRelatedPerson, getRelatedPeople } from "@/lib/d
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
   const { id } = await params;
-  return NextResponse.json(await getRelatedPeople(id, userId), {
+  return NextResponse.json(await getRelatedPeople(id, { userId, orgId: orgId ?? null }), {
     headers: { "Cache-Control": "no-store" },
   });
 }
@@ -37,13 +37,13 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 }
 
 export async function DELETE(req: NextRequest, { params }: Ctx) {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
   const { id } = await params;
   const relatedId = req.nextUrl.searchParams.get("relatedId") ?? "";
   if (!relatedId)
     return NextResponse.json({ error: "対象が指定されていません。" }, { status: 400 });
-  const r = await deleteRelatedPerson(relatedId, id, userId);
+  const r = await deleteRelatedPerson(relatedId, id, { userId, orgId: orgId ?? null });
   if (r === "error") return NextResponse.json({ error: "削除に失敗しました。" }, { status: 500 });
   if (r === "not_found") {
     return NextResponse.json(

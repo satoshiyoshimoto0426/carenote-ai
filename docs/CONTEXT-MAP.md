@@ -180,7 +180,7 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 各画面の見出しからは `PageHeader` の `helpAnchor` で `/guide#chN` へ飛べる。開閉の要る FAQ だけ `components/manual/FaqAccordion.tsx`（"use client"）。
 **UI の文字を変えたら content.ts も同じ PR で直す**（Doc-as-Code）。
 **決定（2026-09-12）**: `public/manual/` は Next.js の public 配下＝**ログイン無しで URL を知っていれば閲覧できる**（middleware の matcher がドット付きパスを除外）。秘密情報は含めない前提で、研修配布と PDF 生成のためこの形を採る。検索避けは `noindex` と `public/robots.txt`。
-**限界（2026-09-12・ROADMAP G3b）**: 名簿は `created_by` スコープ＝**登録した職員本人にしか効かない**。マニュアル第①章の例外④・第②章の注意に明記済。
+**名簿の範囲（2026-09-12・G3b 吉本さん決定「事業所で共有」）**: `lib/db/clients.ts` の `scopeExpr` が唯一の絞り込み。組織に所属していれば「事業所の行＋組織加入前の自分の行」、していなければ本人のみ（`org_id` が null 同士は同じ事業所とみなさない）。利用者・実名・関係者の3表すべてがこれを通る。記号の採番も同じ範囲で数える（`supabase/client_org_scope.sql` の一意制約）。**有効化には Clerk の組織設定＋SQL 2本の実行が要る**。保存書類の共有は未対応。
 
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 

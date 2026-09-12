@@ -21,7 +21,7 @@ function nextResult(table: string): Result {
 /** from(table).select().eq()... のどこで await されても結果が返る偽ビルダー（Promise にメソッドを生やす） */
 function fakeFrom(table: string) {
   const chain = Promise.resolve(nextResult(table)) as Promise<Result> & Record<string, unknown>;
-  for (const op of ["select", "eq", "delete", "insert", "order", "limit", "single"]) {
+  for (const op of ["select", "eq", "or", "delete", "insert", "order", "limit", "single"]) {
     chain[op] = (...args: unknown[]) => {
       calls.push({ table, op, args });
       return chain;
@@ -35,8 +35,16 @@ vi.mock("../supabase/server", () => ({ createServerClient: () => ({ from: fakeFr
 const KEY = randomBytes(32);
 process.env.CARENOTE_PII_KEY = KEY.toString("base64");
 
-const { AliasLoadError, deleteRelatedPerson, getClientAliases, RELATED_TABLE_MISSING_MESSAGE } =
-  await import("./clients");
+const {
+  AliasLoadError,
+  deleteRelatedPerson,
+  getClientAliases,
+  RELATED_TABLE_MISSING_MESSAGE,
+  scopeExpr,
+} = await import("./clients");
+
+/** 事業所に所属していない職員（従来どおり自分の行だけ） */
+const SOLO = { userId: "u1", orgId: null };
 
 function ok(table: string, data: unknown) {
   results.set(table, { data, error: null });
@@ -57,11 +65,11 @@ describe("getClientAliases: 名簿が読めなければ AliasLoadError（送信�
   });
 
   it("正常時は利用者と関係者を含む対応表を返す", async () => {
-    const aliases = await getClientAliases("u1");
+    const aliases = await getClientAliases(SOLO);
     expect(aliases).toContainEqual({ real: "山田花子", code: "A様" });
     expect(aliases).toContainEqual({ real: "佐藤一郎", code: "A様の長女" });
-    // 所有者スコープ（created_by=u1）が3表すべてに付く
-    const scoped = calls.filter((c) => c.op === "eq" && c.args[0] === "created_by");
+    // 絞り込み（created_by=u1）が3表すべてに付く
+    const scoped = calls.filter((c) => c.op === "or" && c.args[0] === "created_by.eq.u1");
     expect(scoped.map((c) => c.table).sort()).toEqual([
       "client_identities",
       "client_related_identities",
@@ -71,12 +79,12 @@ describe("getClientAliases: 名簿が読めなければ AliasLoadError（送信�
 
   it("利用者表が読めなければ（1回読み直しても）AliasLoadError を投げ、空配列で進まない", async () => {
     fail("clients", "JWT issued at future");
-    await expect(getClientAliases("u1")).rejects.toBeInstanceOf(AliasLoadError);
+    await expect(getClientAliases(SOLO)).rejects.toBeInstanceOf(AliasLoadError);
   });
 
   it("関係者表の一時エラーも warn で握りつぶさず AliasLoadError にする（critical #3）", async () => {
     fail("client_related_identities", "connection reset");
-    await expect(getClientAliases("u1")).rejects.toBeInstanceOf(AliasLoadError);
+    await expect(getClientAliases(SOLO)).rejects.toBeInstanceOf(AliasLoadError);
   });
 
   it("関係者表が未作成（42P01 / PGRST205）なら、管理者向けの文言で止める（読み直さない）", async () => {
@@ -87,7 +95,7 @@ describe("getClientAliases: 名簿が読めなければ AliasLoadError（送信�
     );
     let caught: unknown;
     try {
-      await getClientAliases("u1");
+      await getClientAliases(SOLO);
     } catch (e) {
       caught = e;
     }
@@ -102,7 +110,7 @@ describe("getClientAliases: 名簿が読めなければ AliasLoadError（送信�
       { data: null, error: { message: "flaky" } },
       { data: [{ id: "c1", code: "A" }], error: null },
     ]);
-    const aliases = await getClientAliases("u1");
+    const aliases = await getClientAliases(SOLO);
     expect(aliases).toContainEqual({ real: "山田花子", code: "A様" });
   });
 });
@@ -115,17 +123,65 @@ describe("deleteRelatedPerson: 所有者・利用者で絞り、0件は not_foun
 
   it("削除できたら ok、条件に created_by と client_id が付く", async () => {
     ok("client_related_identities", [{ id: "r1" }]);
-    expect(await deleteRelatedPerson("r1", "c1", "u1")).toBe("ok");
+    expect(await deleteRelatedPerson("r1", "c1", SOLO)).toBe("ok");
     const eqs = calls.filter((c) => c.op === "eq").map((c) => c.args);
-    expect(eqs).toContainEqual(["created_by", "u1"]);
     expect(eqs).toContainEqual(["client_id", "c1"]);
     expect(eqs).toContainEqual(["id", "r1"]);
+    expect(calls.filter((c) => c.op === "or").map((c) => c.args)).toContainEqual([
+      "created_by.eq.u1",
+    ]);
   });
 
   it("対象が無ければ not_found、DB エラーは error", async () => {
     ok("client_related_identities", []);
-    expect(await deleteRelatedPerson("other", "c1", "u1")).toBe("not_found");
+    expect(await deleteRelatedPerson("other", "c1", SOLO)).toBe("not_found");
     fail("client_related_identities", "boom");
-    expect(await deleteRelatedPerson("r1", "c1", "u1")).toBe("error");
+    expect(await deleteRelatedPerson("r1", "c1", SOLO)).toBe("error");
+  });
+});
+
+describe("scopeExpr: 名簿をどこまで共有するか（G3b・2026-09-12）", () => {
+  it("事業所に所属していなければ自分の行だけ", () => {
+    expect(scopeExpr({ userId: "user_abc", orgId: null })).toBe("created_by.eq.user_abc");
+  });
+
+  it("事業所に所属していれば、事業所の行＋組織に入る前の自分の行", () => {
+    expect(scopeExpr({ userId: "user_abc", orgId: "org_xyz" })).toBe(
+      "org_id.eq.org_xyz,and(org_id.is.null,created_by.eq.user_abc)",
+    );
+  });
+
+  it("org_id が null 同士を同じ事業所とみなさない（他テナントと混ざらない）", () => {
+    const expr = scopeExpr({ userId: "user_abc", orgId: null });
+    expect(expr).not.toContain("org_id");
+  });
+
+  it("想定外の id は絞り込みを外さず例外にする（fail-closed）", () => {
+    expect(() => scopeExpr({ userId: "u1,or=(1.eq.1)", orgId: null })).toThrow();
+    // org 側が壊れている時は、広げずに自分の行だけへ落とす
+    expect(scopeExpr({ userId: "user_abc", orgId: "org,evil" })).toBe("created_by.eq.user_abc");
+  });
+});
+
+describe("事業所で共有しているときの読み出し", () => {
+  beforeEach(() => {
+    results.clear();
+    calls.length = 0;
+    ok("clients", [{ id: "c1", code: "A" }]);
+    ok("client_identities", [{ client_id: "c1", name_encrypted: encryptString("山田花子", KEY) }]);
+    ok("client_related_identities", []);
+  });
+
+  it("3表すべてに事業所の絞り込みが付く（1表でも漏れると実名が素通りする）", async () => {
+    await getClientAliases({ userId: "user_abc", orgId: "org_xyz" });
+    const ors = calls.filter((c) => c.op === "or");
+    expect(ors.map((c) => c.table).sort()).toEqual([
+      "client_identities",
+      "client_related_identities",
+      "clients",
+    ]);
+    for (const o of ors) {
+      expect(o.args[0]).toBe("org_id.eq.org_xyz,and(org_id.is.null,created_by.eq.user_abc)");
+    }
   });
 });

@@ -5,9 +5,9 @@ import type { ClientAttributes } from "@/types/client";
 
 /** 利用者の一覧取得・作成（Webアプリ・Clerkログイン）。 */
 export async function GET() {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
-  return NextResponse.json(await getClients(userId));
+  return NextResponse.json(await getClients({ userId, orgId: orgId ?? null }));
 }
 
 export async function POST(req: NextRequest) {

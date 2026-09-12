@@ -17,7 +17,7 @@ export const maxDuration = 300;
  * 残っていれば 422 で止める（独立審査 2026-09-11 critical #7）。返事は同じ札入れで戻す。
  */
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
 
   let body: { draft?: unknown; notes?: unknown };
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   let aliases: Awaited<ReturnType<typeof getClientAliases>>;
   try {
-    aliases = await getClientAliases(userId);
+    aliases = await getClientAliases({ userId, orgId: orgId ?? null });
   } catch (e) {
     if (e instanceof AliasLoadError)
       return NextResponse.json({ error: e.message }, { status: 503 });

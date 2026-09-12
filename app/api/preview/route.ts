@@ -18,7 +18,7 @@ export interface PreviewResponse {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
   }
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   // 名簿が読めなければ確認画面も出さない（実名が残った文章を「送っていい」と見せないため）
   let aliases: Awaited<ReturnType<typeof getClientAliases>>;
   try {
-    aliases = await getClientAliases(userId);
+    aliases = await getClientAliases({ userId, orgId: orgId ?? null });
   } catch (e) {
     if (e instanceof AliasLoadError)
       return NextResponse.json({ error: e.message }, { status: 503 });
