@@ -108,9 +108,12 @@ jobs:
           # pull_request_review_comment は track_progress の対応外イベントのため立てない
           track_progress: ${{ github.event_name == 'pull_request' }}
           # --max-turns 15 では実物 PR の審査が完走しない（2026-09-06 decisions-log）。予算ゲートは job の timeout-minutes
+          # 2026-09-12: 審査エージェントが tsc/biome/vitest を実行できず「PR 本文の申告を信頼」と
+          # 3回続けて書いてきたため、検証系コマンドだけ明示的に許可する（Flywheel ③ Auto Review の実効化）
           claude_args: |
             --model claude-sonnet-5
             --max-turns 40
+            --allowedTools "Bash(npx tsc:*),Bash(npx biome:*),Bash(npx vitest:*),Bash(npm run test:*),Bash(npm run check:*),Bash(node tools/:*)"
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
