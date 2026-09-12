@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  clientCodeIndex,
   expandAliasVariants,
   maskNames,
   type NameAlias,
@@ -59,6 +60,22 @@ describe("仮名化: nextClientCode", () => {
     expect(nextClientCode(25)).toBe("Z");
     expect(nextClientCode(26)).toBe("AA");
     expect(nextClientCode(27)).toBe("AB");
+  });
+
+  it("clientCodeIndex は nextClientCode の逆（採番を最大＋1で決めるのに使う）", () => {
+    for (let i = 0; i < 800; i++) {
+      expect(clientCodeIndex(nextClientCode(i))).toBe(i);
+    }
+    expect(clientCodeIndex("A")).toBe(0);
+    expect(clientCodeIndex("Z")).toBe(25);
+    expect(clientCodeIndex("AA")).toBe(26);
+  });
+
+  it("想定外の記号は null（無視して採番を続けられるように）", () => {
+    expect(clientCodeIndex("")).toBeNull();
+    expect(clientCodeIndex("A1")).toBeNull();
+    expect(clientCodeIndex("あ")).toBeNull();
+    expect(clientCodeIndex("ABCDEFG")).toBeNull();
   });
 });
 

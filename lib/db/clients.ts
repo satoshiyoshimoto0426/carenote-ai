@@ -1,5 +1,6 @@
 import { decryptString, encryptString, getPiiKey } from "@/lib/privacy/crypto";
 import {
+  clientCodeIndex,
   expandAliasVariants,
   type NameAlias,
   nextClientCode,
@@ -43,16 +44,29 @@ function isSafeId(v: string): boolean {
  * （片方だけ直して穴が開くのを防ぐ）。
  *   - 事業所に所属している: 事業所の行 ＋ 組織に入る前に自分が作った行
  *   - 所属していない: 自分の行だけ
- * userId が想定外の形なら例外にする（絞り込みが外れて他人の行が混ざるより止める方が安全）。
+ * id が想定外の形なら例外にする（絞り込みが外れて他人の行が混ざるより、止める方が安全）。
+ * orgId も同じ扱いにする ── 壊れた orgId を黙って「所属なし」に落とすと、同僚が登録した
+ * 利用者の名前が名簿に載らないまま生成が進み、実名がそのまま AI へ出る（独立審査 2026-09-12）。
  */
 export function scopeExpr(scope: DataScope): string {
   const { userId, orgId } = scope;
   if (!isSafeId(userId)) throw new Error("invalid userId");
-  if (orgId && isSafeId(orgId)) {
+  if (orgId !== null) {
+    if (!isSafeId(orgId)) throw new Error("invalid orgId");
     return `org_id.eq.${orgId},and(org_id.is.null,created_by.eq.${userId})`;
   }
   return `created_by.eq.${userId}`;
 }
+
+/**
+ * 1回の読み出しで受け取る最大行数。Supabase(PostgREST) は既定 1000 行で**黙って**打ち切るため、
+ * 名簿の読み出しはこの上限＋1 を要求し、超えていたら送信を止める（黙って欠けた名簿で
+ * 黒塗りすると、載らなかった利用者の実名がそのまま AI へ出る）。
+ */
+const ALIAS_ROW_LIMIT = 900;
+
+/** 画面に出す利用者一覧の上限。名簿（黒塗り）とは別物で、こちらは表示の都合。 */
+const CLIENT_LIST_LIMIT = ALIAS_ROW_LIMIT;
 
 interface ClientRow {
   id: string;
@@ -83,30 +97,38 @@ export async function createClientRecord(params: {
   input: ClientInput;
 }): Promise<ClientRecord | null> {
   const db = createServerClient();
+  const scope: DataScope = { userId: params.userId, orgId: params.orgId };
+
   // 記号（A様・B様…）は**名簿を共有する範囲で**一意でなければならない。
-  // 職員ごとに採番すると、事業所で共有した瞬間に別人が同じ「A様」になり、黒塗りが取り違える。
-  const { count } = await db
-    .from("clients")
-    .select("id", { count: "exact", head: true })
-    .or(scopeExpr({ userId: params.userId, orgId: params.orgId }));
-  const code = nextClientCode(count ?? 0);
-
-  const { data, error } = await db
-    .from("clients")
-    .insert({
-      org_id: params.orgId,
-      code,
-      attributes: params.input.attributes ?? {},
-      created_by: params.userId,
-    })
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    console.error("[db] createClientRecord error:", error?.message);
+  // 件数で採番すると、事業所の行と「組織に入る前の自分の行」が混ざったときに同じ番号を二度引き、
+  // 別人が同じ「A様」になって黒塗りの戻しが取り違える（独立審査 2026-09-12 critical）。
+  // そこで**スコープ内にある記号の最大＋1**を取る。競合で重なったら1回だけ取り直す。
+  let row: ClientRow | null = null;
+  let lastError = "";
+  for (let attempt = 0; attempt < 2 && !row; attempt++) {
+    const code = await nextCodeInScope(db, scope);
+    if (!code) return null; // 既存の記号を読めなかった＝安全な採番ができない
+    const { data, error } = await db
+      .from("clients")
+      .insert({
+        org_id: params.orgId,
+        code,
+        attributes: params.input.attributes ?? {},
+        created_by: params.userId,
+      })
+      .select("*")
+      .single();
+    if (data) {
+      row = data as ClientRow;
+      break;
+    }
+    lastError = error?.message ?? "unknown";
+    if (!/duplicate|unique/i.test(lastError)) break;
+  }
+  if (!row) {
+    console.error("[db] createClientRecord error:", lastError);
     return null;
   }
-  const row = data as ClientRow;
 
   const name = params.input.name?.trim();
   if (name) {
@@ -116,9 +138,47 @@ export async function createClientRecord(params: {
       name_encrypted: encryptString(name, getPiiKey()),
       created_by: params.userId,
     });
-    if (idErr) console.error("[db] createClientRecord identity error:", idErr.message);
+    // 実名の保存に失敗したまま利用者だけ残すと、名簿に名前が無い＝その人の実名は
+    // 黒塗りされないまま AI へ出る。行ごと取り消して「登録できなかった」と返す（fail-closed）。
+    if (idErr) {
+      console.error("[db] createClientRecord identity error:", idErr.message);
+      const { error: rbErr } = await db.from("clients").delete().eq("id", row.id);
+      if (rbErr) console.error("[db] createClientRecord rollback error:", rbErr.message);
+      return null;
+    }
   }
   return toRecord(row);
+}
+
+/**
+ * 次に使う記号を決める（スコープ内の既存の記号の最大＋1）。
+ * 読み出しに失敗したら null を返し、呼び出し側は登録を中止する ── 分からないまま採番すると
+ * 既存の利用者と同じ記号を振ってしまい、黒塗りの戻しが別人の実名になる。
+ */
+async function nextCodeInScope(
+  db: ReturnType<typeof createServerClient>,
+  scope: DataScope,
+): Promise<string | null> {
+  const { data, error } = await db
+    .from("clients")
+    .select("code")
+    .or(scopeExpr(scope))
+    .limit(ALIAS_ROW_LIMIT + 1);
+  if (error || !data) {
+    console.error("[db] nextCodeInScope error:", error?.message);
+    return null;
+  }
+  const rows = data as { code: string }[];
+  if (rows.length > ALIAS_ROW_LIMIT) {
+    console.error("[db] nextCodeInScope: too many clients in scope");
+    return null;
+  }
+  let max = -1;
+  for (const r of rows) {
+    const i = clientCodeIndex(r.code);
+    if (i !== null && i > max) max = i;
+  }
+  return nextClientCode(max + 1);
 }
 
 /** 利用者の一覧（事業所に所属していれば事業所ぶん・していなければ自分ぶん）。 */
@@ -129,7 +189,7 @@ export async function getClients(scope: DataScope): Promise<ClientRecord[]> {
     .select("*")
     .or(scopeExpr(scope))
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(CLIENT_LIST_LIMIT);
   if (error) {
     console.error("[db] getClients error:", error.message);
     return [];
@@ -218,13 +278,22 @@ export async function getClientAliases(scope: DataScope): Promise<NameAlias[]> {
 async function loadAliases(scope: DataScope): Promise<NameAlias[]> {
   const db = createServerClient();
   const [clientsRes, idsRes, relRes] = await Promise.all([
-    db.from("clients").select("id, code").or(scopeExpr(scope)),
-    db.from("client_identities").select("client_id, name_encrypted").or(scopeExpr(scope)),
+    db
+      .from("clients")
+      .select("id, code")
+      .or(scopeExpr(scope))
+      .limit(ALIAS_ROW_LIMIT + 1),
+    db
+      .from("client_identities")
+      .select("client_id, name_encrypted")
+      .or(scopeExpr(scope))
+      .limit(ALIAS_ROW_LIMIT + 1),
     // 関係者名簿（D4）。読めなければ利用者名簿と同じく送信を止める（警告で続行しない）
     db
       .from("client_related_identities")
       .select("client_id, relation, name_encrypted")
-      .or(scopeExpr(scope)),
+      .or(scopeExpr(scope))
+      .limit(ALIAS_ROW_LIMIT + 1),
   ]);
   if (clientsRes.error || idsRes.error) {
     throw new Error(clientsRes.error?.message ?? idsRes.error?.message ?? "unknown");
@@ -236,6 +305,18 @@ async function loadAliases(scope: DataScope): Promise<NameAlias[]> {
     }
     throw new Error(`client_related_identities: ${relRes.error.message}`);
   }
+  // PostgREST は既定 1000 行で黙って打ち切る。上限に達したら名簿が欠けている可能性があるので
+  // 送信を止める（欠けた名簿で黒塗りすると、載らなかった人の実名がそのまま AI へ出る）。
+  for (const [label, res] of [
+    ["clients", clientsRes],
+    ["client_identities", idsRes],
+    ["client_related_identities", relRes],
+  ] as const) {
+    if ((res.data?.length ?? 0) > ALIAS_ROW_LIMIT) {
+      throw new Error(`${label}: 名簿が${ALIAS_ROW_LIMIT}件を超えました（全件を読めません）`);
+    }
+  }
+
   const codeById = new Map(
     (clientsRes.data as { id: string; code: string }[]).map((c) => [c.id, c.code]),
   );
@@ -266,7 +347,29 @@ async function loadAliases(scope: DataScope): Promise<NameAlias[]> {
       // 復号失敗行はスキップ
     }
   }
+  assertCodesUnique(aliases);
   return expandAliasVariants(aliases);
+}
+
+/**
+ * 同じ記号に違う実名が割り当たっていないか確かめる（安全網）。
+ *
+ * なぜ: 記号の一意性は採番と DB の一意制約で守っているが、移行の途中や過去に作られた行では
+ * 崩れうる。崩れたまま進むと、黒塗りを戻すとき「A様」がどちらの実名にも化けて、
+ * **他人の氏名が入った帳票**ができる。一致しない対応表を見つけたら送信を止める（fail-closed）。
+ * 実名そのものはログに出さない（何件ぶつかったかだけ残す）。
+ */
+function assertCodesUnique(aliases: NameAlias[]): void {
+  const byCode = new Map<string, string>();
+  let conflicts = 0;
+  for (const a of aliases) {
+    const seen = byCode.get(a.code);
+    if (seen === undefined) byCode.set(a.code, a.real);
+    else if (seen !== a.real) conflicts++;
+  }
+  if (conflicts > 0) {
+    throw new Error(`同じ記号に違う氏名が割り当たっています（${conflicts}件）`);
+  }
 }
 
 // ---- 関係者名簿（D4・2026-09-10）: 家族・担当者・主治医などを利用者ごとに登録し、黒塗りの対象にする ----
@@ -288,11 +391,17 @@ interface RelatedRow {
   created_at: string;
 }
 
-/** 利用者の関係者一覧（所有者チェック込み・実名は復号して返す）。 */
+/**
+ * 利用者の関係者一覧（範囲チェック込み・実名は復号して返す）。
+ * 関係者の行だけでなく**親の利用者が範囲内か**も確かめる ── 関係者行の org_id / created_by が
+ * 何らかの理由で範囲に入っていると、範囲外の利用者の家族名を読めてしまうため。
+ */
 export async function getRelatedPeople(
   clientId: string,
   scope: DataScope,
 ): Promise<RelatedPerson[]> {
+  const parent = await getClientById(clientId, scope);
+  if (!parent) return [];
   const db = createServerClient();
   const { data, error } = await db
     .from("client_related_identities")
@@ -389,21 +498,4 @@ export async function deleteRelatedPerson(
     return "error";
   }
   return (data ?? []).length > 0 ? "ok" : "not_found";
-}
-
-/** 実名を復号して返す（権限内・必要時のみ）。失敗時は null。 */
-export async function getClientName(clientId: string, scope: DataScope): Promise<string | null> {
-  const db = createServerClient();
-  const { data, error } = await db
-    .from("client_identities")
-    .select("name_encrypted")
-    .eq("client_id", clientId)
-    .or(scopeExpr(scope))
-    .single();
-  if (error || !data) return null;
-  try {
-    return decryptString((data as { name_encrypted: string }).name_encrypted, getPiiKey());
-  } catch {
-    return null;
-  }
 }

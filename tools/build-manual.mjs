@@ -7,7 +7,12 @@
  * 使い方:
  *   npm run manual                         … public/manual/index.html を書き出す
  *   PDF は Chrome のヘッドレスで作る（Edge は日本語の出力が壊れるため使わない）:
- *     "C:/Program Files/Google/Chrome/Application/chrome.exe" --headless --disable-gpu  *       --no-pdf-header-footer  *       --print-to-pdf="public/manual/CareNote-AI-操作マニュアル.pdf"  *       "file:///<リポジトリの絶対パス>/public/manual/index.html"
+ *     "C:/Program Files/Google/Chrome/Application/chrome.exe" --headless --disable-gpu
+ *       --no-pdf-header-footer
+ *       --print-to-pdf="<リポジトリの絶対パス>/public/manual/CareNote-AI-操作マニュアル.pdf"
+ *       "file:///<リポジトリの絶対パス>/public/manual/index.html"
+ *   ※ --print-to-pdf は**絶対パス**で渡すこと。相対パスだと Chrome が
+ *     「Failed to write file ... 指定されたパスが見つかりません」で書けない（2026-09-12 実測）。
  *
  * 注意:
  *   public/manual/index.html は**生成物**。手で直さず、lib/manual/content.ts を直して再生成すること。

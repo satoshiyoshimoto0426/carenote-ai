@@ -37,8 +37,12 @@ process.env.CARENOTE_PII_KEY = KEY.toString("base64");
 
 const {
   AliasLoadError,
+  createClientRecord,
   deleteRelatedPerson,
   getClientAliases,
+  getClientById,
+  getClients,
+  getRelatedPeople,
   RELATED_TABLE_MISSING_MESSAGE,
   scopeExpr,
 } = await import("./clients");
@@ -158,8 +162,9 @@ describe("scopeExpr: 名簿をどこまで共有するか（G3b・2026-09-12）"
 
   it("想定外の id は絞り込みを外さず例外にする（fail-closed）", () => {
     expect(() => scopeExpr({ userId: "u1,or=(1.eq.1)", orgId: null })).toThrow();
-    // org 側が壊れている時は、広げずに自分の行だけへ落とす
-    expect(scopeExpr({ userId: "user_abc", orgId: "org,evil" })).toBe("created_by.eq.user_abc");
+    // org 側が壊れている時も止める。黙って「所属なし」に落とすと、同僚が登録した利用者が
+    // 名簿から抜け、その実名が黒塗りされないまま AI へ出る（独立審査 2026-09-12）
+    expect(() => scopeExpr({ userId: "user_abc", orgId: "org,evil" })).toThrow();
   });
 });
 
@@ -183,5 +188,170 @@ describe("事業所で共有しているときの読み出し", () => {
     for (const o of ors) {
       expect(o.args[0]).toBe("org_id.eq.org_xyz,and(org_id.is.null,created_by.eq.user_abc)");
     }
+  });
+});
+
+describe("読み出しはすべて範囲（scopeExpr）を通る", () => {
+  beforeEach(() => {
+    results.clear();
+    calls.length = 0;
+  });
+
+  /** どの関数を呼んでも or(...) に範囲の式が渡ること＝1本でも素通りしたら落ちる */
+  const ORG = { userId: "user_abc", orgId: "org_xyz" };
+  const EXPR = "org_id.eq.org_xyz,and(org_id.is.null,created_by.eq.user_abc)";
+
+  it("getClients", async () => {
+    ok("clients", []);
+    await getClients(ORG);
+    expect(calls.filter((c) => c.op === "or").map((c) => c.args[0])).toContain(EXPR);
+  });
+
+  it("getClientById", async () => {
+    ok("clients", { id: "c1", code: "A" });
+    await getClientById("c1", ORG);
+    expect(calls.filter((c) => c.op === "or").map((c) => c.args[0])).toContain(EXPR);
+  });
+
+  it("getRelatedPeople（親の利用者と関係者の両方）", async () => {
+    ok("clients", { id: "c1", code: "A" });
+    ok("client_related_identities", []);
+    await getRelatedPeople("c1", ORG);
+    const ors = calls.filter((c) => c.op === "or");
+    expect(ors.map((c) => c.table).sort()).toEqual(["client_related_identities", "clients"]);
+    for (const o of ors) expect(o.args[0]).toBe(EXPR);
+  });
+
+  it("getRelatedPeople は親の利用者が範囲外なら中身を読まない", async () => {
+    results.set("clients", { data: null, error: { message: "no rows" } });
+    ok("client_related_identities", [
+      {
+        id: "r1",
+        client_id: "c1",
+        relation: "長女",
+        name_encrypted: encryptString("佐藤一郎", KEY),
+      },
+    ]);
+    expect(await getRelatedPeople("c1", ORG)).toEqual([]);
+    expect(calls.some((c) => c.table === "client_related_identities")).toBe(false);
+  });
+});
+
+describe("記号の採番（同じ A様 を2人に振らない）", () => {
+  beforeEach(() => {
+    results.clear();
+    calls.length = 0;
+  });
+
+  it("スコープ内の最大＋1 を振る（件数ではなく最大値で決める）", async () => {
+    // 事業所に A と C がある（B は削除済み）→ 件数は2だが、次は D でなければならない
+    results.set("clients", [
+      { data: [{ code: "A" }, { code: "C" }], error: null },
+      {
+        data: {
+          id: "new",
+          org_id: "org_xyz",
+          code: "D",
+          attributes: {},
+          created_by: "user_abc",
+          created_at: "",
+          updated_at: "",
+        },
+        error: null,
+      },
+    ]);
+    const rec = await createClientRecord({
+      userId: "user_abc",
+      orgId: "org_xyz",
+      input: { attributes: {} },
+    });
+    expect(rec?.code).toBe("D");
+    const inserted = calls.find((c) => c.table === "clients" && c.op === "insert");
+    expect((inserted?.args[0] as { code: string }).code).toBe("D");
+  });
+
+  it("既存の記号を読めなければ登録しない（当てずっぽうで採番しない）", async () => {
+    fail("clients", "connection reset");
+    expect(
+      await createClientRecord({ userId: "user_abc", orgId: null, input: { attributes: {} } }),
+    ).toBeNull();
+    expect(calls.some((c) => c.op === "insert")).toBe(false);
+  });
+
+  it("実名の保存に失敗したら利用者ごと取り消す（名前の無い利用者を残さない）", async () => {
+    results.set("clients", [
+      { data: [], error: null },
+      {
+        data: {
+          id: "new",
+          org_id: null,
+          code: "A",
+          attributes: {},
+          created_by: "u1",
+          created_at: "",
+          updated_at: "",
+        },
+        error: null,
+      },
+      { data: null, error: null },
+    ]);
+    fail("client_identities", "insert failed");
+    const rec = await createClientRecord({
+      userId: "u1",
+      orgId: null,
+      input: { name: "山田花子", attributes: {} },
+    });
+    expect(rec).toBeNull();
+    expect(calls.some((c) => c.table === "clients" && c.op === "delete")).toBe(true);
+  });
+});
+
+describe("名簿の安全網（移行の途中でも実名の取り違えを起こさない）", () => {
+  beforeEach(() => {
+    results.clear();
+    calls.length = 0;
+    ok("client_related_identities", []);
+  });
+
+  it("同じ記号に違う氏名が割り当たっていたら送信を止める", async () => {
+    ok("clients", [
+      { id: "c1", code: "A" },
+      { id: "c2", code: "A" },
+    ]);
+    ok("client_identities", [
+      { client_id: "c1", name_encrypted: encryptString("山田花子", KEY) },
+      { client_id: "c2", name_encrypted: encryptString("佐藤一郎", KEY) },
+    ]);
+    await expect(getClientAliases(SOLO)).rejects.toBeInstanceOf(AliasLoadError);
+  });
+
+  it("同じ記号・同じ氏名（表記の重複登録）は止めない", async () => {
+    ok("clients", [
+      { id: "c1", code: "A" },
+      { id: "c2", code: "A" },
+    ]);
+    ok("client_identities", [
+      { client_id: "c1", name_encrypted: encryptString("山田花子", KEY) },
+      { client_id: "c2", name_encrypted: encryptString("山田花子", KEY) },
+    ]);
+    const aliases = await getClientAliases(SOLO);
+    expect(aliases).toContainEqual({ real: "山田花子", code: "A様" });
+  });
+
+  it("名簿が上限を超えたら送信を止める（黙って欠けた名簿で黒塗りしない）", async () => {
+    ok(
+      "clients",
+      Array.from({ length: 901 }, (_, i) => ({ id: `c${i}`, code: "A" })),
+    );
+    ok("client_identities", []);
+    await expect(getClientAliases(SOLO)).rejects.toBeInstanceOf(AliasLoadError);
+  });
+
+  it("読み出しには件数の上限が付いている（既定1000で黙って切れるのを防ぐ）", async () => {
+    ok("clients", [{ id: "c1", code: "A" }]);
+    ok("client_identities", []);
+    await getClientAliases(SOLO);
+    const limited = calls.filter((c) => c.op === "limit").map((c) => c.table);
+    expect(limited.sort()).toEqual(["client_identities", "client_related_identities", "clients"]);
   });
 });

@@ -164,6 +164,22 @@ export function relatedAliasCode(clientCode: string, relation: string): string {
  * 連番から利用者コードを生成する（0→A, 1→B, …, 25→Z, 26→AA, 27→AB …）。
  * org 内の既存件数を渡して次のコードを決める。表示は別途「様」を付す。
  */
+/**
+ * 記号（A・B・… Z・AA）を採番の番号に戻す。nextClientCode の逆。
+ *
+ * なぜ必要か: 記号は「名簿を共有する範囲で一意」でなければならない（同じ A様 が2人いると
+ * 黒塗りの戻しが別人の実名になる）。件数で採番すると、事業所の行と組織加入前の自分の行が
+ * 混ざったとき同じ番号を二度引く。既存の記号の**最大値の次**を取るために逆変換が要る。
+ * 想定外の形（空・小文字以外の記号・7文字以上）は null を返し、呼び出し側が無視する。
+ */
+export function clientCodeIndex(code: string): number | null {
+  const s = code.trim().toUpperCase();
+  if (!/^[A-Z]{1,6}$/.test(s)) return null;
+  let n = 0;
+  for (const ch of s) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+
 export function nextClientCode(index: number): string {
   let n = index;
   let s = "";
