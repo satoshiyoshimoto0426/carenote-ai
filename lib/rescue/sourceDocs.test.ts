@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { isBlobUrl, MAX_SOURCE_DOCS, parseSourceDocs, safeExtension } from "./sourceDocs";
 
-const BLOB = "https://abc123.public.blob.vercel-storage.com/intake/1.pdf";
+const BLOB = "https://abc123.private.blob.vercel-storage.com/intake/1.pdf";
 
 describe("SSRF 許可リスト: isBlobUrl", () => {
-  it("自前の Blob ストア（https・*.blob.vercel-storage.com）だけを許す", () => {
+  it("自前の非公開ストア（https・*.private.blob.vercel-storage.com）だけを許す", () => {
     expect(isBlobUrl(BLOB)).toBe(true);
     expect(isBlobUrl("https://x.private.blob.vercel-storage.com/a.png")).toBe(true);
+    // 公開ストアは受け付けない（D6: 原本を公開の場所に置かない）
+    expect(isBlobUrl("https://x.public.blob.vercel-storage.com/a.png")).toBe(false);
   });
 
   it("他ホスト・http・ホスト名の偽装・壊れた URL は拒否する", () => {
     expect(isBlobUrl("https://evil.example.com/a.pdf")).toBe(false);
-    expect(isBlobUrl("http://abc.public.blob.vercel-storage.com/a.pdf")).toBe(false);
+    expect(isBlobUrl("http://abc.private.blob.vercel-storage.com/a.pdf")).toBe(false);
     expect(isBlobUrl("https://blob.vercel-storage.com.evil.com/a.pdf")).toBe(false);
     expect(isBlobUrl("https://169.254.169.254/latest/meta-data")).toBe(false);
     expect(isBlobUrl("not a url")).toBe(false);

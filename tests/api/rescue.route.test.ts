@@ -15,8 +15,8 @@ vi.mock("@/lib/db/clients", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/db/clients")>();
   return { ...orig, getClientAliases: db.getClientAliases };
 });
-const blob = vi.hoisted(() => ({ del: vi.fn() }));
-vi.mock("@vercel/blob", () => ({ del: blob.del }));
+const blob = vi.hoisted(() => ({ del: vi.fn(), get: vi.fn() }));
+vi.mock("@vercel/blob", () => ({ del: blob.del, get: blob.get }));
 const ai = vi.hoisted(() => ({ generateIntake: vi.fn(), generateRescueBundle: vi.fn() }));
 vi.mock("@/lib/generation/rescueIntake", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/generation/rescueIntake")>();
@@ -29,7 +29,7 @@ vi.mock("@/lib/generation/rescue", async (importOriginal) => {
 
 const { POST } = await import("@/app/api/rescue/route");
 
-const BLOB_URL = "https://abc.public.blob.vercel-storage.com/intake/1.pdf";
+const BLOB_URL = "https://abc.private.blob.vercel-storage.com/intake/1.pdf";
 
 function post(body: unknown) {
   return new NextRequest("http://localhost/api/rescue", {
@@ -51,11 +51,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   db.getClientAliases.mockResolvedValue([{ real: "山田花子", code: "A様" }]);
   blob.del.mockResolvedValue(undefined);
+  // 非公開ストアの読み取り（get）を偽物にする。fetch は呼ばれてはいけない
+  blob.get.mockResolvedValue({
+    statusCode: 200,
+    stream: new Blob([new Uint8Array([1, 2, 3])]).stream(),
+    blob: { contentType: "application/pdf" },
+  });
   ai.generateRescueBundle.mockResolvedValue({ assessment: { overview: "A様 〔電話番号1〕" } });
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 })),
-  );
+  vi.stubGlobal("fetch", vi.fn());
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -70,8 +73,19 @@ describe("POST /api/rescue", () => {
       }),
     );
     expect(res.status).toBe(400);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(blob.get).not.toHaveBeenCalled();
     expect(ai.generateIntake).not.toHaveBeenCalled();
+  });
+
+  it("公開ストアの URL も受け付けない（D6: 非公開ストアのみ）", async () => {
+    const res = await POST(
+      post({
+        personality: "穏やか",
+        sourceDocs: [{ name: "a.pdf", url: "https://abc.public.blob.vercel-storage.com/a.pdf" }],
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(blob.get).not.toHaveBeenCalled();
   });
 
   it("実名が残る形なら 422 にし、アップロード済みの資料は削除する", async () => {
@@ -102,6 +116,9 @@ describe("POST /api/rescue", () => {
       }),
     );
     expect(res.status).toBe(200);
+    // 読み取りは認証つき get()（fetch は使わない）
+    expect(blob.get).toHaveBeenCalledWith(BLOB_URL, { access: "private" });
+    expect(fetch).not.toHaveBeenCalled();
     const docs = ai.generateIntake.mock.calls[0][0] as { name: string }[];
     expect(docs[0].name).toBe("A様_主治医意見書.pdf");
     const [, intakeNotes] = ai.generateRescueBundle.mock.calls[0];
