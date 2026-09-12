@@ -106,8 +106,10 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      # --ignore-scripts: この job は PR の中身を checkout したうえで secrets を持つ。
+      # 依存パッケージの install スクリプトを走らせない（本プロジェクトは postinstall/prepare を持たない）
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       # 2026-09-12: @beta は `prompt` 入力を受け付けず（valid inputs に無い）、review-pr が 9 秒で「成功」扱いのまま
       # 何も審査していなかった（PR #9 で発覚＝独立審査 critical #2 の実体）。MaouCastle 本体と同じ @v1 構成へ揃える。
