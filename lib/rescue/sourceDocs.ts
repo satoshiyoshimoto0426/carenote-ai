@@ -31,12 +31,13 @@ export interface SourceDoc {
 /**
  * sourceDocs のURLが自前の Vercel Blob のものかを検証する（SSRF対策）。
  * クライアント指定のURLをサーバー側で fetch するため、自前の Blob ストア以外へは出さない。
- * https のみ・ホストは *.blob.vercel-storage.com（公開／非公開ストアの両方）に限る。
+ * https のみ・ホストは **非公開ストア**（*.private.blob.vercel-storage.com）に限る（D6・2026-09-12）。
+ * 公開ストアの URL は受け付けない（原本を公開の場所に置かない約束を入口で守る）。
  */
 export function isBlobUrl(url: string): boolean {
   try {
     const { protocol, hostname } = new URL(url);
-    return protocol === "https:" && hostname.endsWith(".blob.vercel-storage.com");
+    return protocol === "https:" && hostname.endsWith(".private.blob.vercel-storage.com");
   } catch {
     return false;
   }

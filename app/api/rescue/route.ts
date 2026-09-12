@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { del } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
+import { readPrivateBlob } from "@/lib/blob/readPrivate";
 import { AliasLoadError, getClientAliases } from "@/lib/db/clients";
 import {
   composePersonaNotes,
@@ -113,11 +114,11 @@ export async function POST(req: NextRequest) {
       let totalBytes = 0;
       const docs: IntakeDocument[] = [];
       for (const doc of sourceDocs) {
-        const resp = await fetch(doc.url);
-        if (!resp.ok) {
-          throw new Error(`資料の取得に失敗しました（${resp.status}）。`);
+        // 非公開ストアなので fetch ではなく認証つきの get() で読む
+        const arrayBuffer = await readPrivateBlob(doc.url);
+        if (!arrayBuffer) {
+          throw new Error("資料の取得に失敗しました（一時保管に見つかりません）。");
         }
-        const arrayBuffer = await resp.arrayBuffer();
         totalBytes += arrayBuffer.byteLength;
         if (totalBytes > MAX_TOTAL_DOC_BYTES) {
           return NextResponse.json(

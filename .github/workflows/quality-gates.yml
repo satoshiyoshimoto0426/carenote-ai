@@ -36,6 +36,11 @@ jobs:
       - name: TypeScript type check
         run: npx tsc --noEmit
 
+      - name: Unit tests (vitest)
+        run: npm run test
+        env:
+          CARENOTE_PII_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+
       - name: Next.js build
         run: npm run build
         env:

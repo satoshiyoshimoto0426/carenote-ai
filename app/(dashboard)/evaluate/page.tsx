@@ -29,7 +29,7 @@ async function uploadPdf(
   try {
     // 一時保管先の URL に元ファイル名（実名入りのことがある）を出さない: 拡張子だけの名前で上げる（CI 審査 2026-09-12）
     const blob = await upload(`evaluate/${Date.now()}.${safeExtension(file.name)}`, file, {
-      access: "public",
+      access: "private", // 非公開ストア（D6・2026-09-12）。URL を知っていても認証なしでは読めない
       handleUploadUrl: "/api/blob-upload",
     });
     onProgress(32, "AIが書類を解析中...");

@@ -1,9 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { del } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
+import { readPrivateBlob } from "@/lib/blob/readPrivate";
 import { saveEvaluation } from "@/lib/db";
 import { EVALUATION_CRITERIA } from "@/lib/evaluationCriteria";
 import { parseEvaluationJson } from "@/lib/parseEvaluationJson";
+import { isBlobUrl } from "@/lib/rescue/sourceDocs";
 
 export const maxDuration = 120;
 
@@ -31,9 +33,10 @@ export async function POST(req: NextRequest) {
     if (body.blobUrl) {
       // ── Vercel Blob 経由（本番） ──
       blobUrl = body.blobUrl as string;
-      const blobResp = await fetch(blobUrl);
-      if (!blobResp.ok) throw new Error(`Blob fetch failed: ${blobResp.status}`);
-      const arrayBuffer = await blobResp.arrayBuffer();
+      // 自前の非公開ストア以外は読みに行かない（SSRF 対策）。非公開なので認証つき get() で読む
+      if (!isBlobUrl(blobUrl)) throw new Error("Blob URL not allowed");
+      const arrayBuffer = await readPrivateBlob(blobUrl);
+      if (!arrayBuffer) throw new Error("Blob not found");
       base64 = Buffer.from(arrayBuffer).toString("base64");
     } else if (body.pdf) {
       // ── base64 直接送信（ローカル開発用フォールバック） ──
@@ -42,6 +45,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "PDFデータがありません。" }, { status: 400 });
     }
   } catch {
+    // 読み取れなかった時も一時保管を残さない（許可したホストの URL のみ削除を試みる）
+    if (blobUrl && isBlobUrl(blobUrl)) del(blobUrl).catch(() => {});
     return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
   }
 

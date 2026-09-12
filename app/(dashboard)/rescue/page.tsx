@@ -324,7 +324,7 @@ export default function RescuePage() {
           for (const f of files) {
             // 一時保管先の URL に元ファイル名（実名入りのことがある）を出さない: 拡張子だけの名前で上げる
             const blob = await upload(`intake/${Date.now()}.${safeExtension(f.name)}`, f, {
-              access: "public",
+              access: "private", // 非公開ストア（D6・2026-09-12）。URL を知っていても認証なしでは読めない
               handleUploadUrl: "/api/blob-upload",
             });
             uploaded.push({
