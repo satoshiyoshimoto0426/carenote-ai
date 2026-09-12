@@ -98,6 +98,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 2026-09-12: 審査エージェントに tsc/biome/vitest を実行させるには node_modules が要る。
+      # これが無いと「vitest: not found」「型が解決できない TS2307 が50件」で誤検知の山になる（審査で判明）
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       # 2026-09-12: @beta は `prompt` 入力を受け付けず（valid inputs に無い）、review-pr が 9 秒で「成功」扱いのまま
       # 何も審査していなかった（PR #9 で発覚＝独立審査 critical #2 の実体）。MaouCastle 本体と同じ @v1 構成へ揃える。
       - name: Claude PR Auto Review
