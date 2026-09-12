@@ -83,6 +83,8 @@ const html = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 事業所内の配布物なので検索結果には出さない（認証は掛けていない・ROADMAP 第4版 P-MANUAL の判断） -->
+<meta name="robots" content="noindex,nofollow">
 <title>${esc(MANUAL_META.title)}（印刷用）</title>
 <!-- このファイルは tools/build-manual.mjs の生成物です。手で直さず lib/manual/content.ts を直して再生成してください。 -->
 <style>

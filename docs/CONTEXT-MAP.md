@@ -177,7 +177,10 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 同じデータを3つの形で出す: ①アプリ内 `app/(dashboard)/guide/page.tsx`（`/guide`・目次・章ごとの動画枠・手順・注意・FAQ）
 ②印刷/PDF `tools/build-manual.mjs` → `public/manual/index.html`（`npm run manual` で再生成・**生成物なので手で直さない**）＋ Chrome ヘッドレスで `public/manual/CareNote-AI-操作マニュアル.pdf`（25ページ）
 ③動画 `docs/MANUAL-VIDEO-SPEC.md`（スクリーンキャスト型の収録台本・91場面）。動画は未収録なので `video.status: "planned"` ＝画面に「準備中」と出る。
-各画面の見出しからは `PageHeader` の `helpAnchor` で `/guide#chN` へ飛べる。**UI の文字を変えたら content.ts も同じ PR で直す**（Doc-as-Code）。
+各画面の見出しからは `PageHeader` の `helpAnchor` で `/guide#chN` へ飛べる。開閉の要る FAQ だけ `components/manual/FaqAccordion.tsx`（"use client"）。
+**UI の文字を変えたら content.ts も同じ PR で直す**（Doc-as-Code）。
+**決定（2026-09-12）**: `public/manual/` は Next.js の public 配下＝**ログイン無しで URL を知っていれば閲覧できる**（middleware の matcher がドット付きパスを除外）。秘密情報は含めない前提で、研修配布と PDF 生成のためこの形を採る。検索避けは `noindex` と `public/robots.txt`。
+**限界（2026-09-12・ROADMAP G3b）**: 名簿は `created_by` スコープ＝**登録した職員本人にしか効かない**。マニュアル第①章の例外④・第②章の注意に明記済。
 
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 

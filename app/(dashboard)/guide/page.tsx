@@ -1,15 +1,5 @@
-"use client";
-
-import { useState } from "react";
-import {
-  IconAlert,
-  IconCheck,
-  IconChevronRight,
-  IconHelpCircle,
-  IconInfo,
-  IconPlayCircle,
-  IconPrinter,
-} from "@/components/ui/icons";
+import FaqAccordion from "@/components/manual/FaqAccordion";
+import { IconAlert, IconCheck, IconInfo, IconPlayCircle, IconPrinter } from "@/components/ui/icons";
 import { Card, PageHeader, SectionTitle } from "@/components/ui/primitives";
 import {
   MANUAL_CHAPTERS,
@@ -26,6 +16,9 @@ import {
  *   パソコンが苦手な職員が、画面を離れずに手順を確かめられるようにする。本文は
  *   lib/manual/content.ts が唯一の正本で、印刷・PDF配布用の1枚もの（/manual/index.html）と
  *   動画の台本（docs/MANUAL-VIDEO-SPEC.md）も同じ本文から作る。
+ *
+ * 描画はサーバー側で行い、開閉の要る「よくある質問」だけを components/manual/FaqAccordion.tsx
+ * （"use client"）に切り出している（CLAUDE.md「"use client" は最小限」）。
  *
  * 表示の3形態:
  *   - HTML（この画面）… 章ごとの手順・注意・よくある質問
@@ -193,7 +186,7 @@ function ChapterBlock({ chapter }: { chapter: ManualChapter }) {
         </div>
       ) : null}
 
-      {chapter.faq.length > 0 ? <FaqBlock faq={chapter.faq} /> : null}
+      {chapter.faq.length > 0 ? <FaqAccordion faq={chapter.faq} /> : null}
     </section>
   );
 }
@@ -264,47 +257,5 @@ function CalloutBlock({ callout }: { callout: ManualCallout }) {
         {callout.text}
       </span>
     </div>
-  );
-}
-
-function FaqBlock({ faq }: { faq: ManualChapter["faq"] }) {
-  const [open, setOpen] = useState<string | null>(null);
-  return (
-    <Card className="p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="text-[var(--muted)]">
-          <IconHelpCircle size={17} />
-        </span>
-        <SectionTitle>よくある質問</SectionTitle>
-      </div>
-      <div className="divide-y divide-[var(--line-soft)]">
-        {faq.map((item) => {
-          const isOpen = open === item.q;
-          return (
-            <div key={item.q}>
-              <button
-                type="button"
-                onClick={() => setOpen(isOpen ? null : item.q)}
-                aria-expanded={isOpen}
-                className="flex w-full items-start gap-2 py-3 text-left text-sm font-medium text-[var(--ink)] hover:text-[var(--green)]"
-              >
-                <span
-                  className={`mt-0.5 flex-shrink-0 transition-transform ${isOpen ? "rotate-90" : ""}`}
-                  aria-hidden="true"
-                >
-                  <IconChevronRight size={15} />
-                </span>
-                {item.q}
-              </button>
-              {isOpen ? (
-                <p className="pb-3 pl-[23px] text-sm leading-relaxed text-[var(--muted)]">
-                  {item.a}
-                </p>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </Card>
   );
 }
