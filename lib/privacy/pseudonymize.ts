@@ -157,23 +157,42 @@ export class AliasConflictError extends Error {
  */
 export function expandAliasVariants(aliases: NameAlias[]): NameAlias[] {
   const seen = new Map<string, string>();
+  /** 突き合わせ用の鍵ごとに「誰の名前か（記号と実名）」を覚える */
+  const owners = new Map<string, { code: string; real: string }>();
   const out: NameAlias[] = [];
   let conflicts = 0;
   for (const { real, code } of aliases) {
     const base = real.trim();
     for (const variant of [base, base.replace(/[\s　]+/g, "")]) {
       if (variant.length < 2 || variant === code) continue;
-      const owner = seen.get(variant);
-      if (owner !== undefined) {
-        if (owner !== code) conflicts++;
-        continue;
+
+      // 衝突の判定は**置換と同じものさし**で行う（独立審査 2026-09-13 critical）。
+      // 置換は nameRegex が旧字体・空白のゆれを畳み込んで当てるので、判定だけ生の文字列で
+      // 比べていると「髙橋一郎（A様）」と「高橋一郎（B様）」がすり抜け、両方 A様 に黒塗りされて
+      // 復元で他人の実名が帳票に入る。
+      const key = matchKey(variant);
+      const owner = owners.get(key);
+      // 記号が違っても**実名が同じ**なら正常 ── 主治医や担当ケアマネを複数の利用者に
+      // 登録した場合（「A様の主治医」「B様の主治医」）がこれ。戻せば同じ氏名なので害はない。
+      // 記号も実名も違うのに同じ文字列に当たる＝別人が同じ記号に化ける（止める）。
+      if (owner !== undefined && owner.code !== code && owner.real !== base) conflicts++;
+      if (owner === undefined) owners.set(key, { code, real: base });
+      if (!seen.has(variant)) {
+        seen.set(variant, code);
+        out.push({ real: variant, code });
       }
-      seen.set(variant, code);
-      out.push({ real: variant, code });
     }
   }
   if (conflicts > 0) throw new AliasConflictError(conflicts);
   return out;
+}
+
+/**
+ * 突き合わせ用の鍵。nameRegex が「同じ」とみなす範囲（空白のゆれ・旧字体）を1つの文字列に畳む。
+ * 判定と置換のものさしを揃えるために使う。
+ */
+function matchKey(name: string): string {
+  return [...name.replace(SPACE_CHARS, "")].map((ch) => VARIANT_OF.get(ch)?.[0] ?? ch).join("");
 }
 
 /**

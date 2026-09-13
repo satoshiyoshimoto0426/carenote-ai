@@ -442,7 +442,7 @@ async function loadAliases(scope: DataScope): Promise<NameAlias[]> {
   for (const row of idsRes.data ?? []) {
     const code = codeById.get(row.client_id);
     // 親の利用者で引いているので、ここに来ることは無いはず。来たら名簿が壊れている。
-    if (!code) throw new Error("client_identities: 親の利用者が見つかりません");
+    if (!code) throw new PermanentAliasError("client_identities: 親の利用者が見つかりません");
     try {
       aliases.push({ real: decryptString(row.name_encrypted, key), code: `${code}様` });
     } catch {
@@ -451,7 +451,8 @@ async function loadAliases(scope: DataScope): Promise<NameAlias[]> {
   }
   for (const row of relRes.data ?? []) {
     const code = codeById.get(row.client_id);
-    if (!code) throw new Error("client_related_identities: 親の利用者が見つかりません");
+    if (!code)
+      throw new PermanentAliasError("client_related_identities: 親の利用者が見つかりません");
     try {
       aliases.push({
         real: decryptString(row.name_encrypted, key),
@@ -512,7 +513,7 @@ function assertCodesUnique(aliases: NameAlias[]): void {
     else if (seen !== a.real) conflicts++;
   }
   if (conflicts > 0) {
-    throw new Error(`同じ記号に違う氏名が割り当たっています（${conflicts}件）`);
+    throw new PermanentAliasError(`同じ記号に違う氏名が割り当たっています（${conflicts}件）`);
   }
 }
 
