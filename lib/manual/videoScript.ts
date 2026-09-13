@@ -41,18 +41,29 @@ export interface VideoChapter {
 
 const CHAPTER_HEADING = /^###\s+(.+?)\s*──\s*`(ch\d+)\.mp4`/;
 const TABLE_ROW = /^\|(.+)\|\s*$/;
+/** 場面割りの表の見出し行。§5 には別の表（⑦章の「エラー画面の出し方」）も混ざるので、これで見分ける。 */
+const SCENE_HEADER = ["#", "映す画面", "操作", "ナレーション", "秒"];
+/** 見出しの下の罫線（|---|---|…）。 */
+function isSeparator(cells: string[]): boolean {
+  return cells.every((c) => /^:?-+:?$/.test(c));
+}
 
 /**
  * Markdown の §5（章ごとの場面割り）から章と場面を取り出す。
- * 表の列は「# / 映す画面 / 操作 / ナレーション / 秒」の順であることを前提にし、
- * 崩れていたら（列数が合わない・秒が数字でない）その行を捨てずに例外にする
- * ── 黙って飛ばすと字幕が1場面ぶん抜けたまま出来上がるため。
+ *
+ * 場面割りの表は**見出し行**「# / 映す画面 / 操作 / ナレーション / 秒」で見分ける。
+ * §5 には別の表も混ざるため、表の種類を確かめてから中身を読む。
+ *
+ * 場面割りの表の中で行が崩れていたら（列数が合わない・秒が数字でない）**例外にする**
+ * ── 黙って飛ばすと字幕が1場面ぶん抜けたまま出来上がるため。ナレーションに文字としての
+ * `|` を書くと列数がずれるが、それも例外になる（CI 自動審査 2026-09-13 の指摘）。
  */
 export function parseVideoScript(markdown: string): VideoChapter[] {
   const lines = markdown.split(/\r?\n/);
   const chapters: VideoChapter[] = [];
   let current: VideoChapter | null = null;
   let inSection5 = false;
+  let inSceneTable = false;
 
   for (const line of lines) {
     if (/^##\s/.test(line)) inSection5 = /^##\s+5\./.test(line);
@@ -62,19 +73,34 @@ export function parseVideoScript(markdown: string): VideoChapter[] {
     if (heading) {
       current = { slug: heading[2], title: heading[1].trim(), scenes: [] };
       chapters.push(current);
+      inSceneTable = false;
       continue;
     }
-    if (!current) continue;
 
     const row = TABLE_ROW.exec(line);
-    if (!row) continue;
+    if (!row) {
+      // 表は空行や見出しで終わる（次の表の行を場面割りと取り違えない）
+      inSceneTable = false;
+      continue;
+    }
     const cells = row[1].split("|").map((c) => c.trim());
-    if (cells.length !== 5) continue; // 表以外の行・区切り行
-    if (cells[0] === "#" || /^-+$/.test(cells[0])) continue; // 見出し行・罫線
+
+    // 見出し行を見たら、そこから先が場面割りの表かどうかを決める
+    if (cells.length === SCENE_HEADER.length && cells.every((c, i) => c === SCENE_HEADER[i])) {
+      inSceneTable = true;
+      continue;
+    }
+    if (!inSceneTable || !current) continue;
+    if (isSeparator(cells)) continue;
 
     const index = Number(cells[0]);
     const seconds = Number(cells[4]);
-    if (!Number.isInteger(index) || !Number.isFinite(seconds) || seconds <= 0) {
+    if (
+      cells.length !== SCENE_HEADER.length ||
+      !Number.isInteger(index) ||
+      !Number.isFinite(seconds) ||
+      seconds <= 0
+    ) {
       throw new Error(`${current.slug}: 場面の行を読み取れません: ${line}`);
     }
     current.scenes.push({
@@ -109,13 +135,26 @@ export function buildVtt(chapter: VideoChapter): string {
   for (const scene of chapter.scenes) {
     const start = at;
     at += scene.seconds;
-    out.push(`NOTE 場面${scene.index} ${scene.screen}`);
+    // NOTE（コメント）は**空行が来るまで**続く。字幕の識別子や時刻を直後に置くと、
+    // それごとコメントとして飲み込まれ、再生側では字幕が1件も出ない
+    // （ffmpeg で 0 件・Chrome で識別子が全滅することを独立審査 2026-09-13 が実測）。
+    // だから NOTE のあとに必ず空行を入れる。
+    out.push(`NOTE 場面${scene.index} ${oneLine(scene.screen)}`);
+    out.push("");
     out.push(`${chapter.slug}-${scene.index}`);
     out.push(`${timestamp(start)} --> ${timestamp(at)}`);
-    out.push(scene.narration);
+    out.push(oneLine(scene.narration));
     out.push("");
   }
   return out.join("\n");
+}
+
+/**
+ * WebVTT の1行に収める。`-->` を含む行は時刻行と誤解され、空行は塊の区切りになるため、
+ * 字幕の本文やコメントに紛れ込ませない。
+ */
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").replace(/-->/g, "→").trim();
 }
 
 /** 章の合計秒数（納品物の目安の長さと突き合わせるため）。 */

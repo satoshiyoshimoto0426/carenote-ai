@@ -2,7 +2,13 @@ import { auth } from "@clerk/nextjs/server";
 import { del } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
 import { readPrivateBlob } from "@/lib/blob/readPrivate";
-import { AliasLoadError, getClientAliases } from "@/lib/db/clients";
+import {
+  AliasLoadError,
+  type DataScope,
+  getClientAliases,
+  resolveScope,
+  SCOPE_ERROR_MESSAGE,
+} from "@/lib/db/clients";
 import {
   composePersonaNotes,
   generateRescueBundle,
@@ -46,6 +52,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
   }
 
+  let scope: DataScope;
+  try {
+    scope = resolveScope(userId, orgId);
+  } catch {
+    return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -73,7 +86,7 @@ export async function POST(req: NextRequest) {
     // 名簿が読めなければ送らない（fail-closed）
     let aliases: Awaited<ReturnType<typeof getClientAliases>>;
     try {
-      aliases = await getClientAliases({ userId, orgId: orgId ?? null });
+      aliases = await getClientAliases(scope);
     } catch (e) {
       if (e instanceof AliasLoadError)
         return NextResponse.json({ error: e.message }, { status: 503 });

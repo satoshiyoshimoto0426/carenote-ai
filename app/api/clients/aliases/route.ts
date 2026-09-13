@@ -1,6 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { AliasLoadError, getClientAliases } from "@/lib/db/clients";
+import {
+  AliasLoadError,
+  type DataScope,
+  getClientAliases,
+  resolveScope,
+  SCOPE_ERROR_MESSAGE,
+} from "@/lib/db/clients";
 import type { NameAlias } from "@/lib/privacy/pseudonymize";
 
 /**
@@ -11,10 +17,16 @@ import type { NameAlias } from "@/lib/privacy/pseudonymize";
 export async function GET() {
   const { userId, orgId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  let scope: DataScope;
+  try {
+    scope = resolveScope(userId, orgId);
+  } catch {
+    return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+  }
 
   let expanded: NameAlias[];
   try {
-    expanded = await getClientAliases({ userId, orgId: orgId ?? null });
+    expanded = await getClientAliases(scope);
   } catch (e) {
     if (e instanceof AliasLoadError)
       return NextResponse.json({ error: e.message }, { status: 503 });

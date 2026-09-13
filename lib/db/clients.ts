@@ -1,5 +1,6 @@
 import { decryptString, encryptString, getPiiKey } from "@/lib/privacy/crypto";
 import {
+  AliasConflictError,
   clientCodeIndex,
   expandAliasVariants,
   type NameAlias,
@@ -58,6 +59,23 @@ export function scopeExpr(scope: DataScope): string {
   return `created_by.eq.${userId}`;
 }
 
+/** 職員に見せる文言（ログイン情報が想定外の形で、範囲を決められない時） */
+export const SCOPE_ERROR_MESSAGE =
+  "ログイン情報を確認できなかったため中止しました。いったんログアウトして入り直してください。直らない場合は管理者にご連絡ください。";
+
+/**
+ * ルートの入口で範囲を1回だけ確かめて DataScope にする。
+ *
+ * なぜ: `scopeExpr` は想定外の id を例外にする（fail-closed）が、そのまま投げるとルートによって
+ * 500 の HTML が返り、画面には「JSON を解析できません」という無関係なエラーが出る
+ * （独立審査 2026-09-13）。DB を触る前にここで弾き、どのルートでも同じ JSON を返す。
+ */
+export function resolveScope(userId: string, orgId: string | null | undefined): DataScope {
+  const scope: DataScope = { userId, orgId: orgId ?? null };
+  scopeExpr(scope); // 形が壊れていればここで例外
+  return scope;
+}
+
 /**
  * 1回の読み出しで受け取る最大行数。Supabase(PostgREST) は既定 1000 行で**黙って**打ち切るため、
  * 名簿の読み出しはこの上限＋1 を要求し、超えていたら送信を止める（黙って欠けた名簿で
@@ -67,6 +85,14 @@ const ALIAS_ROW_LIMIT = 900;
 
 /** 画面に出す利用者一覧の上限。名簿（黒塗り）とは別物で、こちらは表示の都合。 */
 const CLIENT_LIST_LIMIT = ALIAS_ROW_LIMIT;
+
+/**
+ * 記号の採番をやり直す回数。採番は「読んでから書く」ので、2人の職員が同時に登録すると
+ * 一意制約でぶつかる。ぶつかったら読み直して次の記号を取る ── 失敗しても壊れないが
+ * （DB が止めるので取り違えは起きない）、「登録できませんでした」が出ると職員が困るので
+ * 数回は粘る（CI 自動審査 2026-09-13 の Minor）。
+ */
+const CODE_RETRIES = 5;
 
 interface ClientRow {
   id: string;
@@ -105,7 +131,7 @@ export async function createClientRecord(params: {
   // そこで**スコープ内にある記号の最大＋1**を取る。競合で重なったら1回だけ取り直す。
   let row: ClientRow | null = null;
   let lastError = "";
-  for (let attempt = 0; attempt < 2 && !row; attempt++) {
+  for (let attempt = 0; attempt < CODE_RETRIES && !row; attempt++) {
     const code = await nextCodeInScope(db, scope);
     if (!code) return null; // 既存の記号を読めなかった＝安全な採番ができない
     const { data, error } = await db
@@ -123,7 +149,7 @@ export async function createClientRecord(params: {
       break;
     }
     lastError = error?.message ?? "unknown";
-    if (!/duplicate|unique/i.test(lastError)) break;
+    if (!isUniqueViolation(error)) break;
   }
   if (!row) {
     console.error("[db] createClientRecord error:", lastError);
@@ -142,12 +168,37 @@ export async function createClientRecord(params: {
     // 黒塗りされないまま AI へ出る。行ごと取り消して「登録できなかった」と返す（fail-closed）。
     if (idErr) {
       console.error("[db] createClientRecord identity error:", idErr.message);
-      const { error: rbErr } = await db.from("clients").delete().eq("id", row.id);
-      if (rbErr) console.error("[db] createClientRecord rollback error:", rbErr.message);
+      // 取り消せたことまで確かめる。Supabase は既定で削除した行を返さないので
+      // `select("id")` を付けて**実際に消えた件数**を見る（独立審査 2026-09-13）。
+      const { data: deleted, error: rbErr } = await db
+        .from("clients")
+        .delete()
+        .eq("id", row.id)
+        .select("id");
+      if (rbErr || (deleted ?? []).length === 0) {
+        // 氏名の無い利用者が残った＝その人の実名は黒塗りされない。管理者が消すまで気づけないので
+        // fatal 相当で残す（ビジネス影響: 手当てが必要 ── ~/.claude/rules/code-rules.md ログレベル規約）。
+        console.error(
+          "[db] createClientRecord rollback FAILED（氏名の無い利用者が残っています。管理者が削除してください）:",
+          row.id,
+          rbErr?.message ?? "0 rows deleted",
+        );
+      }
       return null;
     }
   }
   return toRecord(row);
+}
+
+/**
+ * 一意制約の違反かどうか。PostgreSQL は unique_violation に SQLSTATE 23505 を返し、
+ * PostgREST はそれを `code` にそのまま載せる。英語のメッセージ本文で判定すると、
+ * 文言やロケールが変わった瞬間に「重なったのに取り直さない」壊れ方をする（独立審査 2026-09-13）。
+ */
+function isUniqueViolation(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === "23505") return true;
+  return /duplicate|unique/i.test(error.message ?? "");
 }
 
 /**
@@ -240,9 +291,27 @@ class RelatedTableMissingError extends Error {
 }
 const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
 
+/**
+ * 待っても直らない失敗（記号の重複・名簿の件数超過・表記ゆれの衝突）。
+ *
+ * なぜ分けるか: これらは管理者がデータを直すまで必ず再発する。職員に
+ * 「少し待ってからもう一度」と伝えると、待って押し直す無駄足を延々と踏ませてしまう
+ * （独立審査 2026-09-13）。読み直しもせず、管理者へ連絡する文言で止める。
+ */
+class PermanentAliasError extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "PermanentAliasError";
+  }
+}
+
 /** 職員に見せる文言（関係者名簿の表が無い時） */
 export const RELATED_TABLE_MISSING_MESSAGE =
   "関係者名簿の表が未作成のため送信を中止しました。管理者が supabase/client_related.sql を Supabase で実行してください。";
+
+/** 職員に見せる文言（待っても直らない・管理者の対応が要る時） */
+export const ALIAS_PERMANENT_MESSAGE =
+  "利用者名簿に問題があるため送信を中止しました。待っても直りません。管理者にこの画面を見せてご連絡ください。";
 
 /** 読み直しまでの待ち時間（テストでは短くする） */
 const RETRY_DELAY_MS = process.env.VITEST ? 1 : 500;
@@ -254,90 +323,135 @@ const RETRY_DELAY_MS = process.env.VITEST ? 1 : 500;
  * 旧仕様「空配列を返して生成は止めない」は 2026-09-09 に廃止（実名が消えないまま送られる穴）。
  */
 export async function getClientAliases(scope: DataScope): Promise<NameAlias[]> {
+  // センサー: 事業所が選ばれていない状態で名簿を読んだら残す（独立審査 2026-09-13）。
+  // Clerk の orgId は「所属」ではなく「いま選んでいる事業所」なので、所属させただけでは
+  // null のままになりうる。複数職員の環境でこれが続いていたら、同僚の登録した利用者の実名が
+  // 黒塗りされずに AI へ出ている。警告で残し、画面側は components/SharingStatus.tsx が常時表示する。
+  if (scope.orgId === null) {
+    console.warn("[privacy] 事業所が選ばれていないため、名簿は本人の登録分だけです", scope.userId);
+  }
   // 一時的な失敗（ネットワーク・ゲートウェイの揺らぎ）は1回だけ読み直す
   try {
     return await loadAliases(scope);
   } catch (first) {
-    // 表が無いのは待っても直らないので読み直さない
-    if (first instanceof RelatedTableMissingError) {
-      throw new AliasLoadError(first.message, RELATED_TABLE_MISSING_MESSAGE);
-    }
+    // 待っても直らないものは読み直さない（表が無い・名簿が壊れている）
+    const permanent = permanentMessage(first);
+    if (permanent) throw new AliasLoadError(describe(first), permanent);
     await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
     try {
       return await loadAliases(scope);
     } catch (second) {
-      const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-      if (second instanceof RelatedTableMissingError) {
-        throw new AliasLoadError(second.message, RELATED_TABLE_MISSING_MESSAGE);
-      }
-      throw new AliasLoadError(`${msg(first)} / retry: ${msg(second)}`);
+      const permanentAgain = permanentMessage(second);
+      if (permanentAgain) throw new AliasLoadError(describe(second), permanentAgain);
+      throw new AliasLoadError(`${describe(first)} / retry: ${describe(second)}`);
     }
   }
 }
 
+function describe(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** 待っても直らない失敗なら、職員に見せる文言を返す。一時的な失敗なら null。 */
+function permanentMessage(e: unknown): string | null {
+  if (e instanceof RelatedTableMissingError) return RELATED_TABLE_MISSING_MESSAGE;
+  if (e instanceof PermanentAliasError || e instanceof AliasConflictError) {
+    return ALIAS_PERMANENT_MESSAGE;
+  }
+  return null;
+}
+
+/**
+ * 氏名の表（client_identities / client_related_identities）を**親の利用者で**引く。
+ *
+ * なぜ org_id で引かないか（独立審査 2026-09-13 critical）:
+ *   氏名の表を利用者と**別々に** org_id で絞ると、移行が3表そろわなかったときや、
+ *   組織が選ばれていないときに登録された関係者がいるときに、**利用者は見えるのに氏名だけ
+ *   名簿から落ちる**。落ちた名前は置換もされず漏れ検査にも掛からず、そのまま AI へ出る。
+ *   氏名は利用者の付属物なので、**見てよい利用者かどうか**（＝親の範囲）だけを境界にする。
+ *
+ * URL の長さに上限があるため、利用者IDは小分けにして問い合わせる。
+ */
+const ID_CHUNK = 100;
+
+async function selectByClientIds<T>(
+  db: ReturnType<typeof createServerClient>,
+  table: string,
+  columns: string,
+  ids: string[],
+): Promise<{ data: T[] | null; error: { message: string; code?: string } | null }> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += ID_CHUNK) {
+    const res = await db
+      .from(table)
+      .select(columns)
+      .in("client_id", ids.slice(i, i + ID_CHUNK))
+      .limit(ALIAS_ROW_LIMIT + 1);
+    if (res.error) return { data: null, error: res.error };
+    out.push(...((res.data ?? []) as T[]));
+    if (out.length > ALIAS_ROW_LIMIT) break;
+  }
+  return { data: out, error: null };
+}
+
 async function loadAliases(scope: DataScope): Promise<NameAlias[]> {
   const db = createServerClient();
-  const [clientsRes, idsRes, relRes] = await Promise.all([
-    db
-      .from("clients")
-      .select("id, code")
-      .or(scopeExpr(scope))
-      .limit(ALIAS_ROW_LIMIT + 1),
-    db
-      .from("client_identities")
-      .select("client_id, name_encrypted")
-      .or(scopeExpr(scope))
-      .limit(ALIAS_ROW_LIMIT + 1),
+  const clientsRes = await db
+    .from("clients")
+    .select("id, code")
+    .or(scopeExpr(scope))
+    .limit(ALIAS_ROW_LIMIT + 1);
+  if (clientsRes.error) throw new Error(clientsRes.error.message);
+  const clients = (clientsRes.data ?? []) as { id: string; code: string }[];
+  assertUnderRowLimit("clients", clients.length);
+
+  // 記号の重複は**復号する前に**見る。復号できない行があっても取りこぼさないため
+  // （独立審査 2026-09-13: 安全網が「復号できた氏名」しか見ていなかった）。
+  assertClientCodesUnique(clients);
+
+  const ids = clients.map((c) => c.id);
+  const [idsRes, relRes] = await Promise.all([
+    selectByClientIds<{ client_id: string; name_encrypted: string }>(
+      db,
+      "client_identities",
+      "client_id, name_encrypted",
+      ids,
+    ),
     // 関係者名簿（D4）。読めなければ利用者名簿と同じく送信を止める（警告で続行しない）
-    db
-      .from("client_related_identities")
-      .select("client_id, relation, name_encrypted")
-      .or(scopeExpr(scope))
-      .limit(ALIAS_ROW_LIMIT + 1),
+    selectByClientIds<{ client_id: string; relation: string; name_encrypted: string }>(
+      db,
+      "client_related_identities",
+      "client_id, relation, name_encrypted",
+      ids,
+    ),
   ]);
-  if (clientsRes.error || idsRes.error) {
-    throw new Error(clientsRes.error?.message ?? idsRes.error?.message ?? "unknown");
-  }
+  if (idsRes.error) throw new Error(`client_identities: ${idsRes.error.message}`);
   if (relRes.error) {
-    const code = (relRes.error as { code?: string }).code ?? "";
+    const code = relRes.error.code ?? "";
     if (MISSING_TABLE_CODES.has(code)) {
       throw new RelatedTableMissingError(`related table missing: ${relRes.error.message}`);
     }
     throw new Error(`client_related_identities: ${relRes.error.message}`);
   }
-  // PostgREST は既定 1000 行で黙って打ち切る。上限に達したら名簿が欠けている可能性があるので
-  // 送信を止める（欠けた名簿で黒塗りすると、載らなかった人の実名がそのまま AI へ出る）。
-  for (const [label, res] of [
-    ["clients", clientsRes],
-    ["client_identities", idsRes],
-    ["client_related_identities", relRes],
-  ] as const) {
-    if ((res.data?.length ?? 0) > ALIAS_ROW_LIMIT) {
-      throw new Error(`${label}: 名簿が${ALIAS_ROW_LIMIT}件を超えました（全件を読めません）`);
-    }
-  }
+  assertUnderRowLimit("client_identities", idsRes.data?.length ?? 0);
+  assertUnderRowLimit("client_related_identities", relRes.data?.length ?? 0);
 
-  const codeById = new Map(
-    (clientsRes.data as { id: string; code: string }[]).map((c) => [c.id, c.code]),
-  );
+  const codeById = new Map(clients.map((c) => [c.id, c.code]));
   const key = getPiiKey();
   const aliases: NameAlias[] = [];
-  for (const row of idsRes.data as { client_id: string; name_encrypted: string }[]) {
+  for (const row of idsRes.data ?? []) {
     const code = codeById.get(row.client_id);
-    if (!code) continue;
+    // 親の利用者で引いているので、ここに来ることは無いはず。来たら名簿が壊れている。
+    if (!code) throw new Error("client_identities: 親の利用者が見つかりません");
     try {
       aliases.push({ real: decryptString(row.name_encrypted, key), code: `${code}様` });
     } catch {
       // 復号失敗行はスキップ（鍵ローテーション時など）
     }
   }
-  for (const row of (relRes.data ?? []) as {
-    client_id: string;
-    relation: string;
-    name_encrypted: string;
-  }[]) {
+  for (const row of relRes.data ?? []) {
     const code = codeById.get(row.client_id);
-    if (!code) continue;
+    if (!code) throw new Error("client_related_identities: 親の利用者が見つかりません");
     try {
       aliases.push({
         real: decryptString(row.name_encrypted, key),
@@ -349,6 +463,36 @@ async function loadAliases(scope: DataScope): Promise<NameAlias[]> {
   }
   assertCodesUnique(aliases);
   return expandAliasVariants(aliases);
+}
+
+/**
+ * PostgREST は既定 1000 行で黙って打ち切る。上限に達したら名簿が欠けている可能性があるので
+ * 送信を止める（欠けた名簿で黒塗りすると、載らなかった人の実名がそのまま AI へ出る）。
+ * 上限＋1件を要求しているので、**上限を超えていたら**打ち切られたと判断できる。
+ */
+function assertUnderRowLimit(label: string, count: number): void {
+  if (count > ALIAS_ROW_LIMIT) {
+    throw new PermanentAliasError(
+      `${label}: 名簿が${ALIAS_ROW_LIMIT}件を超えました（全件を読めません）`,
+    );
+  }
+}
+
+/**
+ * 同じ記号（A・B…）の利用者が2人いないか確かめる。
+ * 2人いると、黒塗りを戻すときにどちらの氏名にもなりうる＝**他人の氏名が帳票に入る**。
+ * 氏名を復号する前に確かめるので、復号できない行があっても取りこぼさない。
+ */
+function assertClientCodesUnique(clients: { id: string; code: string }[]): void {
+  const seen = new Set<string>();
+  let conflicts = 0;
+  for (const c of clients) {
+    if (seen.has(c.code)) conflicts++;
+    else seen.add(c.code);
+  }
+  if (conflicts > 0) {
+    throw new PermanentAliasError(`同じ記号の利用者が${conflicts}件あります`);
+  }
 }
 
 /**
@@ -393,8 +537,10 @@ interface RelatedRow {
 
 /**
  * 利用者の関係者一覧（範囲チェック込み・実名は復号して返す）。
- * 関係者の行だけでなく**親の利用者が範囲内か**も確かめる ── 関係者行の org_id / created_by が
- * 何らかの理由で範囲に入っていると、範囲外の利用者の家族名を読めてしまうため。
+ *
+ * 境界は**親の利用者**（見てよい利用者か）だけにする。関係者行の org_id でも絞ると、
+ * 組織が選ばれていないときに登録された家族が画面から消え、名簿（loadAliases）との
+ * 見え方もズレる（独立審査 2026-09-13）。関係者は利用者の付属物として扱う。
  */
 export async function getRelatedPeople(
   clientId: string,
@@ -407,7 +553,6 @@ export async function getRelatedPeople(
     .from("client_related_identities")
     .select("id, client_id, relation, name_encrypted, created_at")
     .eq("client_id", clientId)
-    .or(scopeExpr(scope))
     .order("created_at", { ascending: true });
   if (error) {
     console.error("[db] getRelatedPeople error:", error.message);
@@ -463,7 +608,7 @@ export async function addRelatedPerson(params: {
     .select("id")
     .single();
   if (error || !data) {
-    const dup = /duplicate|unique/i.test(error?.message ?? "");
+    const dup = isUniqueViolation(error);
     console.error("[db] addRelatedPerson error:", error?.message);
     return {
       ok: false,
@@ -485,8 +630,8 @@ export async function deleteRelatedPerson(
   clientId: string,
   scope: DataScope,
 ): Promise<"ok" | "not_found" | "error"> {
-  // 読み出し（getRelatedPeople）と同じく、親の利用者が範囲内かを先に確かめる。
-  // 消す操作は取り返しがつかないので、関係者行の側の条件だけに頼らない。
+  // 読み出し（getRelatedPeople）と同じく、境界は親の利用者。
+  // 消す操作は取り返しがつかないので、必ず先に親を確かめる。
   const parent = await getClientById(clientId, scope);
   if (!parent) return "not_found";
   const db = createServerClient();
@@ -495,7 +640,6 @@ export async function deleteRelatedPerson(
     .delete()
     .eq("id", id)
     .eq("client_id", clientId)
-    .or(scopeExpr(scope))
     .select("id");
   if (error) {
     console.error("[db] deleteRelatedPerson error:", error.message);

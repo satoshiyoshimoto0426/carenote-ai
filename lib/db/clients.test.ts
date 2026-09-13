@@ -21,7 +21,7 @@ function nextResult(table: string): Result {
 /** from(table).select().eq()... のどこで await されても結果が返る偽ビルダー（Promise にメソッドを生やす） */
 function fakeFrom(table: string) {
   const chain = Promise.resolve(nextResult(table)) as Promise<Result> & Record<string, unknown>;
-  for (const op of ["select", "eq", "or", "delete", "insert", "order", "limit", "single"]) {
+  for (const op of ["select", "eq", "or", "in", "delete", "insert", "order", "limit", "single"]) {
     chain[op] = (...args: unknown[]) => {
       calls.push({ table, op, args });
       return chain;
@@ -36,6 +36,7 @@ const KEY = randomBytes(32);
 process.env.CARENOTE_PII_KEY = KEY.toString("base64");
 
 const {
+  ALIAS_PERMANENT_MESSAGE,
   AliasLoadError,
   createClientRecord,
   deleteRelatedPerson,
@@ -72,13 +73,19 @@ describe("getClientAliases: 名簿が読めなければ AliasLoadError（送信�
     const aliases = await getClientAliases(SOLO);
     expect(aliases).toContainEqual({ real: "山田花子", code: "A様" });
     expect(aliases).toContainEqual({ real: "佐藤一郎", code: "A様の長女" });
-    // 絞り込み（created_by=u1）が3表すべてに付く
+    // 範囲の絞り込みは利用者の表だけに付く（氏名の表は「親の利用者」で引く）
     const scoped = calls.filter((c) => c.op === "or" && c.args[0] === "created_by.eq.u1");
-    expect(scoped.map((c) => c.table).sort()).toEqual([
+    expect(scoped.map((c) => c.table)).toEqual(["clients"]);
+    // 氏名の2表は client_id で引く（org_id で別々に絞ると、移行の途中で氏名だけ落ちる）
+    const byParent = calls.filter((c) => c.op === "in");
+    expect(byParent.map((c) => c.table).sort()).toEqual([
       "client_identities",
       "client_related_identities",
-      "clients",
     ]);
+    for (const c of byParent) {
+      expect(c.args[0]).toBe("client_id");
+      expect(c.args[1]).toEqual(["c1"]);
+    }
   });
 
   it("利用者表が読めなければ（1回読み直しても）AliasLoadError を投げ、空配列で進まない", async () => {
@@ -186,14 +193,16 @@ describe("事業所で共有しているときの読み出し", () => {
     ok("client_related_identities", []);
   });
 
-  it("3表すべてに事業所の絞り込みが付く（1表でも漏れると実名が素通りする）", async () => {
+  it("利用者の表に事業所の絞り込みが付き、氏名の表は親の利用者で引く", async () => {
     await getClientAliases({ userId: "user_abc", orgId: "org_xyz" });
     const ors = calls.filter((c) => c.op === "or");
-    expect(ors.map((c) => c.table).sort()).toEqual([
-      "client_identities",
-      "client_related_identities",
-      "clients",
-    ]);
+    expect(ors.map((c) => c.table)).toEqual(["clients"]);
+    expect(
+      calls
+        .filter((c) => c.op === "in")
+        .map((c) => c.table)
+        .sort(),
+    ).toEqual(["client_identities", "client_related_identities"]);
     for (const o of ors) {
       expect(o.args[0]).toBe("org_id.eq.org_xyz,and(org_id.is.null,created_by.eq.user_abc)");
     }
@@ -222,13 +231,19 @@ describe("読み出しはすべて範囲（scopeExpr）を通る", () => {
     expect(calls.filter((c) => c.op === "or").map((c) => c.args[0])).toContain(EXPR);
   });
 
-  it("getRelatedPeople（親の利用者と関係者の両方）", async () => {
+  it("getRelatedPeople（親の利用者で範囲を確かめてから関係者を読む）", async () => {
     ok("clients", { id: "c1", code: "A" });
     ok("client_related_identities", []);
     await getRelatedPeople("c1", ORG);
     const ors = calls.filter((c) => c.op === "or");
-    expect(ors.map((c) => c.table).sort()).toEqual(["client_related_identities", "clients"]);
-    for (const o of ors) expect(o.args[0]).toBe(EXPR);
+    expect(ors.map((c) => c.table)).toEqual(["clients"]);
+    expect(ors[0].args[0]).toBe(EXPR);
+    // 関係者は親の利用者IDだけで引く（org_id で別途絞ると画面と名簿の見え方がズレる）
+    expect(
+      calls
+        .filter((c) => c.table === "client_related_identities" && c.op === "eq")
+        .map((c) => c.args),
+    ).toContainEqual(["client_id", "c1"]);
   });
 
   it("getRelatedPeople は親の利用者が範囲外なら中身を読まない", async () => {
@@ -250,6 +265,77 @@ describe("記号の採番（同じ A様 を2人に振らない）", () => {
   beforeEach(() => {
     results.clear();
     calls.length = 0;
+  });
+
+  const clientRow = (code: string) => ({
+    id: "new",
+    org_id: null,
+    code,
+    attributes: {},
+    created_by: "u1",
+    created_at: "",
+    updated_at: "",
+  });
+
+  it("記号が競合したら取り直す（1回で諦めない）", async () => {
+    results.set("clients", [
+      { data: [{ code: "A" }], error: null }, // 1回目の採番 → B
+      { data: null, error: { message: "x", code: "23505" } }, // 同時登録でぶつかった
+      { data: [{ code: "A" }, { code: "B" }], error: null }, // 読み直し → C
+      { data: clientRow("C"), error: null },
+    ]);
+    const rec = await createClientRecord({ userId: "u1", orgId: null, input: { attributes: {} } });
+    expect(rec?.code).toBe("C");
+    const inserted = calls
+      .filter((c) => c.table === "clients" && c.op === "insert")
+      .map((c) => (c.args[0] as { code: string }).code);
+    expect(inserted).toEqual(["B", "C"]);
+  });
+
+  it("一意制約違反は英語の文言ではなく code(23505) で見分ける", async () => {
+    results.set("clients", [
+      { data: [], error: null },
+      // 文言が英語でなくても取り直す
+      { data: null, error: { message: "一意制約に違反しました", code: "23505" } },
+      { data: [], error: null },
+      { data: clientRow("A"), error: null },
+    ]);
+    const rec = await createClientRecord({ userId: "u1", orgId: null, input: { attributes: {} } });
+    expect(rec?.code).toBe("A");
+    expect(calls.filter((c) => c.table === "clients" && c.op === "insert")).toHaveLength(2);
+  });
+
+  it("一意制約以外の失敗は取り直さない（無駄に何度も書きに行かない）", async () => {
+    results.set("clients", [
+      { data: [], error: null },
+      { data: null, error: { message: "permission denied", code: "42501" } },
+    ]);
+    expect(
+      await createClientRecord({ userId: "u1", orgId: null, input: { attributes: {} } }),
+    ).toBeNull();
+    expect(calls.filter((c) => c.table === "clients" && c.op === "insert")).toHaveLength(1);
+  });
+
+  it("取り消しは作った行だけを消す（id で絞る）", async () => {
+    results.set("clients", [
+      { data: [], error: null },
+      { data: clientRow("A"), error: null },
+      { data: [{ id: "new" }], error: null }, // delete の結果
+    ]);
+    fail("client_identities", "insert failed");
+    await createClientRecord({
+      userId: "u1",
+      orgId: null,
+      input: { name: "テスト花子", attributes: {} },
+    });
+    const del = calls.findIndex((c) => c.table === "clients" && c.op === "delete");
+    expect(del).toBeGreaterThanOrEqual(0);
+    expect(
+      calls
+        .slice(del)
+        .filter((c) => c.op === "eq")
+        .map((c) => c.args),
+    ).toContainEqual(["id", "new"]);
   });
 
   it("スコープ内の最大＋1 を振る（件数ではなく最大値で決める）", async () => {
@@ -334,33 +420,99 @@ describe("名簿の安全網（移行の途中でも実名の取り違えを起�
     await expect(getClientAliases(SOLO)).rejects.toBeInstanceOf(AliasLoadError);
   });
 
-  it("同じ記号・同じ氏名（表記の重複登録）は止めない", async () => {
+  it("記号の重複は氏名を復号する前に見つける（復号できない行があっても取りこぼさない）", async () => {
     ok("clients", [
       { id: "c1", code: "A" },
       { id: "c2", code: "A" },
     ]);
+    // 氏名は1件も復号できない状態。以前は「復号できた氏名」しか突き合わせていなかったため素通りした
+    ok("client_identities", [{ client_id: "c1", name_encrypted: "こわれた値" }]);
+    await expect(getClientAliases(SOLO)).rejects.toBeInstanceOf(AliasLoadError);
+  });
+
+  it("空白の有無だけが違う別人がいたら送信を止める（黙って片方を捨てない）", async () => {
+    ok("clients", [
+      { id: "c1", code: "A" },
+      { id: "c2", code: "B" },
+    ]);
     ok("client_identities", [
-      { client_id: "c1", name_encrypted: encryptString("山田花子", KEY) },
+      { client_id: "c1", name_encrypted: encryptString("山田 花子", KEY) },
       { client_id: "c2", name_encrypted: encryptString("山田花子", KEY) },
     ]);
+    await expect(getClientAliases(SOLO)).rejects.toBeInstanceOf(AliasLoadError);
+  });
+
+  it("同一人物の表記ゆれ（空白あり・なし）は止めない", async () => {
+    ok("clients", [{ id: "c1", code: "A" }]);
+    ok("client_identities", [{ client_id: "c1", name_encrypted: encryptString("山田 花子", KEY) }]);
     const aliases = await getClientAliases(SOLO);
+    expect(aliases).toContainEqual({ real: "山田 花子", code: "A様" });
     expect(aliases).toContainEqual({ real: "山田花子", code: "A様" });
   });
 
-  it("名簿が上限を超えたら送信を止める（黙って欠けた名簿で黒塗りしない）", async () => {
+  it("待っても直らない失敗は「少し待って」と言わない（管理者へ連絡を促す）", async () => {
+    ok("clients", [
+      { id: "c1", code: "A" },
+      { id: "c2", code: "A" },
+    ]);
+    ok("client_identities", []);
+    let caught: unknown;
+    try {
+      await getClientAliases(SOLO);
+    } catch (e) {
+      caught = e;
+    }
+    expect((caught as Error).message).toBe(ALIAS_PERMANENT_MESSAGE);
+    // 読み直していない（clients の select は1回）
+    expect(calls.filter((c) => c.table === "clients" && c.op === "select")).toHaveLength(1);
+  });
+
+  it("利用者が上限を超えたら送信を止める（黙って欠けた名簿で黒塗りしない）", async () => {
     ok(
       "clients",
-      Array.from({ length: 901 }, (_, i) => ({ id: `c${i}`, code: "A" })),
+      Array.from({ length: 901 }, (_, i) => ({ id: `c${i}`, code: `X${i}` })),
     );
     ok("client_identities", []);
     await expect(getClientAliases(SOLO)).rejects.toBeInstanceOf(AliasLoadError);
   });
 
-  it("読み出しには件数の上限が付いている（既定1000で黙って切れるのを防ぐ）", async () => {
+  it("氏名の表が上限を超えても送信を止める", async () => {
+    ok("clients", [{ id: "c1", code: "A" }]);
+    ok(
+      "client_identities",
+      Array.from({ length: 901 }, () => ({
+        client_id: "c1",
+        name_encrypted: encryptString("山田花子", KEY),
+      })),
+    );
+    await expect(getClientAliases(SOLO)).rejects.toBeInstanceOf(AliasLoadError);
+  });
+
+  it("関係者の表が上限を超えても送信を止める", async () => {
+    ok("clients", [{ id: "c1", code: "A" }]);
+    ok("client_identities", []);
+    ok(
+      "client_related_identities",
+      Array.from({ length: 901 }, () => ({
+        client_id: "c1",
+        relation: "長女",
+        name_encrypted: encryptString("佐藤一郎", KEY),
+      })),
+    );
+    await expect(getClientAliases(SOLO)).rejects.toBeInstanceOf(AliasLoadError);
+  });
+
+  it("3表とも「上限＋1件」を要求する（＋1が無いと打ち切りを見分けられない）", async () => {
     ok("clients", [{ id: "c1", code: "A" }]);
     ok("client_identities", []);
     await getClientAliases(SOLO);
-    const limited = calls.filter((c) => c.op === "limit").map((c) => c.table);
-    expect(limited.sort()).toEqual(["client_identities", "client_related_identities", "clients"]);
+    const limited = calls.filter((c) => c.op === "limit");
+    expect(limited.map((c) => c.table).sort()).toEqual([
+      "client_identities",
+      "client_related_identities",
+      "clients",
+    ]);
+    // 901 = 上限900 ＋ 1。上限ちょうどを要求すると「ちょうど900件」と「打ち切られた」が区別できない
+    for (const c of limited) expect(c.args[0]).toBe(901);
   });
 });

@@ -44,15 +44,37 @@ describe("台本の読み取り", () => {
     }
   });
 
-  it("列が壊れている表は黙って飛ばさず例外にする", () => {
-    const broken = [
+  const scaffold = (...rows: string[]) =>
+    [
       "## 5. 台本",
       "### ① 試し ── `ch1.mp4`",
       "| # | 映す画面 | 操作 | ナレーション | 秒 |",
       "|---|---|---|---|---|",
-      "| 1 | 画面 | 操作 | 読み上げ | あとで |",
+      ...rows,
     ].join("\n");
-    expect(() => parseVideoScript(broken)).toThrow();
+
+  it("秒が数字でない行は黙って飛ばさず例外にする", () => {
+    expect(() => parseVideoScript(scaffold("| 1 | 画面 | 操作 | 読み上げ | あとで |"))).toThrow();
+  });
+
+  it("ナレーションに文字の | が入って列がずれたら例外にする（黙ってスキップしない）", () => {
+    // CI 自動審査 2026-09-13 の指摘: 列数違いを「区切り行」と同じ扱いで捨てていた
+    expect(() => parseVideoScript(scaffold("| 1 | 画面 | 操作 | Aか|Bを押す | 12 |"))).toThrow();
+  });
+
+  it("§5 の中にある別の表（⑦章のエラー画面の出し方）は場面として読まない", () => {
+    const mixed = [
+      scaffold("| 1 | 画面 | 操作 | 読み上げ | 12 |"),
+      "",
+      "#### ⑦章を撮る前に",
+      "",
+      "| 場面 | 出し方 |",
+      "|---|---|",
+      "| #2 個人情報が残って止まる | わざと置き換えられない形を含むメモで生成を押す |",
+    ].join("\n");
+    const parsed = parseVideoScript(mixed);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].scenes).toHaveLength(1);
   });
 });
 
@@ -63,6 +85,34 @@ describe("字幕（WebVTT）の下書き", () => {
     expect(vtt.match(/-->/g)).toHaveLength(chapters[0].scenes.length);
     for (const scene of chapters[0].scenes) {
       expect(vtt).toContain(scene.narration);
+    }
+  });
+
+  it("NOTE の直後には必ず空行がある（無いと字幕が丸ごとコメントに飲まれる）", () => {
+    // 独立審査 2026-09-13: 空行が無く、ffmpeg で字幕 0 件・Chrome で識別子が全滅していた
+    for (const chapter of chapters) {
+      const lines = buildVtt(chapter).split("\n");
+      lines.forEach((line, i) => {
+        if (line.startsWith("NOTE")) expect(lines[i + 1]).toBe("");
+      });
+    }
+  });
+
+  it("字幕の本文と NOTE は1行に収まる（空行や --> を含まない）", () => {
+    for (const chapter of chapters) {
+      for (const line of buildVtt(chapter).split("\n")) {
+        if (line.startsWith("NOTE") || /^ch\d+-\d+$/.test(line)) continue;
+        if (line.includes("-->")) expect(/^[\d:.]+ --> [\d:.]+$/.test(line)).toBe(true);
+      }
+    }
+  });
+
+  it("字幕の塊の数が場面の数と一致する（識別子＋時刻＋本文）", () => {
+    for (const chapter of chapters) {
+      const blocks = buildVtt(chapter)
+        .split(/\n\s*\n/)
+        .filter((b) => /^ch\d+-\d+\n[\d:.]+ --> /.test(b.trim()));
+      expect(blocks).toHaveLength(chapter.scenes.length);
     }
   });
 

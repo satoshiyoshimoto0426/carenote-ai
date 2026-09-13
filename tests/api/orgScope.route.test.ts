@@ -30,6 +30,7 @@ vi.mock("@/lib/db/clients", async (importOriginal) => {
   return { ...orig, ...db };
 });
 
+const clerk = await import("@clerk/nextjs/server");
 const { AliasLoadError } = await import("@/lib/db/clients");
 const { GET: listClients, POST: createClient } = await import("@/app/api/clients/route");
 const { GET: getClient } = await import("@/app/api/clients/[id]/route");
@@ -55,6 +56,11 @@ const ctx = { params: Promise.resolve({ id: "c1" }) };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks は呼び出し履歴だけを消す。実装（mockResolvedValue）は残るので、
+  // 壊れた id を入れたテストの後始末として毎回まっとうな値へ戻す
+  vi.mocked(clerk.auth).mockResolvedValue(
+    SCOPE as unknown as Awaited<ReturnType<typeof clerk.auth>>,
+  );
   // 名簿を使う入口は「読めなかった」で 503 に落とし、渡された範囲だけを見る
   db.getClientAliases.mockRejectedValue(new AliasLoadError("scope test"));
   db.getClients.mockResolvedValue([]);
@@ -80,6 +86,31 @@ describe("AI へ送る4つの入口は、事業所の範囲で名簿を読む", 
     const res = await call();
     expect(res.status).toBe(503);
     expect(db.getClientAliases).toHaveBeenCalledWith(SCOPE);
+  });
+});
+
+describe("ログイン情報が壊れていたら、どの入口も同じ形で止まる（500 の HTML を返さない）", () => {
+  beforeEach(() => {
+    // 絞り込み式を壊す形の id（本来ありえないが、来たら広げずに止める）
+    vi.mocked(clerk.auth).mockResolvedValue({
+      userId: "u1,or=(1.eq.1)",
+      orgId: null,
+    } as unknown as Awaited<ReturnType<typeof clerk.auth>>);
+  });
+
+  it.each([
+    ["/api/generate", () => generate(post("/api/generate", { documentType: "supportLog" }))],
+    ["/api/clients", () => listClients()],
+    ["/api/clients/[id]", () => getClient(new NextRequest("http://localhost/api/clients/c1"), ctx)],
+  ])("%s は 503 と JSON を返す", async (_name, call) => {
+    const res = await call();
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    await expect(res.json()).resolves.toHaveProperty("error");
+    // DB には触らない
+    expect(db.getClientAliases).not.toHaveBeenCalled();
+    expect(db.getClients).not.toHaveBeenCalled();
+    expect(db.getClientById).not.toHaveBeenCalled();
   });
 });
 

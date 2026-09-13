@@ -130,23 +130,49 @@ export function restoreNamesDeep<T>(value: T, aliases: NameAlias[]): T {
 }
 
 /**
+ * 名簿の中で、同じ表記が違う記号に割り当たっていた時に投げる。
+ *
+ * なぜ: 「山田 花子（A様）」と「山田花子（B様）」のように**空白の有無だけが違う別人**が
+ * 名簿にいると、以前は後から来た方を黙って捨てていた。捨てられた人の氏名は置換もされず
+ * 漏れ検査にも掛からないまま AI へ出て、しかも本文の「A様」を戻すと**別人の氏名**になる。
+ * 夫婦・兄弟が同じ事業所を使う、同姓同名がいる、移行前に二重登録した ── いずれも実在する
+ * （独立審査 2026-09-13 critical）。黙って捨てず、送信を止める。
+ */
+export class AliasConflictError extends Error {
+  constructor(count: number) {
+    super(`名簿の中で同じ表記が違う記号に割り当たっています（${count}件）`);
+    this.name = "AliasConflictError";
+  }
+}
+
+/**
  * 実名の表記ゆれ（空白の有無）を展開して対応表を増やす（純粋関数）。
  * 例:「山田 花子」→「山田 花子」「山田花子」の両方を A様 に対応付ける。
  * 2文字未満（過剰置換の危険）や記号と同値は除外。姓のみは誤置換リスクが高いため展開しない
  * （運用ルール「メモに実名を書かない」が第一の防御・本関数はその安全網）。
  * ※ 空白ゆれ・旧字体は nameRegex でも吸収するが、対応表の見た目（復元時の実名）を保つため展開は残す。
+ *
+ * 同じ表記が**違う記号**に当たったら AliasConflictError を投げる（黙って捨てない）。
+ * 同じ記号どうしの重複（同一人物の展開結果）は、これまでどおり1件にまとめる。
  */
 export function expandAliasVariants(aliases: NameAlias[]): NameAlias[] {
-  const seen = new Set<string>();
+  const seen = new Map<string, string>();
   const out: NameAlias[] = [];
+  let conflicts = 0;
   for (const { real, code } of aliases) {
     const base = real.trim();
     for (const variant of [base, base.replace(/[\s　]+/g, "")]) {
-      if (variant.length < 2 || variant === code || seen.has(variant)) continue;
-      seen.add(variant);
+      if (variant.length < 2 || variant === code) continue;
+      const owner = seen.get(variant);
+      if (owner !== undefined) {
+        if (owner !== code) conflicts++;
+        continue;
+      }
+      seen.set(variant, code);
       out.push({ real: variant, code });
     }
   }
+  if (conflicts > 0) throw new AliasConflictError(conflicts);
   return out;
 }
 
