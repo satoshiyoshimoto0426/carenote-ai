@@ -163,7 +163,9 @@ export function expandAliasVariants(aliases: NameAlias[]): NameAlias[] {
   let conflicts = 0;
   for (const { real, code } of aliases) {
     const base = real.trim();
-    for (const variant of [base, base.replace(/[\s　]+/g, "")]) {
+    // 空白を含まない名前は2つの表記が同じ文字列になる。重複を先に畳んでおかないと、
+    // 同じ衝突を2回数えて件数の案内が実際より多く出る（CI 自動審査 2026-09-13 Minor）。
+    for (const variant of new Set([base, base.replace(/[\s　]+/g, "")])) {
       if (variant.length < 2 || variant === code) continue;
 
       // 衝突の判定は**置換と同じものさし**で行う（独立審査 2026-09-13 critical）。

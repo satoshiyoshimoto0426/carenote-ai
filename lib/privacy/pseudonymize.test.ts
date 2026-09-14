@@ -64,6 +64,20 @@ describe("仮名化: expandAliasVariants（表記ゆれ展開）", () => {
     ).toThrow(AliasConflictError);
   });
 
+  it("止めるときの件数が実際の衝突数と合う（空白なしの名前で二重に数えない）", () => {
+    let caught: unknown;
+    try {
+      expandAliasVariants([
+        { real: "髙橋一郎", code: "A様" },
+        { real: "高橋一郎", code: "B様" },
+      ]);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(AliasConflictError);
+    expect((caught as Error).message).toContain("1件");
+  });
+
   it("空白の有無だけが違う別人も止める", () => {
     expect(() =>
       expandAliasVariants([
