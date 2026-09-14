@@ -2,8 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-// 生成ツールは素の .mjs。テストからは戻り値の文字列だけを見る
-import { buildManualHtml } from "../../tools/build-manual.mjs";
+import { buildManualHtml } from "./buildHtml";
 import { MANUAL_CHAPTERS, MANUAL_META, MANUAL_PROMISES, type ManualChapter } from "./content";
 
 /**
@@ -49,7 +48,7 @@ describe("印刷版の動画案内は video.status に従う", () => {
   });
 
   it("いま配布している印刷版は、全章が未収録なので「あります」を含まない", () => {
-    const html = buildManualHtml();
+    const html = buildManualHtml(MANUAL_CHAPTERS, MANUAL_META, MANUAL_PROMISES);
     const readyCount = MANUAL_CHAPTERS.filter((c) => c.video.status === "ready").length;
     expect(html.match(/操作動画があります/g) ?? []).toHaveLength(readyCount);
     expect(html.match(/準備中です/g) ?? []).toHaveLength(MANUAL_CHAPTERS.length - readyCount);
@@ -100,7 +99,7 @@ describe("生成HTMLの安全性と完全性", () => {
   });
 
   it("全章・全手順・全質問が抜けずに出る", () => {
-    const html = buildManualHtml();
+    const html = buildManualHtml(MANUAL_CHAPTERS, MANUAL_META, MANUAL_PROMISES);
     const steps = MANUAL_CHAPTERS.reduce((n, c) => n + c.steps.length, 0);
     const faq = MANUAL_CHAPTERS.reduce((n, c) => n + c.faq.length, 0);
     expect(html.match(/<section id="ch\d+">/g) ?? []).toHaveLength(MANUAL_CHAPTERS.length);
@@ -111,7 +110,9 @@ describe("生成HTMLの安全性と完全性", () => {
   });
 
   it("検索避けを入れる（ログイン無しで読めるため）", () => {
-    expect(buildManualHtml()).toContain('<meta name="robots" content="noindex,nofollow">');
+    expect(buildManualHtml(MANUAL_CHAPTERS, MANUAL_META, MANUAL_PROMISES)).toContain(
+      '<meta name="robots" content="noindex,nofollow">',
+    );
   });
 });
 

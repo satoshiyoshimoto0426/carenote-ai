@@ -1,3 +1,4 @@
+import SharingStatus from "@/components/SharingStatus";
 import Sidebar from "@/components/Sidebar";
 import { IconHelpCircle, IconHome, IconSearch } from "@/components/ui/icons";
 
@@ -33,6 +34,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Main content */}
       <div className="app-main">
+        {/* 名簿の共有状態（スマホ専用）。左メニューは 768px 未満で消えるため、ここにも必ず出す */}
+        <div className="app-sharing-mobile">
+          <SharingStatus variant="compact" />
+        </div>
         <main className="app-main-inner">{children}</main>
         <footer className="text-center py-4 pb-6">
           <p className="text-xs text-[var(--faint)]">CareNote — Powered by Claude API</p>

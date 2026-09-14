@@ -1,18 +1,36 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
-import { createClientRecord, getClients } from "@/lib/db/clients";
+import {
+  createClientRecord,
+  type DataScope,
+  getClients,
+  resolveScope,
+  SCOPE_ERROR_MESSAGE,
+} from "@/lib/db/clients";
 import type { ClientAttributes } from "@/types/client";
 
 /** 利用者の一覧取得・作成（Webアプリ・Clerkログイン）。 */
 export async function GET() {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
-  return NextResponse.json(await getClients(userId));
+  let scope: DataScope;
+  try {
+    scope = resolveScope(userId, orgId);
+  } catch {
+    return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+  }
+  return NextResponse.json(await getClients(scope));
 }
 
 export async function POST(req: NextRequest) {
   const { userId, orgId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  let scope: DataScope;
+  try {
+    scope = resolveScope(userId, orgId);
+  } catch {
+    return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+  }
 
   let body: Record<string, unknown>;
   try {
@@ -28,8 +46,8 @@ export async function POST(req: NextRequest) {
       : undefined;
 
   const record = await createClientRecord({
-    userId,
-    orgId: orgId ?? null,
+    userId: scope.userId,
+    orgId: scope.orgId,
     input: { name, attributes },
   });
   if (!record) {

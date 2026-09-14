@@ -9,9 +9,10 @@
     "lint": "eslint",
     "format": "biome check --write .",
     "check": "biome check .",
-    "test": "vitest run",
+    "test": "node tools/run-tests.mjs",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "captions": "node tools/build-video-captions.mjs",
     "manual": "node tools/build-manual.mjs",
     "check:invisible": "node tools/check-invisible.mjs"
   },

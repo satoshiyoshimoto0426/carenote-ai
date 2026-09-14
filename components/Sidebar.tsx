@@ -3,6 +3,7 @@
 import { UserButton, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import SharingStatus from "@/components/SharingStatus";
 import {
   IconFileText,
   IconHelpCircle,
@@ -75,6 +76,9 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      {/* 名簿の共有範囲（黒塗りが事業所ぶんで効いているか）を常に見せる */}
+      <SharingStatus />
 
       {/* User */}
       <div

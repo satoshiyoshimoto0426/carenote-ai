@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  AliasConflictError,
+  clientCodeIndex,
   expandAliasVariants,
   maskNames,
   type NameAlias,
@@ -41,6 +43,36 @@ describe("仮名化: expandAliasVariants（表記ゆれ展開）", () => {
     expect(maskNames("山田花子さんが来訪。", v)).toBe("A様さんが来訪。");
   });
 
+  it("同じ人を複数の利用者に登録しても止めない（主治医・担当ケアマネ・きょうだいの母）", () => {
+    // 介護・放デイではごく普通。ここで止めると事業所全体の生成が使えなくなる
+    const v = expandAliasVariants([
+      { real: "田中 太郎", code: "A様の主治医" },
+      { real: "田中 太郎", code: "B様の主治医" },
+    ]);
+    expect(v.length).toBeGreaterThan(0);
+    expect(v.every((a) => a.real.includes("田中"))).toBe(true);
+  });
+
+  it("旧字体だけが違う別人は止める（置換は旧字体を畳み込むので、判定も畳み込む）", () => {
+    // 「髙橋一郎（A様）」と「高橋一郎（B様）」。nameRegex は両方に当たるので、
+    // 判定を生の文字列で行っていると B様 の記録に A様 の実名が入る
+    expect(() =>
+      expandAliasVariants([
+        { real: "髙橋一郎", code: "A様" },
+        { real: "高橋一郎", code: "B様" },
+      ]),
+    ).toThrow(AliasConflictError);
+  });
+
+  it("空白の有無だけが違う別人も止める", () => {
+    expect(() =>
+      expandAliasVariants([
+        { real: "山田 花子", code: "A様" },
+        { real: "山田花子", code: "B様" },
+      ]),
+    ).toThrow(AliasConflictError);
+  });
+
   it("2文字未満・重複は除外する", () => {
     const v = expandAliasVariants([
       { real: "李", code: "B様" },
@@ -59,6 +91,22 @@ describe("仮名化: nextClientCode", () => {
     expect(nextClientCode(25)).toBe("Z");
     expect(nextClientCode(26)).toBe("AA");
     expect(nextClientCode(27)).toBe("AB");
+  });
+
+  it("clientCodeIndex は nextClientCode の逆（採番を最大＋1で決めるのに使う）", () => {
+    for (let i = 0; i < 800; i++) {
+      expect(clientCodeIndex(nextClientCode(i))).toBe(i);
+    }
+    expect(clientCodeIndex("A")).toBe(0);
+    expect(clientCodeIndex("Z")).toBe(25);
+    expect(clientCodeIndex("AA")).toBe(26);
+  });
+
+  it("想定外の記号は null（無視して採番を続けられるように）", () => {
+    expect(clientCodeIndex("")).toBeNull();
+    expect(clientCodeIndex("A1")).toBeNull();
+    expect(clientCodeIndex("あ")).toBeNull();
+    expect(clientCodeIndex("ABCDEFG")).toBeNull();
   });
 });
 

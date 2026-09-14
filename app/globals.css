@@ -126,7 +126,32 @@ select:focus-visible {
   padding: 80px 16px 24px; /* モバイルは固定トップバーぶん上を空ける */
 }
 
+/*
+ * 名簿の共有状態（components/SharingStatus.tsx）のスマホ用。
+ * 左メニューは 768px 未満で消えるため、そこに置いた表示はスマホに一切届かない
+ * （独立審査 2026-09-13 critical: 配布文書は「スマホでは画面の上に出る」と書いていた）。
+ * 固定トップバーの高さを触らずに済むよう、本文の先頭に通常フローで出す。
+ */
+/*
+ * 767px 以下だけに閉じる。`.app-sharing-mobile + .app-main-inner` は
+ * `.app-main-inner` 単独より詳細度が高いため、メディアクエリの外に置くと
+ * md+ でも padding-top を上書きしてしまう（display:none でも隣接セレクタは効く）。
+ */
+@media (max-width: 767px) {
+  .app-sharing-mobile {
+    padding: 72px 16px 0; /* 固定トップバーぶん上を空ける（本文側の padding-top は詰める） */
+  }
+
+  .app-sharing-mobile + .app-main-inner {
+    padding-top: 12px;
+  }
+}
+
 @media (min-width: 768px) {
+  .app-sharing-mobile {
+    display: none; /* md+ は左メニューの中に出る */
+  }
+
   .app-sidebar {
     display: block;
     width: 220px;

@@ -1,6 +1,13 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
-import { addRelatedPerson, deleteRelatedPerson, getRelatedPeople } from "@/lib/db/clients";
+import {
+  addRelatedPerson,
+  type DataScope,
+  deleteRelatedPerson,
+  getRelatedPeople,
+  resolveScope,
+  SCOPE_ERROR_MESSAGE,
+} from "@/lib/db/clients";
 
 /**
  * 関係者名簿（D4）: 家族・担当者・主治医などを利用者ごとに登録し、黒塗りの対象にする。
@@ -9,10 +16,16 @@ import { addRelatedPerson, deleteRelatedPerson, getRelatedPeople } from "@/lib/d
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  let scope: DataScope;
+  try {
+    scope = resolveScope(userId, orgId);
+  } catch {
+    return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+  }
   const { id } = await params;
-  return NextResponse.json(await getRelatedPeople(id, userId), {
+  return NextResponse.json(await getRelatedPeople(id, scope), {
     headers: { "Cache-Control": "no-store" },
   });
 }
@@ -20,6 +33,12 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 export async function POST(req: NextRequest, { params }: Ctx) {
   const { userId, orgId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  let scope: DataScope;
+  try {
+    scope = resolveScope(userId, orgId);
+  } catch {
+    return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+  }
   const { id } = await params;
 
   let body: { relation?: unknown; name?: unknown };
@@ -31,19 +50,31 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const relation = typeof body.relation === "string" ? body.relation : "";
   const name = typeof body.name === "string" ? body.name : "";
 
-  const r = await addRelatedPerson({ clientId: id, userId, orgId: orgId ?? null, relation, name });
+  const r = await addRelatedPerson({
+    clientId: id,
+    userId: scope.userId,
+    orgId: scope.orgId,
+    relation,
+    name,
+  });
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
   return NextResponse.json({ id: r.id }, { status: 201 });
 }
 
 export async function DELETE(req: NextRequest, { params }: Ctx) {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  let scope: DataScope;
+  try {
+    scope = resolveScope(userId, orgId);
+  } catch {
+    return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+  }
   const { id } = await params;
   const relatedId = req.nextUrl.searchParams.get("relatedId") ?? "";
   if (!relatedId)
     return NextResponse.json({ error: "対象が指定されていません。" }, { status: 400 });
-  const r = await deleteRelatedPerson(relatedId, id, userId);
+  const r = await deleteRelatedPerson(relatedId, id, scope);
   if (r === "error") return NextResponse.json({ error: "削除に失敗しました。" }, { status: 500 });
   if (r === "not_found") {
     return NextResponse.json(

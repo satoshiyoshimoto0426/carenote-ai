@@ -1,6 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
-import { AliasLoadError, getClientAliases } from "@/lib/db/clients";
+import {
+  AliasLoadError,
+  type DataScope,
+  getClientAliases,
+  resolveScope,
+  SCOPE_ERROR_MESSAGE,
+} from "@/lib/db/clients";
 import { generateKaipokeAssessmentSheet } from "@/lib/generation/kaipokeAssessment";
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskDeep } from "@/lib/privacy/maskBody";
@@ -17,8 +23,14 @@ export const maxDuration = 300;
  * 残っていれば 422 で止める（独立審査 2026-09-11 critical #7）。返事は同じ札入れで戻す。
  */
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  let scope: DataScope;
+  try {
+    scope = resolveScope(userId, orgId);
+  } catch {
+    return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+  }
 
   let body: { draft?: unknown; notes?: unknown };
   try {
@@ -33,7 +45,7 @@ export async function POST(req: NextRequest) {
 
   let aliases: Awaited<ReturnType<typeof getClientAliases>>;
   try {
-    aliases = await getClientAliases(userId);
+    aliases = await getClientAliases(scope);
   } catch (e) {
     if (e instanceof AliasLoadError)
       return NextResponse.json({ error: e.message }, { status: 503 });
