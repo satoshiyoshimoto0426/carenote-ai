@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { AUDIO_MAX_BYTES, explainTranscribeError, validateAudio } from "./validate";
+import {
+  AUDIO_MAX_BYTES,
+  explainTranscribeError,
+  PLATFORM_MAX_BYTES,
+  validateAudio,
+} from "./validate";
 
 describe("音声ファイルの受け入れ: validateAudio", () => {
   it("対応形式・上限内なら受け入れる（拡張子は大文字でも可）", () => {
@@ -12,7 +17,24 @@ describe("音声ファイルの受け入れ: validateAudio", () => {
     expect(validateAudio("call.mp3", 0).ok).toBe(false);
     const big = validateAudio("call.mp3", AUDIO_MAX_BYTES + 1);
     expect(big.ok).toBe(false);
-    if (!big.ok) expect(big.reason).toContain("25 MB");
+    if (!big.ok) expect(big.reason).toContain("4 MB");
+  });
+});
+
+/**
+ * 上限が置き場（Vercel）の受け入れを超えていないことを固定する。
+ *
+ * 2026-09-17 にここが破れていた: 画面もマニュアルも「25MBまで」と書いていたが、本番へ 6MB を
+ * 投げると Vercel が 413 を返し、アプリには届かない（実測）。職員には英語の解析エラーが出ていた。
+ * 「送る前に手元で弾く」という validateAudio の存在意義そのものが成立していなかった。
+ */
+describe("上限は置き場の受け入れ量を超えない", () => {
+  it("AUDIO_MAX_BYTES は Vercel の 4.5MB より小さい（超えると 413 がアプリに届かない）", () => {
+    expect(AUDIO_MAX_BYTES).toBeLessThan(PLATFORM_MAX_BYTES);
+  });
+
+  it("包み代（multipart）ぶんの余裕がある", () => {
+    expect(PLATFORM_MAX_BYTES - AUDIO_MAX_BYTES).toBeGreaterThan(256 * 1024);
   });
 });
 

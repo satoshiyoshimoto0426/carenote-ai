@@ -39,6 +39,7 @@ import {
 } from "@/lib/draftText";
 import type { KaipokeAssessmentSheet } from "@/lib/kaipoke/assessmentLayout";
 import { type NameAlias, restoreNamesDeep } from "@/lib/privacy/pseudonymize";
+import { AUDIO_MAX_BYTES, explainTranscribeError, validateAudio } from "@/lib/transcribe/validate";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
@@ -159,14 +160,33 @@ export default function CreatePage() {
   /** 第3段: 録音ファイル→文字（外部サービス）。結果は支援メモに足し、通常の「送る前に見る」へ乗せる */
   const [transcribing, setTranscribing] = useState(false);
   const transcribeFile = async (file: File) => {
+    // 送る前に、ここで大きさと形式を見る。
+    // 上限を超えたものを投げると、アプリに届く前に置き場（Vercel）が英語の 413 を返し、
+    // それを JSON として読もうとして英語の解析エラーが職員の画面に出る（2026-09-17 実測）。
+    const check = validateAudio(file.name, file.size);
+    if (!check.ok) {
+      setError(check.reason);
+      return;
+    }
     setTranscribing(true);
     setError(null);
     try {
       const form = new FormData();
       form.append("file", file);
       const resp = await fetch("/api/transcribe", { method: "POST", body: form });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
+      // 置き場が断ったときは JSON が返らない。まず文字として受けてから読む
+      const raw = await resp.text();
+      let data: { text?: unknown; error?: unknown } = {};
+      try {
+        data = JSON.parse(raw) as typeof data;
+      } catch {
+        if (resp.status === 413) throw new Error(explainTranscribeError(413, raw));
+        throw new Error(`文字起こしに失敗しました（${resp.status}）。管理者に伝えてください。`);
+      }
+      if (!resp.ok)
+        throw new Error(
+          typeof data.error === "string" ? data.error : `エラーが発生しました (${resp.status})`,
+        );
       const text = String(data.text ?? "").trim();
       setSupportNotes((prev) =>
         prev.trim() ? `${prev.trim()}\n\n【録音の文字起こし】\n${text}` : text,
@@ -443,7 +463,10 @@ export default function CreatePage() {
                   }}
                 />
                 <span>
-                  25MBまで。音声は保存せず、文字にしたあと通常の「送る前に確認」を通ります。
+                  1つのファイルは{Math.floor(AUDIO_MAX_BYTES / 1024 / 1024)}
+                  MBまで（ふつうの音質で4〜5分ぶん）。
+                  長い録音は短く分けるか、録音アプリの音質を下げてください。音声は保存せず、文字にしたあと
+                  通常の「送る前に確認」を通ります。
                 </span>
               </div>
             </div>

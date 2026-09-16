@@ -154,7 +154,7 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 `pseudonymize.restoreNamesDeep` は表示とコピー専用。保存帳票は記号のまま（documents.ts の契約を維持）。
 **第3段 文字起こし入口 (同日・D1=外部サービス)**: `/create` 支援経過欄の「録音ファイルから文字にする」→ `POST /api/transcribe`
 → `lib/transcribe/provider.ts`（OpenAI 文字起こしAPI・`OPENAI_API_KEY`・差し込み口で他社切替可）→ 文字を支援メモに追記 → 第2段へ。
-音声は非保持。`lib/transcribe/validate.ts` が 25MB・形式・エラー言い換え。運用は **Genspark SecondBrain（使い方B）**が正、この経路は予備（DATA-HANDLING v0.3 §5-2）。
+音声は非保持。`lib/transcribe/validate.ts` が **4MB**・形式・エラー言い換え（25MB は文字起こしサービスの上限だが、手前の Vercel が 4.5MB で切るため到達できない ── 2026-09-17 実測 6MB→413）。運用は **Genspark SecondBrain（使い方B）**が正、この経路は予備（DATA-HANDLING v0.3 §5-2）。
 **第4段 カレンダー (同日・D2=個人 Google)**: `types/supportLog.ts` に `appointments`（AIが抽出・記号＋用件・番号禁止・「今日の日付」で相対表現を解決）
 → `lib/calendar/links.ts`（JST→UTC・終日・maskPatterns 二重安全網・`googleCalendarUrl`／`buildIcs` RFC5545）→ `components/drafts/AppointmentsPanel.tsx`
 （「Googleカレンダーに追加」＝作成画面を開くだけ・保存は人／.ics）。**API・OAuth 審査は使わない**（テスト状態は7日でトークン失効＝公式確認）。記号版 result から作り実名を渡さない。
