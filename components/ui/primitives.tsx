@@ -54,24 +54,29 @@ export function PageHeader({
   helpAnchor?: string;
 }) {
   return (
-    <header className="mb-7">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-[length:var(--t-title)] font-bold leading-[1.4] tracking-[0.01em] text-[var(--ink)]">
-            {title}
-          </h1>
-        </div>
+    <header className="mb-[var(--sp-4)]">
+      {/*
+        2026-09-16: 以前は justify-between で「使い方」リンクを見出しの反対側へ飛ばしていた。
+        見出しが短いページでは画面の真ん中にぽつんと浮いて、意図した配置に見えなかった。
+        見出しのすぐ隣に添える形に変える。
+      */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="text-[length:var(--t-title)] font-bold leading-[1.4] tracking-[0.01em] text-[var(--ink)]">
+          {title}
+        </h1>
         {helpAnchor ? (
           <Link
             href={`/guide#${helpAnchor}`}
-            className="mt-1 inline-flex flex-shrink-0 items-center gap-1.5 rounded-[10px] border border-[var(--line)] bg-white px-3 py-1.5 text-xs text-[var(--muted)] transition-colors hover:border-[var(--green-line)] hover:bg-[var(--green-soft)] hover:text-[var(--green)]"
+            className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-[7px] px-2 py-1 text-[12px] text-[var(--faint)] transition-colors hover:bg-[var(--green-soft)] hover:text-[var(--green)]"
           >
-            <IconHelpCircle size={14} />
+            <IconHelpCircle size={13} />
             この画面の使い方
           </Link>
         ) : null}
       </div>
-      {description ? <p className="mt-2 text-sm text-[var(--muted)]">{description}</p> : null}
+      {description ? (
+        <p className="mt-1.5 text-[13.5px] leading-relaxed text-[var(--muted)]">{description}</p>
+      ) : null}
     </header>
   );
 }

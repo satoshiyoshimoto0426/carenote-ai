@@ -309,7 +309,7 @@ export default function CreatePage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="app-page">
       <PageHeader
         title="帳票作成（下書き）"
         description="メモを入力すると、AIがルールに沿って帳票の下書きを作成します"

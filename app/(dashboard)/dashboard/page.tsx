@@ -79,9 +79,9 @@ export default function DashboardPage() {
     }));
 
   return (
-    <div className="animate-fadeIn mx-auto max-w-4xl">
+    <div className="animate-fadeIn app-page">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="mb-[var(--sp-2)] flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="ダッシュボード" description="評価履歴とスコア推移" helpAnchor="ch1" />
         <Link href="/evaluate" className={btnPrimary}>
           <IconPlus size={15} />
@@ -90,15 +90,15 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="mb-6 grid grid-cols-3 gap-3">
+      <div className="mb-[var(--sp-4)] grid grid-cols-3 gap-3">
         {[
           { label: "総評価数", value: totalEvals, unit: "件" },
           { label: "平均スコア", value: avgScore, unit: "/27" },
           { label: "優良評価", value: highScoreCount, unit: "件" },
         ].map(({ label, value, unit }) => (
-          <Card key={label} className="p-4 text-center">
-            <div className="text-xs text-[var(--muted)]">{label}</div>
-            <div className="tnum mt-1 text-2xl font-medium text-[var(--ink)]">
+          <Card key={label} className="px-4 py-5 text-center">
+            <div className="text-[12px] font-medium text-[var(--muted)]">{label}</div>
+            <div className="tnum mt-1.5 text-[26px] font-bold leading-none text-[var(--ink)]">
               {value}
               <span className="ml-0.5 text-sm font-normal text-[var(--faint)]">{unit}</span>
             </div>
@@ -151,8 +151,8 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* History list */}
-      <Card className="overflow-hidden">
+      {/* History list — 残りの高さを埋める（中身が少ない画面が上に貼りつかないように） */}
+      <Card className="flex min-h-[260px] flex-1 flex-col overflow-hidden">
         <div className="border-b border-[var(--line)] px-5 py-4">
           <SectionTitle>評価履歴</SectionTitle>
         </div>
@@ -162,11 +162,16 @@ export default function DashboardPage() {
             読み込み中...
           </div>
         ) : records.length === 0 ? (
-          <div className="py-14 text-center">
-            <div className="mb-3 flex justify-center text-[var(--faint)]">
-              <IconFileText size={36} />
+          <div className="flex flex-1 flex-col items-center justify-center px-5 py-16 text-center">
+            <div className="mb-4 text-[var(--faint)]">
+              <IconFileText size={34} />
             </div>
-            <div className="mb-5 text-sm text-[var(--muted)]">まだ評価履歴がありません</div>
+            <div className="mb-1 text-[15px] font-bold text-[var(--ink)]">
+              まだ評価履歴がありません
+            </div>
+            <p className="mb-6 max-w-[26rem] text-[13px] leading-relaxed text-[var(--muted)]">
+              ケアプランのPDFを読み込ませると、8つの観点で採点した結果がここに並びます。
+            </p>
             <Link href="/evaluate" className={btnPrimary}>
               最初の評価を開始する
             </Link>

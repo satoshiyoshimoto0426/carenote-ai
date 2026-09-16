@@ -76,7 +76,7 @@ export default function ClientsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="app-page">
       <div className="flex items-start justify-between gap-4">
         <PageHeader
           title="利用者"
