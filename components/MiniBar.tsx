@@ -7,17 +7,18 @@ interface MiniBarProps {
 
 export default function MiniBar({ score, maxScore }: MiniBarProps) {
   const pct = (score / maxScore) * 100;
-  const color = pct >= 80 ? "#10b981" : pct >= 60 ? "#f59e0b" : "#ef4444";
+  // 良い / 注意 / 要改善 の3系統。色はトークンに合わせる（意味の色分けは維持）
+  const color = pct >= 80 ? "var(--green)" : pct >= 60 ? "var(--amber)" : "var(--clay)";
 
   return (
     <div className="flex items-center gap-2.5 w-full">
-      <div className="flex-1 h-2 rounded bg-slate-800 overflow-hidden">
+      <div className="flex-1 h-2 overflow-hidden rounded-full bg-[var(--line-soft)]">
         <div
-          className="h-full rounded"
+          className="h-full rounded-full"
           style={{ width: `${pct}%`, background: color, transition: "width 1s ease" }}
         />
       </div>
-      <span className="text-slate-100 font-bold text-sm min-w-[45px] text-right">
+      <span className="tnum min-w-[45px] text-right text-sm font-bold text-[var(--ink)]">
         {score}/{maxScore}
       </span>
     </div>

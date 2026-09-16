@@ -56,7 +56,7 @@ export default function PreSendPreview({
 
   return (
     <div className="animate-fadeIn space-y-4">
-      <div className="rounded-[12px] border border-[var(--green)] bg-[var(--green-soft)] p-3.5">
+      <div className="rounded-[10px] border border-[var(--green-line)] bg-[var(--green-soft)] p-3.5">
         <p className="text-sm font-medium text-[var(--green)]">
           これがAIに送られる文章です。名前と番号は置き換え済みです。
         </p>
@@ -68,9 +68,10 @@ export default function PreSendPreview({
       </div>
 
       {totalCandidates > 0 && (
-        <div className="rounded-[12px] border border-[var(--clay)] bg-white p-3.5">
+        <div className="rounded-[10px] border border-[var(--clay)] bg-[var(--clay-soft)] p-3.5">
           <p className="text-sm font-medium text-[var(--clay)]">
-            赤い言葉は「名前かもしれないのに消せなかったもの」です（{totalCandidates}件）。
+            赤い言葉は「名前かもしれないのに消せなかったもの」です（
+            <span className="tnum">{totalCandidates}</span>件）。
           </p>
           <p className="mt-1 text-xs text-[var(--muted)]">
             家族や他事業所の方の名前なら「戻って直す」で言い換えてください（例:「長女」「担当ケアマネ」）。
@@ -82,7 +83,10 @@ export default function PreSendPreview({
       {Object.entries(data.fields)
         .filter(([, text]) => text.trim().length > 0)
         .map(([key, text]) => (
-          <section key={key} className="rounded-[12px] border border-[var(--paper)] bg-white p-4">
+          <section
+            key={key}
+            className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-4"
+          >
             <h3 className="mb-2 text-xs font-medium text-[var(--muted)]">
               {FIELD_LABELS[key] ?? key}
             </h3>

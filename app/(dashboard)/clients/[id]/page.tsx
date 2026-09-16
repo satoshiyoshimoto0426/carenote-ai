@@ -78,14 +78,14 @@ function SavedDocView({ doc }: { doc: CareDocumentRecord }) {
 function StatusBadge({ doc }: { doc: CareDocumentRecord }) {
   if (doc.status === "approved") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-0.5 text-xs text-[var(--green)]">
+      <span className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-0.5 text-xs text-[var(--green)]">
         <IconCheck size={12} />
         承認済み
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center rounded-full bg-[var(--amber-soft)] px-2.5 py-0.5 text-xs text-[#7A5B1E]">
+    <span className="inline-flex items-center rounded-[6px] border border-[var(--amber-line)] bg-[var(--amber-soft)] px-2.5 py-0.5 text-xs text-[var(--amber)]">
       下書き
     </span>
   );
@@ -202,7 +202,7 @@ export default function ClientDetailPage() {
           利用者
         </Link>
         <IconChevronRight size={13} className="text-[var(--faint)]" />
-        <span className="text-[var(--ink)]">{client.code}様</span>
+        <span className="code-chip">{client.code}様</span>
       </nav>
 
       {/* D4: 関係者名簿（家族・担当者・主治医）。登録した名前は黒塗りで「A様の長女」等に置き換わる */}
@@ -218,13 +218,10 @@ export default function ClientDetailPage() {
 
       <header className="mb-8">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h1
-            className="text-[26px] font-medium leading-snug text-[var(--ink)]"
-            style={{ fontFamily: "var(--serif)" }}
-          >
-            {client.code}様<span className="text-base text-[var(--muted)]">（仮名）</span>
+          <h1 className="text-[21px] font-bold leading-snug tracking-[0.01em] text-[var(--ink)]">
+            {client.code}様<span className="text-sm font-normal text-[var(--muted)]">（仮名）</span>
           </h1>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--green-line)] bg-[var(--green-soft)] px-3 py-1 text-xs text-[var(--green)]">
+          <span className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-1 text-xs text-[var(--green)]">
             <IconLock size={13} />
             仮名表示中
           </span>
@@ -253,7 +250,7 @@ export default function ClientDetailPage() {
                 type="button"
                 onClick={() => toggleExpand(d.id)}
                 aria-expanded={expandedId === d.id}
-                className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[var(--paper)]"
+                className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[var(--surface-2)]"
               >
                 <span className="flex min-w-0 items-center gap-2.5">
                   <IconFileText size={16} className="shrink-0 text-[var(--faint)]" />
@@ -263,7 +260,7 @@ export default function ClientDetailPage() {
                 </span>
                 <span className="flex shrink-0 items-center gap-2.5">
                   <StatusBadge doc={d} />
-                  <span className="text-xs text-[var(--faint)]">
+                  <span className="tnum text-xs text-[var(--faint)]">
                     {new Date(d.createdAt).toLocaleDateString("ja-JP")}
                   </span>
                   <IconChevronRight
@@ -316,9 +313,9 @@ export default function ClientDetailPage() {
                       </>
                     ) : (
                       <div className="flex flex-wrap items-center gap-4">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-0.5 text-xs text-[var(--green)]">
+                        <span className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-0.5 text-xs text-[var(--green)]">
                           <IconCheck size={12} />
-                          承認済み・{approvedDateLabel(d.approvedAt)}
+                          承認済み・<span className="tnum">{approvedDateLabel(d.approvedAt)}</span>
                         </span>
                         <button
                           type="button"
@@ -389,7 +386,7 @@ export default function ClientDetailPage() {
             <li key={t}>
               <Link
                 href="/create"
-                className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--paper)]"
+                className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--surface-2)]"
               >
                 <span className="flex min-w-0 items-center gap-2.5">
                   <IconFileText size={16} className="shrink-0 text-[var(--faint)]" />

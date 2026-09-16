@@ -29,7 +29,7 @@ function formatDateFull(iso: string) {
 /** Maps a total score to its semantic ink color (green=優良 / amber=改善推奨 / clay=要改善). */
 function scoreColor(score: number) {
   if (score >= 22) return "var(--green)";
-  if (score >= 16) return "#7A5B1E";
+  if (score >= 16) return "var(--amber)";
   return "var(--clay)";
 }
 
@@ -38,11 +38,11 @@ function ScoreBadge({ score }: { score: number }) {
     score >= 22
       ? ["var(--green-soft)", "var(--green)", "var(--green-line)", "優良"]
       : score >= 16
-        ? ["var(--amber-soft)", "#7A5B1E", "rgba(176,130,39,0.35)", "改善推奨"]
-        : ["rgba(192,73,43,0.07)", "var(--clay)", "rgba(192,73,43,0.35)", "要改善"];
+        ? ["var(--amber-soft)", "var(--amber)", "var(--amber-line)", "改善推奨"]
+        : ["var(--clay-soft)", "var(--clay)", "var(--clay)", "要改善"];
   return (
     <span
-      className="rounded-full px-2 py-0.5 text-xs font-medium"
+      className="rounded-[6px] px-2 py-0.5 text-xs font-medium"
       style={{ background: bg, color, border: `1px solid ${border}` }}
     >
       {label}
@@ -82,12 +82,7 @@ export default function DashboardPage() {
     <div className="animate-fadeIn mx-auto max-w-4xl">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <PageHeader
-          kicker="Dashboard"
-          title="ダッシュボード"
-          description="評価履歴とスコア推移"
-          helpAnchor="ch1"
-        />
+        <PageHeader title="ダッシュボード" description="評価履歴とスコア推移" helpAnchor="ch1" />
         <Link href="/evaluate" className={btnPrimary}>
           <IconPlus size={15} />
           評価を開始
@@ -103,10 +98,7 @@ export default function DashboardPage() {
         ].map(({ label, value, unit }) => (
           <Card key={label} className="p-4 text-center">
             <div className="text-xs text-[var(--muted)]">{label}</div>
-            <div
-              className="mt-1 text-2xl font-medium text-[var(--ink)]"
-              style={{ fontFamily: "var(--serif)" }}
-            >
+            <div className="tnum mt-1 text-2xl font-medium text-[var(--ink)]">
               {value}
               <span className="ml-0.5 text-sm font-normal text-[var(--faint)]">{unit}</span>
             </div>
@@ -120,39 +112,39 @@ export default function DashboardPage() {
           <SectionTitle className="mb-4">スコア推移（直近20件）</SectionTitle>
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#ECE8E1" />
-              <XAxis dataKey="label" tick={{ fill: "#9A968D", fontSize: 11 }} />
-              <YAxis domain={[0, 27]} tick={{ fill: "#9A968D", fontSize: 11 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--line-soft)" />
+              <XAxis dataKey="label" tick={{ fill: "var(--faint)", fontSize: 11 }} />
+              <YAxis domain={[0, 27]} tick={{ fill: "var(--faint)", fontSize: 11 }} />
               <Tooltip
                 contentStyle={{
-                  background: "#FFFFFF",
-                  border: "1px solid #E7E3DC",
-                  borderRadius: 10,
+                  background: "var(--card)",
+                  border: "1px solid var(--line)",
+                  borderRadius: 8,
                   boxShadow: "0 1px 3px rgba(28,27,25,0.06)",
                 }}
-                labelStyle={{ color: "#6B6862" }}
-                itemStyle={{ color: "#15604D" }}
+                labelStyle={{ color: "var(--muted)" }}
+                itemStyle={{ color: "var(--green)" }}
                 formatter={(v: number | undefined) => [`${v ?? ""} / 27`, "スコア"]}
               />
               <ReferenceLine
                 y={22}
-                stroke="#CDE0D8"
+                stroke="var(--green-line)"
                 strokeDasharray="4 2"
-                label={{ value: "優良", fill: "#15604D", fontSize: 10 }}
+                label={{ value: "優良", fill: "var(--green)", fontSize: 10 }}
               />
               <ReferenceLine
                 y={16}
-                stroke="rgba(176,130,39,0.35)"
+                stroke="var(--amber-line)"
                 strokeDasharray="4 2"
-                label={{ value: "改善推奨", fill: "#B08227", fontSize: 10 }}
+                label={{ value: "改善推奨", fill: "var(--amber)", fontSize: 10 }}
               />
               <Line
                 type="monotone"
                 dataKey="score"
-                stroke="#15604D"
+                stroke="var(--green)"
                 strokeWidth={2}
-                dot={{ fill: "#15604D", r: 3.5 }}
-                activeDot={{ r: 5, fill: "#15604D" }}
+                dot={{ fill: "var(--green)", r: 3.5 }}
+                activeDot={{ r: 5, fill: "var(--green)" }}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -193,7 +185,7 @@ export default function DashboardPage() {
             {records.map((rec) => (
               <div
                 key={rec.id}
-                className="grid grid-cols-12 items-center gap-2 border-b border-[var(--line-soft)] px-5 py-3.5 text-sm transition-colors last:border-b-0 hover:bg-[var(--paper)]"
+                className="grid grid-cols-12 items-center gap-2 border-b border-[var(--line-soft)] px-5 py-3.5 text-sm transition-colors last:border-b-0 hover:bg-[var(--surface-2)]"
               >
                 <div className="col-span-4 truncate font-medium text-[var(--ink)]">
                   {rec.client_name || "—"}
@@ -203,12 +195,12 @@ export default function DashboardPage() {
                 </div>
                 <div className="col-span-2 text-center">
                   <span
-                    className="text-lg font-medium"
-                    style={{ color: scoreColor(rec.total_score), fontFamily: "var(--serif)" }}
+                    className="tnum text-lg font-medium"
+                    style={{ color: scoreColor(rec.total_score) }}
                   >
                     {rec.total_score}
                   </span>
-                  <span className="text-xs text-[var(--faint)]">/27</span>
+                  <span className="tnum text-xs text-[var(--faint)]">/27</span>
                 </div>
                 <div className="col-span-2">
                   <ScoreBadge score={rec.total_score} />

@@ -99,8 +99,8 @@ export default function RelatedPeople({
   };
 
   return (
-    <section className="rounded-[12px] border border-[var(--paper)] bg-white p-4">
-      <h3 className="text-sm font-medium">関係者名簿</h3>
+    <section className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-4">
+      <h3 className="text-sm font-medium text-[var(--ink)]">関係者名簿</h3>
       <p className="mt-1 text-xs text-[var(--muted)]">
         ご家族や関係先の方の名前を登録すると、メモの中の名前が「{clientCode}
         様の長女」のような記号に置き換わってからAIへ送られます。 実名はこの画面にだけ表示します。
@@ -111,13 +111,13 @@ export default function RelatedPeople({
           {people.map((p) => (
             <li
               key={p.id}
-              className="flex items-center justify-between rounded-[10px] bg-[var(--paper)] px-3 py-2 text-sm"
+              className="flex items-center justify-between gap-3 rounded-[8px] border border-[var(--line-soft)] bg-[var(--surface-2)] px-3 py-2 text-sm"
             >
               <span>
-                <span className="font-medium">{p.relation}</span>
-                <span className="ml-2">{p.name}</span>
+                <span className="font-medium text-[var(--ink)]">{p.relation}</span>
+                <span className="ml-2 text-[var(--ink)]">{p.name}</span>
                 <span className="ml-2 text-xs text-[var(--muted)]">
-                  → {relatedAliasCode(clientCode, p.relation)}
+                  → <span className="code-chip">{relatedAliasCode(clientCode, p.relation)}</span>
                 </span>
               </span>
               <button

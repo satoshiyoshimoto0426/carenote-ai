@@ -15,7 +15,7 @@ import { IconHelpCircle } from "./icons";
  * The green focus ring comes from the global focus-visible rule in globals.css.
  */
 export const inputClass =
-  "w-full rounded-[10px] border border-[#E0DBD2] bg-white px-4 py-3 text-sm " +
+  "w-full rounded-[8px] border border-[var(--line)] bg-[var(--card)] px-3 py-2.5 text-sm " +
   "text-[var(--ink)] placeholder:text-[var(--faint)]";
 
 /** Textarea variant of inputClass — same field styling plus readable line height. */
@@ -23,43 +23,41 @@ export const textareaClass = `${inputClass} leading-relaxed`;
 
 /** Primary action button: solid deep green, white text. */
 export const btnPrimary =
-  "inline-flex items-center justify-center gap-2 rounded-[10px] bg-[var(--green)] px-5 py-2.5 " +
-  "text-sm font-semibold text-white transition-colors hover:bg-[#0F4A3B] " +
+  "inline-flex items-center justify-center gap-2 rounded-[8px] bg-[var(--green)] px-4.5 py-2.5 " +
+  "text-sm font-bold text-white transition-colors hover:bg-[var(--green-deep)] " +
   "disabled:cursor-not-allowed disabled:opacity-50";
 
 /** Secondary action button: white with warm border, ink text. */
 export const btnSecondary =
-  "inline-flex items-center justify-center gap-2 rounded-[10px] border border-[#E0DBD2] " +
-  "bg-white px-5 py-2.5 text-sm font-medium text-[var(--ink)] transition-colors " +
-  "hover:bg-[var(--paper)] disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-center gap-2 rounded-[8px] border border-[var(--line)] " +
+  "bg-[var(--card)] px-4.5 py-2.5 text-sm font-medium text-[var(--muted)] transition-colors " +
+  "hover:bg-[var(--surface-2)] hover:text-[var(--ink)] disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
- * Page heading block: small tracked kicker above a mincho (serif) title.
- * Every dashboard page opens with this so the hierarchy reads the same everywhere.
+ * 各ページの見出し。
+ *
+ * 2026-09-16 の作り直し: 旧版は日本語の見出しの上に "CREATE" のような**ラテン文字の
+ * アイブロウ**を置き、見出しを明朝体で組んでいた。これは生成AIが作る画面の典型で、
+ * 情報も足していない（"CREATE" は「帳票作成」の上に置いても何も説明しない）。
+ * 見出し1本に整理し、書体は本文と同じゴシックの太字にした。
  *
  * helpAnchor: 使い方ページの章アンカー（例 "ch3"）。渡すと見出しの右に
  * 「この画面の使い方」リンクが出て /guide#ch3 へ飛ぶ（迷った職員がその場で手順を open できる）。
  */
 export function PageHeader({
-  kicker,
   title,
   description,
   helpAnchor,
 }: {
-  kicker: string;
   title: string;
   description?: string;
   helpAnchor?: string;
 }) {
   return (
-    <header className="mb-8">
+    <header className="mb-7">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--faint)]">{kicker}</p>
-          <h1
-            className="mt-1.5 text-[26px] font-medium leading-snug text-[var(--ink)]"
-            style={{ fontFamily: "var(--serif)" }}
-          >
+          <h1 className="text-[21px] font-bold leading-snug tracking-[0.01em] text-[var(--ink)]">
             {title}
           </h1>
         </div>
@@ -86,7 +84,7 @@ export function PageHeader({
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
   return (
     <div
-      className={`rounded-2xl border border-[var(--line)] bg-[var(--card)] shadow-[0_1px_3px_rgba(28,27,25,0.06)] ${className ?? ""}`}
+      className={`rounded-[10px] border border-[var(--line)] bg-[var(--card)] shadow-[0_1px_2px_rgba(16,21,26,0.05)] ${className ?? ""}`}
     >
       {children}
     </div>
@@ -108,12 +106,7 @@ export function SectionTitle({
   as?: "h2" | "h3";
 }) {
   return (
-    <Tag
-      className={`text-[15px] font-medium text-[var(--ink)] ${className ?? ""}`}
-      style={{ fontFamily: "var(--serif)" }}
-    >
-      {children}
-    </Tag>
+    <Tag className={`text-[15px] font-bold text-[var(--ink)] ${className ?? ""}`}>{children}</Tag>
   );
 }
 

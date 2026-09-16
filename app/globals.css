@@ -10,25 +10,38 @@
 @source "../components";
 
 /*
- * CareNote AI design tokens (design system v0, approved 2026-07).
- * Light "paper" editorial theme: warm off-white surfaces, deep-green accent,
- * mincho (serif) headings + gothic (sans) body. Consumed by
- * components/ui/primitives.tsx and page-level styles via var(--token).
+ * CareNote AI design tokens (design system v1, 2026-09-16).
+ *
+ * v0 からの変更と理由（吉本さん指摘「AIが作った感を消したい」）:
+ *   v0 は「温かいクリーム色の地 ＋ 明朝体の見出し ＋ アクセント1色」だった。
+ *   これは生成AIが作るUIで最も多い定番の組み合わせで、それ自体が「量産物」の記号に
+ *   なっていた。地の色を**冷たい紙色**へ移し、見出しの明朝体をやめ、記号（A様）だけ
+ *   等幅書体にして「これは氏名ではなく符号」と読めるようにした。
+ *   深緑のブランド色は残す（色自体は定番化しておらず、地を替えるだけで印象が変わるため）。
+ *
+ * 使い方: 直書きの16進数は置かず、必ず var(--token) を通す。
+ * 参照元: components/ui/primitives.tsx と各ページ。
  */
 :root {
-  --paper: #f7f5f1;
+  --paper: #eef1f4;
   --card: #ffffff;
-  --ink: #1c1b19;
-  --muted: #6b6862;
-  --faint: #9a968d;
-  --line: #e7e3dc;
-  --line-soft: #ece8e1;
-  --green: #15604d;
-  --green-soft: #eef4f1;
-  --green-line: #cde0d8;
-  --clay: #c0492b;
-  --amber: #b08227;
-  --amber-soft: #fbf6ec;
+  --surface-2: #f7f9fa;
+  --ink: #10151a;
+  --muted: #47535f;
+  --faint: #78848f;
+  --line: #dbe2e8;
+  --line-soft: #eaeff3;
+  --green: #0e5c46;
+  --green-deep: #0a4735;
+  --green-soft: #e6f0ec;
+  --green-line: #bcd6cc;
+  --clay: #a83226;
+  --clay-soft: #fdeeec;
+  --amber: #9a5b06;
+  --amber-soft: #fdf4e6;
+  --amber-line: #f0dcbb;
+  /* 記号（A様・B様）と件数に使う。氏名ではなく符号であることを書体で示す */
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --serif: "Hiragino Mincho ProN", "Yu Mincho", serif;
   --sans: "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
 }
@@ -51,7 +64,24 @@ textarea:focus-visible,
 select:focus-visible {
   outline: none;
   border-color: var(--green);
-  box-shadow: 0 0 0 3px rgba(21, 96, 77, 0.15);
+  box-shadow: 0 0 0 3px rgba(14, 92, 70, 0.13);
+}
+
+/* 記号（A様）の共通見た目。氏名と見分けがつくよう等幅＋淡い緑の札にする */
+.code-chip {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--green);
+  background: var(--green-soft);
+  border: 1px solid var(--green-line);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+/* 件数・点数など、桁を揃えて読ませる数字 */
+.tnum {
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes fadeIn {
@@ -110,7 +140,7 @@ select:focus-visible {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: #fcfbf9;
+  background: var(--card);
   border-bottom: 1px solid var(--line);
 }
 

@@ -19,7 +19,7 @@ export default function MonitoringDraftView({ draft }: { draft: MonitoringDraft 
               </div>
               <div className="space-y-1 text-xs leading-relaxed text-[var(--ink)]">
                 <div>
-                  <span className="font-medium text-[#7A5B1E]">達成状況:</span> {g.achievement}
+                  <span className="font-medium text-[var(--amber)]">達成状況:</span> {g.achievement}
                 </div>
                 <div>
                   <span className="font-medium text-[var(--green)]">根拠:</span> {g.evidence}

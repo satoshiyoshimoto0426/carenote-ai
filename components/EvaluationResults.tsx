@@ -16,45 +16,58 @@ export default function EvaluationResults({ result, onReset }: EvaluationResults
 
   const judgement =
     result.total_score >= 22 ? "優良" : result.total_score >= 16 ? "改善推奨" : "要改善";
+  // 判定の3段階は色で読ませる（緑=優良・琥珀=改善推奨・赤土=要改善）。
   const judgementColor =
-    result.total_score >= 22 ? "#10b981" : result.total_score >= 16 ? "#f59e0b" : "#ef4444";
+    result.total_score >= 22
+      ? "var(--green)"
+      : result.total_score >= 16
+        ? "var(--amber)"
+        : "var(--clay)";
   const judgementBg =
     result.total_score >= 22
-      ? "rgba(16,185,129,0.13)"
+      ? "var(--green-soft)"
       : result.total_score >= 16
-        ? "rgba(245,158,11,0.13)"
-        : "rgba(239,68,68,0.13)";
+        ? "var(--amber-soft)"
+        : "var(--clay-soft)";
+  const judgementLine =
+    result.total_score >= 22
+      ? "var(--green-line)"
+      : result.total_score >= 16
+        ? "var(--amber-line)"
+        : "var(--clay)";
 
   return (
     <div className="animate-fadeIn">
       {/* Score Header */}
       <div
-        className="rounded-3xl p-7 text-center mb-5"
+        className="rounded-[10px] p-7 text-center mb-5"
         style={{
-          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-          border: "1px solid #334155",
-          boxShadow: "0 8px 48px rgba(0,0,0,0.4)",
+          background: "var(--card)",
+          border: "1px solid var(--line)",
+          boxShadow: "0 1px 3px rgba(28,27,25,0.06)",
         }}
       >
-        <div className="text-slate-400 text-xs font-semibold tracking-[3px] mb-1 uppercase">
+        <div className="text-[var(--faint)] text-xs font-semibold tracking-[3px] mb-2 uppercase">
           Evaluation Report
         </div>
-        <div className="text-xl font-black mb-5">{result.client_name || "利用者"}様</div>
+        <div className="mb-5">
+          <span className="code-chip">{result.client_name || "利用者"}様</span>
+        </div>
         <div className="flex justify-center mb-4">
           <ScoreRing score={result.total_score} maxScore={27} size={130} />
         </div>
         <div
-          className="inline-block px-5 py-1.5 rounded-full text-sm font-bold mb-3"
+          className="inline-block px-4 py-1.5 rounded-[8px] text-sm font-bold mb-3"
           style={{
             background: judgementBg,
             color: judgementColor,
-            border: `1px solid ${judgementColor}44`,
+            border: `1px solid ${judgementLine}`,
           }}
         >
           {judgement}
         </div>
         {result.evaluator_comment && (
-          <p className="text-slate-300 text-sm leading-relaxed mt-3 max-w-md mx-auto">
+          <p className="text-[var(--muted)] text-sm leading-relaxed mt-3 max-w-md mx-auto">
             {result.evaluator_comment}
           </p>
         )}
@@ -76,22 +89,22 @@ export default function EvaluationResults({ result, onReset }: EvaluationResults
       {/* Priority Improvements */}
       {result.priority_improvements?.length > 0 && (
         <div
-          className="rounded-2xl p-5 mb-5"
+          className="rounded-[10px] p-5 mb-5"
           style={{
-            background: "linear-gradient(135deg, rgba(127,29,29,0.13), #1e293b)",
-            border: "1px solid rgba(239,68,68,0.27)",
+            background: "var(--clay-soft)",
+            border: "1px solid var(--clay)",
           }}
         >
-          <div className="text-red-300 font-black text-base mb-3.5">🚨 最優先改善事項</div>
+          <div className="text-[var(--clay)] font-bold text-base mb-3.5">🚨 最優先改善事項</div>
           {result.priority_improvements.map((item, i) => (
             <div key={i} className="flex gap-3 items-start mb-2.5">
               <div
-                className="flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs text-red-300"
-                style={{ background: "rgba(239,68,68,0.2)" }}
+                className="tnum flex-shrink-0 w-6 h-6 rounded-[6px] flex items-center justify-center font-bold text-xs text-white"
+                style={{ background: "var(--clay)" }}
               >
                 {i + 1}
               </div>
-              <div className="text-slate-200 text-sm leading-relaxed pt-0.5">{item}</div>
+              <div className="text-[var(--ink)] text-sm leading-relaxed pt-0.5">{item}</div>
             </div>
           ))}
         </div>
@@ -102,15 +115,14 @@ export default function EvaluationResults({ result, onReset }: EvaluationResults
         <button
           type="button"
           onClick={onReset}
-          className="flex-1 py-3.5 rounded-2xl border border-slate-600 bg-transparent text-slate-100 text-sm font-bold cursor-pointer hover:bg-slate-800 transition-colors"
+          className="flex-1 py-3.5 rounded-[10px] border border-[var(--line)] bg-[var(--card)] text-[var(--muted)] text-sm font-bold cursor-pointer transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
         >
           🔄 別の書類を評価
         </button>
         <button
           type="button"
           onClick={() => exportToExcel(result)}
-          className="flex-1 py-3.5 rounded-2xl border-none text-white text-sm font-bold cursor-pointer hover:opacity-90 transition-opacity"
-          style={{ background: "linear-gradient(135deg, #059669, #0891b2)" }}
+          className="flex-1 py-3.5 rounded-[10px] border-none bg-[var(--green)] text-white text-sm font-bold cursor-pointer transition-colors hover:bg-[var(--green-deep)]"
         >
           📥 Excelでダウンロード
         </button>

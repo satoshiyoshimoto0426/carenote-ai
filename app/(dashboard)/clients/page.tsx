@@ -79,7 +79,6 @@ export default function ClientsPage() {
     <div className="mx-auto max-w-2xl">
       <div className="flex items-start justify-between gap-4">
         <PageHeader
-          kicker="Clients"
           title="利用者"
           description="利用者ごとに書類が貯まります（氏名は記号で表示）"
           helpAnchor="ch2"
@@ -194,11 +193,11 @@ export default function ClientsPage() {
               <li key={c.id}>
                 <Link
                   href={`/clients/${c.id}`}
-                  className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--paper)]"
+                  className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--surface-2)]"
                 >
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-[var(--ink)]">{c.code}様</div>
-                    <div className="mt-0.5 truncate text-xs text-[var(--muted)]">
+                    <span className="code-chip inline-block">{c.code}様</span>
+                    <div className="mt-1.5 truncate text-xs text-[var(--muted)]">
                       {attrLine(c) || "（属性未設定）"}
                     </div>
                   </div>

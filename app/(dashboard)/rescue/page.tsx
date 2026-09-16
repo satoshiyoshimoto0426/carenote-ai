@@ -92,8 +92,8 @@ const DOC_ORDER: { key: DocKey; label: string }[] = [
 
 /** 帳票カード内のコピー用・小さめのセカンダリボタン（primitives の小サイズ版）。 */
 const btnSecondarySmall =
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border " +
-  "border-[#E0DBD2] bg-white px-3 py-1.5 text-xs font-medium text-[var(--ink)] " +
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[8px] border " +
+  "border-[var(--line)] bg-[var(--card)] px-3 py-1.5 text-xs font-medium text-[var(--ink)] " +
   "transition-colors hover:bg-[var(--paper)]";
 
 /** 人物像フォームの状態。RescuePersona（lib/generation/rescue.ts）と対応。 */
@@ -211,8 +211,8 @@ function DocView({ docKey, bundle }: { docKey: DocKey; bundle: RescueBundle }) {
 /** 救済モード共通の注意書き。amber の左ボーダー帯（下書き・要事実照合の明示）。 */
 function AmberNotice({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-r-[10px] border-l-4 border-[var(--amber)] bg-[var(--amber-soft)] px-4 py-3">
-      <p className="text-xs leading-relaxed text-[#7A5B1E]">{children}</p>
+    <div className="rounded-r-[8px] border-l-4 border-[var(--amber)] bg-[var(--amber-soft)] px-4 py-3">
+      <p className="text-xs leading-relaxed text-[var(--amber)]">{children}</p>
     </div>
   );
 }
@@ -220,7 +220,7 @@ function AmberNotice({ children }: { children: ReactNode }) {
 /** エラー表示帯。clay の枠＋アイコンで明瞭に。 */
 function ErrorNotice({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2.5 rounded-[10px] border border-[var(--clay)] bg-white px-4 py-3">
+    <div className="flex items-start gap-2.5 rounded-[8px] border border-[var(--clay)] bg-[var(--clay-soft)] px-4 py-3">
       <IconAlert size={16} className="mt-0.5 shrink-0 text-[var(--clay)]" />
       <p className="text-sm leading-relaxed text-[var(--clay)]">{message}</p>
     </div>
@@ -421,7 +421,6 @@ export default function RescuePage() {
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader
-        kicker="救済モード"
         title="書類一式をつくる"
         description="利用者の人物像・診療情報などを入力すると、アセスメントからモニタリングまで5帳票の下書きを一括で作成します。"
         helpAnchor="ch6"
@@ -527,10 +526,10 @@ export default function RescuePage() {
               role="button"
               tabIndex={0}
               aria-label="参考資料（PDF・画像）を選択、またはドラッグ＆ドロップ"
-              className={`cursor-pointer rounded-2xl border-2 border-dashed p-6 text-center transition-colors duration-300 ${
+              className={`cursor-pointer rounded-[10px] border-2 border-dashed p-6 text-center transition-colors duration-300 ${
                 dragOver
                   ? "border-[var(--green)] bg-[var(--green-soft)]"
-                  : "border-[#CFC9BE] bg-white hover:border-[var(--green)]"
+                  : "border-[var(--line)] bg-[var(--card)] hover:border-[var(--green)]"
               }`}
             >
               <input
@@ -557,7 +556,7 @@ export default function RescuePage() {
                 {files.map((f, i) => (
                   <li
                     key={`${f.name}-${f.size}`}
-                    className="flex items-center gap-2.5 rounded-[10px] border border-[var(--line)] bg-white px-3.5 py-2.5"
+                    className="flex items-center gap-2.5 rounded-[8px] border border-[var(--line)] bg-[var(--card)] px-3.5 py-2.5"
                   >
                     <IconFileText size={16} className="shrink-0 text-[var(--green)]" />
                     <span className="min-w-0 flex-1 truncate text-sm text-[var(--ink)]">
@@ -572,7 +571,7 @@ export default function RescuePage() {
                         }))
                       }
                       aria-label={`${f.name} の種別`}
-                      className="shrink-0 rounded-md border border-[var(--line)] bg-white px-2 py-1 text-xs"
+                      className="shrink-0 rounded-md border border-[var(--line)] bg-[var(--card)] px-2 py-1 text-xs"
                     >
                       {INTAKE_DOC_TYPES.map((t) => (
                         <option key={t} value={t}>
@@ -580,7 +579,7 @@ export default function RescuePage() {
                         </option>
                       ))}
                     </select>
-                    <span className="shrink-0 text-xs text-[var(--faint)]">
+                    <span className="shrink-0 tnum text-xs text-[var(--faint)]">
                       {(f.size / 1024 / 1024).toFixed(1)} MB
                     </span>
                     <button
@@ -634,7 +633,7 @@ export default function RescuePage() {
                       className={`rounded-full border px-2.5 py-0.5 text-xs ${
                         d.readability === "良好"
                           ? "border-[var(--green-line)] bg-[var(--green-soft)] text-[var(--green)]"
-                          : "border-[var(--clay)] bg-white text-[var(--clay)]"
+                          : "border-[var(--clay)] bg-[var(--clay-soft)] text-[var(--clay)]"
                       }`}
                     >
                       {d.name}：{d.detectedType}・{d.readability}
@@ -645,9 +644,10 @@ export default function RescuePage() {
 
               {/* 資料どうしの食い違い（人が確かめる） */}
               {(intake.conflicts?.length ?? 0) > 0 && (
-                <div className="rounded-r-[10px] border-l-4 border-[var(--clay)] bg-white px-4 py-3">
+                <div className="rounded-r-[8px] border-l-4 border-[var(--clay)] bg-[var(--clay-soft)] px-4 py-3">
                   <p className="text-xs font-semibold text-[var(--clay)]">
-                    資料どうしの食い違い（{intake.conflicts.length}件・確かめてから使う）
+                    資料どうしの食い違い（<span className="tnum">{intake.conflicts.length}</span>
+                    件・確かめてから使う）
                   </p>
                   <ul className="mt-1.5 space-y-2">
                     {intake.conflicts.map((c) => (
@@ -669,9 +669,10 @@ export default function RescuePage() {
 
               {/* 出典つきの事実（分類別） */}
               {(intake.facts?.length ?? 0) > 0 && (
-                <details className="rounded-[10px] border border-[var(--line)] bg-white px-4 py-3">
+                <details className="rounded-[8px] border border-[var(--line)] bg-[var(--card)] px-4 py-3">
                   <summary className="cursor-pointer text-xs font-semibold text-[var(--ink)]">
-                    読み取った事実（{intake.facts.length}件・出典つき）
+                    読み取った事実（<span className="tnum">{intake.facts.length}</span>
+                    件・出典つき）
                   </summary>
                   <div className="mt-2 space-y-2">
                     {INTAKE_CATEGORIES.filter((cat) =>
@@ -699,13 +700,13 @@ export default function RescuePage() {
                 </details>
               )}
               {intake.cautions.length > 0 && (
-                <div className="rounded-r-[10px] border-l-4 border-[var(--amber)] bg-[var(--amber-soft)] px-4 py-3">
-                  <p className="text-xs font-semibold text-[#7A5B1E]">要注意点</p>
+                <div className="rounded-r-[8px] border-l-4 border-[var(--amber)] bg-[var(--amber-soft)] px-4 py-3">
+                  <p className="text-xs font-semibold text-[var(--amber)]">要注意点</p>
                   <ul className="mt-1.5 space-y-1">
                     {intake.cautions.map((c) => (
                       <li
                         key={c}
-                        className="flex items-start gap-1.5 text-xs leading-relaxed text-[#7A5B1E]"
+                        className="flex items-start gap-1.5 text-xs leading-relaxed text-[var(--amber)]"
                       >
                         <IconAlert size={13} className="mt-0.5 shrink-0" />
                         <span>{c}</span>
@@ -725,21 +726,21 @@ export default function RescuePage() {
 
           {/* 利用者に保存 */}
           {savedClientId ? (
-            <div className="rounded-2xl border border-[var(--green-line)] bg-[var(--green-soft)] p-5">
+            <div className="rounded-[10px] border border-[var(--green-line)] bg-[var(--green-soft)] p-5">
               <p className="flex items-center gap-2 text-sm font-semibold text-[var(--green)]">
                 <IconCheck size={16} />
                 利用者に保存しました
               </p>
               <Link
                 href={`/clients/${savedClientId}`}
-                className="mt-2 inline-flex items-center gap-1.5 text-sm text-[var(--green)] underline underline-offset-4 transition-colors hover:text-[#0F4A3B]"
+                className="mt-2 inline-flex items-center gap-1.5 text-sm text-[var(--green)] underline underline-offset-4 transition-colors hover:text-[var(--green-deep)]"
               >
                 利用者ページで見る
                 <IconArrowRight size={14} />
               </Link>
             </div>
           ) : (
-            <div className="space-y-4 rounded-2xl border border-[var(--green-line)] bg-[var(--green-soft)] p-5">
+            <div className="space-y-4 rounded-[10px] border border-[var(--green-line)] bg-[var(--green-soft)] p-5">
               <SectionTitle>利用者に保存</SectionTitle>
               <Field label="保存先の利用者" htmlFor="save-client">
                 <select
@@ -750,7 +751,7 @@ export default function RescuePage() {
                 >
                   <option value="">新しい利用者として保存</option>
                   {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
+                    <option key={c.id} value={c.id} className="code-chip">
                       {c.code}様
                     </option>
                   ))}

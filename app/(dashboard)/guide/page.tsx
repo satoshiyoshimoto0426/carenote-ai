@@ -37,16 +37,31 @@ const CALLOUT_STYLE: Record<
   ManualCallout["kind"],
   { bg: string; border: string; fg: string; label: string }
 > = {
-  info: { bg: "#F4F7FA", border: "#D5E0E9", fg: "#27506B", label: "知っておくこと" },
-  warn: { bg: "#FDF4F1", border: "#F0D3C9", fg: "#8A3A22", label: "気をつけること" },
-  tip: { bg: "var(--green-soft)", border: "var(--green-line)", fg: "#15604D", label: "こつ" },
+  // 3種の別は色系統で保つ: info=中立（地と罫線だけ）／warn=注意（amber）／tip=こつ（green）
+  info: {
+    bg: "var(--surface-2)",
+    border: "var(--line)",
+    fg: "var(--muted)",
+    label: "知っておくこと",
+  },
+  warn: {
+    bg: "var(--amber-soft)",
+    border: "var(--amber-line)",
+    fg: "var(--amber)",
+    label: "気をつけること",
+  },
+  tip: {
+    bg: "var(--green-soft)",
+    border: "var(--green-line)",
+    fg: "var(--green)",
+    label: "こつ",
+  },
 };
 
 export default function GuidePage() {
   return (
     <div className="max-w-[860px]">
       <PageHeader
-        kicker="Guide"
         title="使い方"
         description="はじめての方は ① から順に読んでください。各章の動画は、実際の画面を録画したものです。"
       />
@@ -84,7 +99,7 @@ function ToolbarCard() {
             href="/manual/index.html"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-[10px] border border-[#E0DBD2] bg-white px-4 py-2.5 text-sm font-medium text-[var(--ink)] transition-colors hover:bg-[var(--paper)]"
+            className="inline-flex items-center gap-2 rounded-[8px] border border-[var(--line)] bg-[var(--card)] px-4 py-2.5 text-sm font-medium text-[var(--ink)] transition-colors hover:bg-[var(--surface-2)]"
           >
             <IconPrinter size={16} />
             印刷用のページを開く
@@ -92,7 +107,7 @@ function ToolbarCard() {
           <a
             href="/manual/CareNote-AI-操作マニュアル.pdf"
             download
-            className="inline-flex items-center gap-2 rounded-[10px] bg-[var(--green)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0F4A3B]"
+            className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--green)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--green-deep)]"
           >
             <IconDownload size={16} />
             PDFをダウンロード
@@ -131,7 +146,7 @@ function TableOfContents() {
           <a
             key={ch.id}
             href={`#${ch.id}`}
-            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)] transition-colors hover:border-[var(--green-line)] hover:bg-[var(--green-soft)] hover:text-[var(--green)]"
+            className="inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--line)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--ink)] transition-colors hover:border-[var(--green-line)] hover:bg-[var(--green-soft)] hover:text-[var(--green)]"
           >
             <span className="text-[var(--faint)]">{ch.no}</span>
             {ch.short}
@@ -147,15 +162,8 @@ function ChapterBlock({ chapter }: { chapter: ManualChapter }) {
     // モバイルは上の固定バー（約59px）に隠れるので余白を多めに取る
     <section id={chapter.id} className="mb-10 scroll-mt-[76px] md:scroll-mt-6">
       <div className="mb-3 flex items-baseline gap-2">
-        <span className="text-lg text-[var(--faint)]" style={{ fontFamily: "var(--serif)" }}>
-          {chapter.no}
-        </span>
-        <h2
-          className="text-[20px] font-medium leading-snug text-[var(--ink)]"
-          style={{ fontFamily: "var(--serif)" }}
-        >
-          {chapter.title}
-        </h2>
+        <span className="text-lg text-[var(--faint)]">{chapter.no}</span>
+        <h2 className="text-[20px] font-bold leading-snug text-[var(--ink)]">{chapter.title}</h2>
       </div>
       <p className="mb-4 text-sm leading-relaxed text-[var(--muted)]">{chapter.lead}</p>
 
@@ -167,7 +175,7 @@ function ChapterBlock({ chapter }: { chapter: ManualChapter }) {
           {chapter.steps.map((step, i) => (
             <li key={step.text} className="flex gap-3 text-sm leading-relaxed">
               <span
-                className="mt-0.5 flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-full bg-[var(--green-soft)] text-[11px] font-semibold text-[var(--green)]"
+                className="tnum mt-0.5 flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-full bg-[var(--green-soft)] text-[11px] font-semibold text-[var(--green)]"
                 aria-hidden="true"
               >
                 {i + 1}
@@ -228,7 +236,7 @@ function VideoBlock({ chapter }: { chapter: ManualChapter }) {
       <video
         controls
         preload="metadata"
-        className="w-full rounded-[10px] border border-[var(--line)] bg-black"
+        className="w-full rounded-[8px] border border-[var(--line)] bg-black"
       >
         <source src={video.src} type="video/mp4" />
         {/* 字幕は収録とセットで用意する（音を出せない場所でも読めるように・MANUAL-VIDEO-SPEC.md 収録手順6） */}
@@ -253,7 +261,7 @@ function CalloutBlock({ callout }: { callout: ManualCallout }) {
   const Icon = callout.kind === "warn" ? IconAlert : callout.kind === "tip" ? IconCheck : IconInfo;
   return (
     <div
-      className="flex gap-2.5 rounded-[12px] border p-4 text-sm leading-relaxed"
+      className="flex gap-2.5 rounded-[10px] border p-4 text-sm leading-relaxed"
       style={{ background: s.bg, borderColor: s.border, color: s.fg }}
     >
       <span className="mt-0.5 flex-shrink-0">

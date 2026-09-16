@@ -30,19 +30,19 @@ export default function AssessmentUpdatesPanel({ updates, secondaryClass }: Prop
   };
 
   return (
-    <section className="rounded-[12px] border border-[var(--amber)] bg-[var(--amber-soft)] p-4">
-      <h3 className="mb-1 text-sm font-medium text-[#7A5B1E]">
-        アセスメントへの追記案（{updates.length}件）
+    <section className="rounded-[10px] border border-[var(--amber-line)] bg-[var(--amber-soft)] p-4">
+      <h3 className="mb-1 text-sm font-medium text-[var(--amber)]">
+        アセスメントへの追記案（<span className="tnum">{updates.length}</span>件）
       </h3>
-      <p className="mb-3 text-xs text-[#7A5B1E]">
+      <p className="mb-3 text-xs text-[var(--amber)]">
         今の文章は消さず、該当欄の<strong>末尾に足す</strong>
         案です。内容を読んで納得したものだけ、コピーして貼ってください。
       </p>
       <ul className="space-y-2">
         {updates.map((u, i) => (
-          <li key={`${u.field}:${u.text}`} className="rounded-[10px] bg-white p-3">
+          <li key={`${u.field}:${u.text}`} className="rounded-[8px] bg-[var(--card)] p-3">
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--green)]">
+              <span className="rounded-[6px] border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--green)]">
                 {FIELD_LABELS[u.field] ?? u.field}
               </span>
               {u.confidence === "要確認" && (

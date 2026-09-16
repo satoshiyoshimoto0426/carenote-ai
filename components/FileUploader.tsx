@@ -38,7 +38,7 @@ export default function FileUploader({
     ? "border-[var(--green)] bg-[var(--green-soft)]"
     : file
       ? "border-[var(--green-line)] bg-[var(--green-soft)]"
-      : "border-[#CFC9BE] bg-white hover:border-[var(--green)]";
+      : "border-[var(--line)] bg-[var(--card)] hover:border-[var(--green)]";
 
   return (
     <div>

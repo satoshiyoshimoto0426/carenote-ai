@@ -14,15 +14,16 @@ interface CategoryCardProps {
 
 export default function CategoryCard({ cat, index, expanded, onToggle }: CategoryCardProps) {
   const pct = (cat.score / cat.max_score) * 100;
-  const ringColor = pct >= 80 ? "#10b981" : pct >= 60 ? "#f59e0b" : "#ef4444";
+  // 良い/普通/悪い の3段階（ScoreRing と同じ割り当て）。開いた時だけ枠線に出す。
+  const ringColor = pct >= 80 ? "var(--green)" : pct >= 60 ? "var(--amber)" : "var(--clay)";
 
   return (
     <div
-      className="rounded-2xl overflow-hidden transition-all duration-300"
+      className="rounded-[10px] overflow-hidden transition-all duration-300"
       style={{
-        background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-        border: `1px solid ${expanded ? `${ringColor}66` : "#334155"}`,
-        boxShadow: expanded ? `0 0 24px ${ringColor}22` : "none",
+        background: "var(--card)",
+        border: `1px solid ${expanded ? ringColor : "var(--line)"}`,
+        boxShadow: "0 1px 3px rgba(28,27,25,0.06)",
       }}
     >
       <div
@@ -38,13 +39,13 @@ export default function CategoryCard({ cat, index, expanded, onToggle }: Categor
         aria-expanded={expanded}
         className="px-5 py-4 cursor-pointer flex items-center gap-4 select-none"
       >
-        <span className="text-3xl">{ICONS[index] ?? "📌"}</span>
+        <span className="text-2xl">{ICONS[index] ?? "📌"}</span>
         <div className="flex-1">
-          <div className="text-slate-100 font-bold text-sm mb-1.5">{cat.name}</div>
+          <div className="text-[var(--ink)] font-bold text-sm mb-1.5">{cat.name}</div>
           <MiniBar score={cat.score} maxScore={cat.max_score} />
         </div>
         <span
-          className="text-slate-400 text-xl transition-transform duration-300"
+          className="text-[var(--faint)] text-base transition-transform duration-300"
           style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
         >
           ▼
@@ -53,16 +54,16 @@ export default function CategoryCard({ cat, index, expanded, onToggle }: Categor
 
       {expanded && (
         <div className="px-5 pb-5 animate-fadeIn">
-          <div className="border-t border-slate-700 pt-4">
+          <div className="border-t border-[var(--line-soft)] pt-4">
             {cat.good_points?.length > 0 && (
               <div className="mb-3.5">
-                <div className="text-emerald-400 font-bold text-xs mb-2">✓ 良い点</div>
+                <div className="text-[var(--green)] font-bold text-xs mb-2">✓ 良い点</div>
                 {cat.good_points.map((p, i) => (
                   <div
                     key={i}
-                    className="text-slate-300 text-xs leading-relaxed pl-4 relative mb-1"
+                    className="text-[var(--muted)] text-xs leading-relaxed pl-4 relative mb-1"
                   >
-                    <span className="absolute left-0 text-emerald-400">・</span>
+                    <span className="absolute left-0 text-[var(--green)]">・</span>
                     {p}
                   </div>
                 ))}
@@ -71,13 +72,13 @@ export default function CategoryCard({ cat, index, expanded, onToggle }: Categor
 
             {cat.issues?.length > 0 && (
               <div className="mb-3.5">
-                <div className="text-red-400 font-bold text-xs mb-2">✗ 課題点</div>
+                <div className="text-[var(--clay)] font-bold text-xs mb-2">✗ 課題点</div>
                 {cat.issues.map((p, i) => (
                   <div
                     key={i}
-                    className="text-slate-300 text-xs leading-relaxed pl-4 relative mb-1"
+                    className="text-[var(--muted)] text-xs leading-relaxed pl-4 relative mb-1"
                   >
-                    <span className="absolute left-0 text-red-400">・</span>
+                    <span className="absolute left-0 text-[var(--clay)]">・</span>
                     {p}
                   </div>
                 ))}
@@ -86,11 +87,16 @@ export default function CategoryCard({ cat, index, expanded, onToggle }: Categor
 
             {cat.advice && (
               <div
-                className="rounded-xl p-3.5 mt-2"
-                style={{ background: "rgba(12,74,110,0.13)", border: "1px solid #0c4a6e" }}
+                className="rounded-[8px] p-3.5 mt-2"
+                style={{
+                  background: "var(--amber-soft)",
+                  border: "1px solid var(--amber-line)",
+                }}
               >
-                <div className="text-sky-400 font-bold text-xs mb-1.5">💡 改善アドバイス</div>
-                <div className="text-slate-200 text-xs leading-relaxed">{cat.advice}</div>
+                <div className="text-[var(--amber)] font-bold text-xs mb-1.5">
+                  💡 改善アドバイス
+                </div>
+                <div className="text-[var(--ink)] text-xs leading-relaxed">{cat.advice}</div>
               </div>
             )}
           </div>

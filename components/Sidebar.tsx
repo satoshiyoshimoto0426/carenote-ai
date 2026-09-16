@@ -40,20 +40,17 @@ export default function Sidebar() {
     <aside
       className="flex flex-col h-full"
       style={{
-        background: "#FCFBF9",
+        background: "var(--surface-2)",
         borderRight: "1px solid var(--line)",
         width: "100%",
       }}
     >
       {/* Logo */}
       <div className="px-5 py-5" style={{ borderBottom: "1px solid var(--line-soft)" }}>
-        <div
-          className="text-lg leading-tight text-[var(--ink)]"
-          style={{ fontFamily: "var(--serif)" }}
-        >
+        <div className="text-[15px] font-bold leading-tight tracking-[0.04em] text-[var(--ink)]">
           CareNote
         </div>
-        <div className="mt-0.5 text-[11px] tracking-[0.12em] text-[var(--faint)]">ケア記録支援</div>
+        <div className="mt-0.5 text-[11px] tracking-[0.1em] text-[var(--faint)]">ケア記録支援</div>
       </div>
 
       {/* Nav */}
@@ -66,11 +63,13 @@ export default function Sidebar() {
               href={href}
               className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm transition-colors ${
                 active
-                  ? "bg-[#EEF4F1] font-semibold text-[#15604D]"
-                  : "text-[#6B6862] hover:bg-[#F2F0EA] hover:text-[var(--ink)]"
+                  ? "bg-[var(--card)] font-bold text-[var(--ink)] shadow-[inset_0_0_0_1px_var(--line)]"
+                  : "text-[var(--muted)] hover:bg-[var(--line-soft)] hover:text-[var(--ink)]"
               }`}
             >
-              <Icon className="flex-shrink-0" />
+              <Icon
+                className={`flex-shrink-0 ${active ? "text-[var(--green)]" : "text-[var(--faint)]"}`}
+              />
               {label}
             </Link>
           );

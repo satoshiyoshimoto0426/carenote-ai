@@ -311,7 +311,6 @@ export default function CreatePage() {
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader
-        kicker="Create"
         title="帳票作成（下書き）"
         description="メモを入力すると、AIがルールに沿って帳票の下書きを作成します"
         helpAnchor="ch3"
@@ -329,10 +328,10 @@ export default function CreatePage() {
                 key={t}
                 type="button"
                 onClick={() => switchDocType(t)}
-                className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-[10px] px-2 py-3 text-center transition-colors ${
+                className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-[8px] px-2 py-3 text-center transition-colors ${
                   active
                     ? "bg-[var(--green-soft)] text-[var(--green)]"
-                    : "text-[var(--muted)] hover:bg-[var(--paper)]"
+                    : "text-[var(--muted)] hover:bg-[var(--surface-2)]"
                 }`}
               >
                 <Icon size={18} />
@@ -354,7 +353,7 @@ export default function CreatePage() {
             secondaryClass={btnSecondary}
           />
           {error && (
-            <div className="flex items-start gap-2.5 rounded-[12px] border border-[var(--clay)] bg-white p-4">
+            <div className="flex items-start gap-2.5 rounded-[10px] border border-[var(--clay)] bg-[var(--clay-soft)] p-4">
               <IconAlert size={16} className="mt-0.5 shrink-0 text-[var(--clay)]" />
               <p className="text-sm text-[var(--clay)]">{error}</p>
             </div>
@@ -481,43 +480,54 @@ export default function CreatePage() {
           )}
 
           {error && (
-            <div className="flex items-start gap-2.5 rounded-[12px] border border-[var(--clay)] bg-white p-4">
+            <div className="flex items-start gap-2.5 rounded-[10px] border border-[var(--clay)] bg-[var(--clay-soft)] p-4">
               <IconAlert size={16} className="mt-0.5 shrink-0 text-[var(--clay)]" />
               <p className="text-sm text-[var(--clay)]">{error}</p>
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={generate}
-            disabled={loading}
-            className={`${btnPrimary} w-full`}
-          >
-            {loading ? (
-              <>
-                <IconLoader size={16} className="animate-spin" />
-                送る文章を確認中…
-              </>
-            ) : (
-              `${DOC_META[docType].label}の下書きを生成する（送る前に確認）`
-            )}
-          </button>
+          {/*
+            2026-09-16: 横幅いっぱいの濃い緑のボタンをやめ、自然な幅で右下に置く。
+            全幅の塗りボタンは重く古く見えるうえ、押す場所が視線の終点にならない。
+            左側には「送る前に必ず確認画面が出る」ことを添えて、押す不安を減らす。
+          */}
+          <div className="flex flex-wrap items-center justify-end gap-3 pt-1">
+            <p className="mr-auto text-xs text-[var(--faint)]">
+              押しても、すぐには送られません。送る前に確認画面が出ます。
+            </p>
+            <button type="button" onClick={generate} disabled={loading} className={btnPrimary}>
+              {loading ? (
+                <>
+                  <IconLoader size={16} className="animate-spin" />
+                  送る文章を確認中…
+                </>
+              ) : (
+                `${DOC_META[docType].label}の下書きを作る`
+              )}
+            </button>
+          </div>
         </div>
       ) : (
         <div className="animate-fadeIn space-y-4">
           {/* 下書き注意 */}
-          <div className="flex items-start gap-2.5 rounded-[12px] border border-[var(--amber)] bg-[var(--amber-soft)] p-3.5">
-            <IconAlert size={16} className="mt-0.5 shrink-0 text-[#7A5B1E]" />
-            <p className="text-sm font-medium text-[#7A5B1E]">
+          <div className="flex items-start gap-2.5 rounded-[10px] border border-[var(--amber-line)] bg-[var(--amber-soft)] p-3.5">
+            <IconAlert size={16} className="mt-0.5 shrink-0 text-[var(--amber)]" />
+            <p className="text-sm font-medium text-[var(--amber)]">
               これはAIの下書きです。必ず内容を確認・修正のうえでご使用ください。
             </p>
           </div>
 
           {/* 二枚方式: 記号（A様）のまま見るか、手元で実名に戻して見るか */}
-          <div className="flex items-center justify-between rounded-[12px] border border-[var(--paper)] bg-white px-4 py-3">
+          <div className="flex items-center justify-between rounded-[10px] border border-[var(--line)] bg-[var(--card)] px-4 py-3">
             <div>
               <p className="text-sm font-medium">
-                {showRealNames ? "実名で表示しています" : "記号（A様）で表示しています"}
+                {showRealNames ? (
+                  "実名で表示しています"
+                ) : (
+                  <>
+                    記号（<span className="code-chip">A様</span>）で表示しています
+                  </>
+                )}
               </p>
               <p className="text-xs text-[var(--muted)]">
                 実名は画面とコピーにだけ使い、AIには送っていません。
@@ -533,7 +543,7 @@ export default function CreatePage() {
           {shown?.type === "assessment" && <AssessmentDraftView draft={shown.draft} />}
           {/* カイポケ転記用: 10ページの欄に合わせた文章（コピー貼り付け／拡張でページ単位の流し込み） */}
           {result?.type === "assessment" && (
-            <div className="rounded-[12px] border border-[var(--paper)] bg-white p-4">
+            <div className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-4">
               {kaipokeSheet ? (
                 <KaipokeSheetView
                   sheet={kaipokeSheet}

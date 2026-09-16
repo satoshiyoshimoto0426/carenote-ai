@@ -20,8 +20,10 @@ export default function AppointmentsPanel({ appointments, secondaryClass }: Prop
   if (items.length === 0) return null;
 
   return (
-    <section className="rounded-[12px] border border-[var(--paper)] bg-white p-4">
-      <h3 className="mb-1 text-sm font-medium">メモから拾った予定（{items.length}件）</h3>
+    <section className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-4">
+      <h3 className="mb-1 text-sm font-medium">
+        メモから拾った予定（<span className="tnum">{items.length}</span>件）
+      </h3>
       <p className="mb-3 text-xs text-[var(--muted)]">
         カレンダーには記号（A様）と用件だけを入れます。ボタンを押すと作成画面が開くので、内容を見て保存してください。
       </p>
@@ -35,7 +37,7 @@ export default function AppointmentsPanel({ appointments, secondaryClass }: Prop
           return (
             <li
               key={`${a.date}-${a.startTime}-${a.title}`}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] bg-[var(--paper)] px-3 py-2"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-[8px] bg-[var(--paper)] px-3 py-2"
             >
               <div className="text-sm">
                 <span className="font-medium">{p.title}</span>

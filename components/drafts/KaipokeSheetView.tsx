@@ -33,14 +33,14 @@ export default function KaipokeSheetView({ sheet, primaryClass, secondaryClass }
   };
 
   return (
-    <section className="space-y-3 rounded-[12px] border border-[var(--paper)] bg-white p-4">
+    <section className="space-y-3 rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-medium">カイポケの欄に合わせた文章（10ページ）</h3>
           <p className="text-xs text-[var(--muted)]">
             欄ごとにコピーして貼れます。{inferred > 0 && `推測を含む欄 ${inferred}件。`}
             {over > 0 && (
-              <span className="font-medium text-[var(--clay)]">
+              <span className="tnum font-medium text-[var(--clay)]">
                 文字数の上限を超える欄 {over}件。
               </span>
             )}
@@ -78,10 +78,10 @@ export default function KaipokeSheetView({ sheet, primaryClass, secondaryClass }
         return (
           <details
             key={page}
-            className="rounded-[10px] border border-[var(--line)] px-3 py-2"
+            className="rounded-[8px] border border-[var(--line)] px-3 py-2"
             open={page <= 2}
           >
-            <summary className="cursor-pointer text-sm font-medium">
+            <summary className="tnum cursor-pointer text-sm font-medium">
               {page}枚目：{KAIPOKE_PAGE_TITLES[page]}（{rows.length}欄）
             </summary>
             <ul className="mt-2 space-y-2">
@@ -102,7 +102,9 @@ export default function KaipokeSheetView({ sheet, primaryClass, secondaryClass }
                       <div className="flex items-center gap-2 text-xs">
                         <span
                           className={
-                            c?.over ? "font-medium text-[var(--clay)]" : "text-[var(--muted)]"
+                            c?.over
+                              ? "tnum font-medium text-[var(--clay)]"
+                              : "tnum text-[var(--muted)]"
                           }
                         >
                           {c?.length}/{c && Number.isFinite(c.limit) ? c.limit : "—"}字
