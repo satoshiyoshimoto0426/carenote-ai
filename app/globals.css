@@ -42,8 +42,29 @@
   --amber-line: #f0dcbb;
   /* 記号（A様・B様）と件数に使う。氏名ではなく符号であることを書体で示す */
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /*
+   * 本文書体。app/layout.tsx で Noto Sans JP を読み込んでいるのに、ここが
+   * Hiragino/Yu Gothic UI のままで**一度も使われていなかった**（2026-09-16 に発覚）。
+   * Windows の既定 Yu Gothic UI は細く字間が詰まり、それが「安っぽさ」の主因だった。
+   */
+  --sans: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
   --serif: "Hiragino Mincho ProN", "Yu Mincho", serif;
-  --sans: "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+
+  /*
+   * 文字の大きさ（日本語UI用の段階）。以前は 11〜15px に集中していて差がなく、
+   * どこが見出しでどこが補足か目で追えなかった。4段階に開く。
+   */
+  --t-title: 24px; /* ページ見出し */
+  --t-section: 16px; /* 節の見出し */
+  --t-body: 14.5px; /* 本文・入力 */
+  --t-label: 13px; /* 入力のラベル */
+  --t-meta: 12px; /* 補足・件数 */
+
+  /* 余白の段階。ラベル→入力→次の項目→次の節 */
+  --sp-1: 6px;
+  --sp-2: 12px;
+  --sp-3: 20px;
+  --sp-4: 28px;
 }
 
 * {
@@ -56,6 +77,20 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--sans);
+  font-size: var(--t-body);
+  /* 日本語は行間を広めに取らないと字面が詰まって読みにくい（欧文の目安より +0.3 ほど） */
+  line-height: 1.85;
+  letter-spacing: 0.01em;
+  text-rendering: optimizeLegibility;
+}
+
+/* 見出しは行間を詰める（本文と同じ 1.85 だと間延びする） */
+h1,
+h2,
+h3 {
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
 }
 
 /* Shared focus ring for form controls: green border + soft green halo. */
@@ -153,7 +188,7 @@ select:focus-visible {
 
 .app-main-inner {
   flex: 1;
-  padding: 80px 16px 24px; /* モバイルは固定トップバーぶん上を空ける */
+  padding: 80px 16px 40px; /* モバイルは固定トップバーぶん上を空ける */
 }
 
 /*
@@ -196,6 +231,6 @@ select:focus-visible {
   }
 
   .app-main-inner {
-    padding: 24px 32px;
+    padding: 32px 40px 56px;
   }
 }

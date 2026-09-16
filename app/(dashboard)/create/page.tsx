@@ -309,7 +309,7 @@ export default function CreatePage() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-3xl">
       <PageHeader
         title="帳票作成（下書き）"
         description="メモを入力すると、AIがルールに沿って帳票の下書きを作成します"
@@ -317,8 +317,8 @@ export default function CreatePage() {
       />
 
       {/* 帳票セレクタ（白カードのセグメント） */}
-      <Card className="mb-6 p-1.5">
-        <div className="grid grid-cols-2 gap-1 sm:grid-cols-5">
+      <Card className="mb-[var(--sp-4)] p-2">
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
           {DOC_ORDER.map((t) => {
             const meta = DOC_META[t];
             const Icon = meta.icon;
@@ -328,14 +328,14 @@ export default function CreatePage() {
                 key={t}
                 type="button"
                 onClick={() => switchDocType(t)}
-                className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-[8px] px-2 py-3 text-center transition-colors ${
+                className={`flex cursor-pointer flex-col items-center gap-2 rounded-[8px] px-2 py-3.5 text-center transition-colors ${
                   active
                     ? "bg-[var(--green-soft)] text-[var(--green)]"
                     : "text-[var(--muted)] hover:bg-[var(--surface-2)]"
                 }`}
               >
-                <Icon size={18} />
-                <span className="text-xs font-medium leading-tight">{meta.label}</span>
+                <Icon size={19} />
+                <span className="text-[12.5px] font-bold leading-[1.5]">{meta.label}</span>
               </button>
             );
           })}

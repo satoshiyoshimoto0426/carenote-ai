@@ -46,22 +46,22 @@ export default function Sidebar() {
       }}
     >
       {/* Logo */}
-      <div className="px-5 py-5" style={{ borderBottom: "1px solid var(--line-soft)" }}>
-        <div className="text-[15px] font-bold leading-tight tracking-[0.04em] text-[var(--ink)]">
+      <div className="px-5 py-6" style={{ borderBottom: "1px solid var(--line-soft)" }}>
+        <div className="text-[17px] font-bold leading-tight tracking-[0.04em] text-[var(--ink)]">
           CareNote
         </div>
-        <div className="mt-0.5 text-[11px] tracking-[0.1em] text-[var(--faint)]">ケア記録支援</div>
+        <div className="mt-1 text-[11px] tracking-[0.12em] text-[var(--faint)]">ケア記録支援</div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 space-y-0.5 px-3 py-5">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
           return (
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm transition-colors ${
+              className={`flex items-center gap-3 rounded-[8px] px-3 py-2.5 text-[13.5px] leading-none transition-colors ${
                 active
                   ? "bg-[var(--card)] font-bold text-[var(--ink)] shadow-[inset_0_0_0_1px_var(--line)]"
                   : "text-[var(--muted)] hover:bg-[var(--line-soft)] hover:text-[var(--ink)]"
@@ -90,10 +90,10 @@ export default function Sidebar() {
           }}
         />
         <div className="min-w-0">
-          <div className="text-xs font-medium text-[var(--ink)] truncate">
+          <div className="truncate text-[12.5px] font-bold text-[var(--ink)]">
             {user?.firstName ?? user?.emailAddresses[0]?.emailAddress ?? ""}
           </div>
-          <div className="text-xs text-[var(--faint)] truncate">
+          <div className="truncate text-[11px] leading-snug text-[var(--faint)]">
             {user?.emailAddresses[0]?.emailAddress ?? ""}
           </div>
         </div>

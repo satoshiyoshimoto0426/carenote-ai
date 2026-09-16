@@ -57,7 +57,7 @@ export function PageHeader({
     <header className="mb-7">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-[21px] font-bold leading-snug tracking-[0.01em] text-[var(--ink)]">
+          <h1 className="text-[length:var(--t-title)] font-bold leading-[1.4] tracking-[0.01em] text-[var(--ink)]">
             {title}
           </h1>
         </div>
@@ -106,13 +106,19 @@ export function SectionTitle({
   as?: "h2" | "h3";
 }) {
   return (
-    <Tag className={`text-[15px] font-bold text-[var(--ink)] ${className ?? ""}`}>{children}</Tag>
+    <Tag
+      className={`text-[length:var(--t-section)] font-bold leading-[1.5] text-[var(--ink)] ${className ?? ""}`}
+    >
+      {children}
+    </Tag>
   );
 }
 
 /**
- * Label-above-input wrapper: 12px muted label wired via htmlFor, optional hint
- * below. Guarantees every form control on these screens gets an accessible label.
+ * 入力欄とそのラベル。ラベルは htmlFor で結び、補足があれば下に小さく添える。
+ *
+ * 2026-09-16: ラベルを 12px の薄いグレーから 13px の濃い太字へ。ラベルは「読み飛ばす
+ * 装飾」ではなく「何を入れる欄か」を伝える本体なので、補足より強くする。
  */
 export function Field({
   label,
@@ -127,11 +133,18 @@ export function Field({
 }) {
   return (
     <div>
-      <label htmlFor={htmlFor} className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
+      <label
+        htmlFor={htmlFor}
+        className="mb-[var(--sp-1)] block text-[length:var(--t-label)] font-bold leading-[1.6] text-[var(--ink)]"
+      >
         {label}
       </label>
       {children}
-      {hint ? <p className="mt-1.5 text-xs text-[var(--faint)]">{hint}</p> : null}
+      {hint ? (
+        <p className="mt-[var(--sp-1)] text-[length:var(--t-meta)] leading-[1.7] text-[var(--faint)]">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }
