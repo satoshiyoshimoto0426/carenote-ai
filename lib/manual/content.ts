@@ -87,7 +87,7 @@ export const MANUAL_CHAPTERS: ManualChapter[] = [
     title: "はじめに ── ひととおり通してみる",
     short: "はじめに",
     lead: "CareNote AI は、手元のメモを貼り付けると介護の書類の下書きを作ってくれる道具です。この章では、ログインしてから下書きをカイポケに写すまでの一本の流れと、名簿に登録した利用者やご家族の名前が「A様」のような記号に置き換わってからAIに渡る仕組みをひととおり見ていきます。",
-    video: { src: "/manual/videos/ch1.mp4", minutes: 4, status: "planned" },
+    video: { src: "/manual/videos/ch1.mp4", minutes: 2, status: "ready" },
     steps: [
       { text: "職員は、パソコンでCareNoteのページを開きます。", uiLabel: "" },
       {
@@ -228,7 +228,7 @@ export const MANUAL_CHAPTERS: ManualChapter[] = [
     title: "ログインと画面の見方",
     short: "ログインと画面",
     lead: "この章では、CareNote にログインして、左のメニューから画面を行き来できるようになります。あわせて、利用者を登録して「A様」のような記号が付くこと、ご家族の名前も記号に置き換わるように関係者名簿へ登録することができます。",
-    video: { src: "/manual/videos/ch2.mp4", minutes: 2, status: "planned" },
+    video: { src: "/manual/videos/ch2.mp4", minutes: 1, status: "ready" },
     steps: [
       { text: "パソコンのブラウザで CareNote を開きます。", uiLabel: "" },
       {
@@ -391,7 +391,7 @@ export const MANUAL_CHAPTERS: ManualChapter[] = [
     title: "面談メモから下書きを作る",
     short: "下書きを作る",
     lead: "面談で書いたメモを貼り付けると、AIが帳票の下書きを作ってくれます。送る前に「どんな文章がAIに渡るか」を一度見る画面が必ず挟まる作りになっているので、その見方と、できあがった下書きの扱い方を覚えましょう。",
-    video: { src: "/manual/videos/ch3.mp4", minutes: 3, status: "planned" },
+    video: { src: "/manual/videos/ch3.mp4", minutes: 2, status: "ready" },
     steps: [
       {
         text: "画面左のメニューから「作成する」を押します（左メニューは、パソコンなど横幅の広い画面で出ます）。",
@@ -542,7 +542,7 @@ export const MANUAL_CHAPTERS: ManualChapter[] = [
     title: "電話・面談の録音を文字にする",
     short: "録音を文字に",
     lead: "電話や面談で話した内容を、手で打ち直さずに文字にして記録の材料にします。ふだんは録音アプリ（SecondBrain）で文字にした全文を「支援の対応メモ」に貼ります。画面の「録音ファイルから文字にする」は、録音アプリ側で文字にできなかったときの予備の手段です。",
-    video: { src: "/manual/videos/ch4.mp4", minutes: 2, status: "planned" },
+    video: { src: "/manual/videos/ch4.mp4", minutes: 1, status: "ready" },
     steps: [
       {
         text: "電話がつながったら、まず録音することを相手に一言伝えます（例:「記録のため、この通話を録音させていただきます」）。",
@@ -900,7 +900,7 @@ export const MANUAL_CHAPTERS: ManualChapter[] = [
     title: "書類一式をまとめて作る（救済モード）",
     short: "書類一式",
     lead: "分かっていることを書き、主治医意見書などの写真やPDFを添えると、アセスメントからモニタリングまで5枚の書類の下書きが一度に出てきます。出てきたものはすべて下書きなので、事実と照らし合わせて直し、そのうえで利用者に保存します。",
-    video: { src: "/manual/videos/ch6.mp4", minutes: 4, status: "planned" },
+    video: { src: "/manual/videos/ch6.mp4", minutes: 1, status: "ready" },
     steps: [
       { text: "左のメニューの「救済モード」を押します。", uiLabel: "救済モード" },
       {
@@ -1069,7 +1069,7 @@ export const MANUAL_CHAPTERS: ManualChapter[] = [
     title: "困ったとき ── 赤いメッセージとFAQ",
     short: "困ったとき",
     lead: "画面に赤い文字が出たときに、何をすればよいかをまとめたページです。ほとんどは「少し待ってもう一度押す」「メモを書き直す」「管理者に伝える」の3つで片づきます。",
-    video: { src: "/manual/videos/ch7.mp4", minutes: 3, status: "planned" },
+    video: { src: "/manual/videos/ch7.mp4", minutes: 2, status: "ready" },
     steps: [
       { text: "赤い枠が出たら、まず枠の中の文章を最後まで読みます。", uiLabel: "" },
       {
