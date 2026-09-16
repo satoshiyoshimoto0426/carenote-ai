@@ -178,7 +178,8 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 ②印刷/PDF `tools/build-manual.mjs` → `public/manual/index.html`（`npm run manual` で再生成・**生成物なので手で直さない**）＋ Chrome ヘッドレスで `public/manual/CareNote-AI-操作マニュアル.pdf`（本文を直したら HTML→PDF の順で作り直す）
 ③動画 `docs/MANUAL-VIDEO-SPEC.md`（収録台本・91場面。§7＝実際の作り方）。**①〜④⑥⑦の6章は収録済**で
 `public/manual/videos/chN.mp4`（`video.status: "ready"`）。⑤カイポケ転記だけ他社画面のため未収録＝画面に「準備中」と出る。
-道具は `tools/make-narration.mjs`（声＝MiniMax・男性）→ `tools/shoot-run.mjs`＋`tools/shoot-plans.mjs`（Chrome を自動操作して撮る）
+道具は `tools/make-narration.mjs`（声＝MiniMax・男性。読みは `lib/manual/readingDict.ts` で固定し、
+`tools/check-reading.mjs` が文字起こしで読み間違いを検出する）→ `tools/shoot-run.mjs`＋`tools/shoot-plans.mjs`（Chrome を自動操作して撮る）
 → `tools/make-card.mjs`（撮れない場面の説明カード）→ `tools/make-video.mjs`（ffmpeg で合成）。
 **字幕は動画へ焼き込む一本化**（再生ページに track タグを足すと二重に出る ── 再発防止テストは `lib/manual/videoScript.test.ts`）。
 各画面の見出しからは `PageHeader` の `helpAnchor` で `/guide#chN` へ飛べる。開閉の要る FAQ だけ `components/manual/FaqAccordion.tsx`（"use client"）。

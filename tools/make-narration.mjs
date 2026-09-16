@@ -6,6 +6,8 @@
  *   入力 = docs/MANUAL-VIDEO-SPEC.md（lib/manual/videoScript.ts が読む）
  *   出力 = <出力先>/<章>/audio/sNN.mp3 ── tools/make-video.mjs が画面と合わせて1本にする
  *   声   = MiniMax の音声合成（.env.local の MINIMAX_API_KEY）
+ *   読み = lib/manual/readingDict.ts（読み間違いを直す辞書）
+ *   検査 = tools/check-reading.mjs（作った音声を文字起こしし直して台本と突き合わせる）
  *
  * すでにある音声は作り直さない（台本を直した章だけ --force で撮り直す）。
  * 使い方: node tools/make-narration.mjs <出力先> [章のslug…] [--force] [--voice=<声のid>]
@@ -13,6 +15,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { READING_DICT, toReadingTone } from "../lib/manual/readingDict.ts";
 import { parseVideoScript } from "../lib/manual/videoScript.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -64,10 +67,23 @@ const VOICE = {
   pitch: 0,
 };
 
+/**
+ * 読み間違いを減らす2つの設定（どちらも 2026-09-16 に実測して効果を確認）。
+ *
+ * language_boost: 日本語として読ませる。これだけで製品名が『ケールノート』→「ケアノート」に直った。
+ *   （でたらめな言語名を入れると API が 2013 で撥ねるので、効いていることが確かめられる）
+ * pronunciation_dict: 合成の前に文字列を読みへ置き換える。『もとがき』→「したがき」のように、
+ *   language_boost だけでは直らない語を個別に固定する。中身は lib/manual/readingDict.ts。
+ */
+const LANGUAGE = "Japanese";
+const TONE = toReadingTone();
+
 const chapters = parseVideoScript(readFileSync(join(ROOT, "docs", "MANUAL-VIDEO-SPEC.md"), "utf8"));
 const targets = only.length ? chapters.filter((c) => only.includes(c.slug)) : chapters;
 
-console.log(`声: ${VOICE.voice_id}（速さ ${VOICE.speed}）`);
+console.log(
+  `声: ${VOICE.voice_id}（速さ ${VOICE.speed}・${LANGUAGE}・読み辞書 ${READING_DICT.length}語）`,
+);
 
 let made = 0;
 let skipped = 0;
@@ -89,6 +105,8 @@ for (const ch of targets) {
       body: JSON.stringify({
         model: "speech-2.6-hd",
         text: sc.narration,
+        language_boost: LANGUAGE,
+        pronunciation_dict: { tone: TONE },
         voice_setting: VOICE,
         audio_setting: { sample_rate: 44100, format: "mp3", bitrate: 128000, channel: 1 },
       }),
