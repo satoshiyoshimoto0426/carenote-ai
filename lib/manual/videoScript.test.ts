@@ -132,3 +132,22 @@ describe("字幕（WebVTT）の下書き", () => {
     }
   });
 });
+
+/**
+ * 字幕の二重表示を再発させないための検査（2026-09-16 に実際に起きた）。
+ *
+ * 字幕は**動画へ焼き込んで**いる。再生ページの video に track タグを足すと、
+ * 焼き込みとブラウザの字幕が重なって同じ文が二重に出る。
+ * 焼き込みを選んでいる理由は、mp4 を配っても字幕が付いてくるため。
+ */
+describe("字幕の出どころは1か所だけ", () => {
+  const GUIDE = readFileSync(
+    join(process.cwd(), "app", "(dashboard)", "guide", "page.tsx"),
+    "utf8",
+  );
+
+  it("動画の再生ページは、ブラウザ側の字幕（track タグ）を足していない", () => {
+    expect(GUIDE).toContain("<video");
+    expect(GUIDE).not.toMatch(/<track\b/);
+  });
+});

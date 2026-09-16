@@ -8,7 +8,7 @@
  *   声   = MiniMax の音声合成（.env.local の MINIMAX_API_KEY）
  *
  * すでにある音声は作り直さない（台本を直した章だけ --force で撮り直す）。
- * 使い方: node tools/make-narration.mjs <出力先> [章のslug…] [--force]
+ * 使い方: node tools/make-narration.mjs <出力先> [章のslug…] [--force] [--voice=<声のid>]
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -18,11 +18,14 @@ import { parseVideoScript } from "../lib/manual/videoScript.ts";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const force = args.includes("--force");
-const rest = args.filter((a) => a !== "--force");
+const voiceArg = args.find((a) => a.startsWith("--voice="))?.slice("--voice=".length);
+const rest = args.filter((a) => a !== "--force" && !a.startsWith("--voice="));
 const OUT = rest[0];
 const only = rest.slice(1);
 if (!OUT) {
-  console.error("使い方: node tools/make-narration.mjs <出力先> [章のslug…] [--force]");
+  console.error(
+    "使い方: node tools/make-narration.mjs <出力先> [章のslug…] [--force] [--voice=<声のid>]",
+  );
   process.exit(1);
 }
 
@@ -41,11 +44,30 @@ if (!KEY) {
   process.exit(1);
 }
 
-/** 声の設定。介護現場で聞くので、標準よりわずかに遅くする。 */
-const VOICE = { voice_id: "Japanese_Whisper_Belle", speed: 0.95, vol: 1, pitch: 0 };
+/**
+ * 声の設定。
+ *
+ * なぜこの声か:
+ *   聞き手は介護の現場職員で、手を動かしながら聞く。ささやき声や作り込んだ声より、
+ *   「はきはき話す落ち着いた男性」の方が聴き取りやすい（吉本さんの指定・2026-09-16）。
+ *   速さは 1.0（等速）。遅くすると間延びして「ハキハキ」から離れる。
+ *
+ * 差し替え方:
+ *   `--voice=<声のid>` か .env.local の MINIMAX_VOICE_ID。使える id の一覧は MiniMax の
+ *   POST /v1/get_voice（{"voice_type":"system"}）で取れる（日本語の声は 15 種・2026-09-16 時点）。
+ *   変えたら **--force で全章を作り直す**（声が混ざると聞き手が混乱する）。
+ */
+const VOICE = {
+  voice_id: voiceArg ?? env.MINIMAX_VOICE_ID ?? "Japanese_SeriousCommander",
+  speed: 1.0,
+  vol: 1,
+  pitch: 0,
+};
 
 const chapters = parseVideoScript(readFileSync(join(ROOT, "docs", "MANUAL-VIDEO-SPEC.md"), "utf8"));
 const targets = only.length ? chapters.filter((c) => only.includes(c.slug)) : chapters;
+
+console.log(`声: ${VOICE.voice_id}（速さ ${VOICE.speed}）`);
 
 let made = 0;
 let skipped = 0;

@@ -87,7 +87,7 @@ export const MANUAL_CHAPTERS: ManualChapter[] = [
     title: "はじめに ── ひととおり通してみる",
     short: "はじめに",
     lead: "CareNote AI は、手元のメモを貼り付けると介護の書類の下書きを作ってくれる道具です。この章では、ログインしてから下書きをカイポケに写すまでの一本の流れと、名簿に登録した利用者やご家族の名前が「A様」のような記号に置き換わってからAIに渡る仕組みをひととおり見ていきます。",
-    video: { src: "/manual/videos/ch1.mp4", minutes: 2, status: "ready" },
+    video: { src: "/manual/videos/ch1.mp4", minutes: 1, status: "ready" },
     steps: [
       { text: "職員は、パソコンでCareNoteのページを開きます。", uiLabel: "" },
       {
@@ -391,7 +391,7 @@ export const MANUAL_CHAPTERS: ManualChapter[] = [
     title: "面談メモから下書きを作る",
     short: "下書きを作る",
     lead: "面談で書いたメモを貼り付けると、AIが帳票の下書きを作ってくれます。送る前に「どんな文章がAIに渡るか」を一度見る画面が必ず挟まる作りになっているので、その見方と、できあがった下書きの扱い方を覚えましょう。",
-    video: { src: "/manual/videos/ch3.mp4", minutes: 2, status: "ready" },
+    video: { src: "/manual/videos/ch3.mp4", minutes: 1, status: "ready" },
     steps: [
       {
         text: "画面左のメニューから「作成する」を押します（左メニューは、パソコンなど横幅の広い画面で出ます）。",
@@ -1069,7 +1069,7 @@ export const MANUAL_CHAPTERS: ManualChapter[] = [
     title: "困ったとき ── 赤いメッセージとFAQ",
     short: "困ったとき",
     lead: "画面に赤い文字が出たときに、何をすればよいかをまとめたページです。ほとんどは「少し待ってもう一度押す」「メモを書き直す」「管理者に伝える」の3つで片づきます。",
-    video: { src: "/manual/videos/ch7.mp4", minutes: 2, status: "ready" },
+    video: { src: "/manual/videos/ch7.mp4", minutes: 1, status: "ready" },
     steps: [
       { text: "赤い枠が出たら、まず枠の中の文章を最後まで読みます。", uiLabel: "" },
       {

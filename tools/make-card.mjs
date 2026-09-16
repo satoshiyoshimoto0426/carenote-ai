@@ -13,7 +13,7 @@
  *   定義 = tools/shoot-plans.mjs の card 指定、または CARDS（このファイル）
  *   使い方: node tools/make-card.mjs <出力先の親フォルダ>
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { connect, ensureDir, goto, launchChrome, shoot, wait } from "./shoot.mjs";
 

@@ -233,20 +233,20 @@ function VideoBlock({ chapter }: { chapter: ManualChapter }) {
         </span>
         <SectionTitle as="h3">動画で見る（約{video.minutes}分）</SectionTitle>
       </div>
+      {/* biome-ignore lint/a11y/useMediaCaption: 字幕は動画に焼き込み済み。track タグを足すと二重に重なる（理由は下のコメント） */}
       <video
         controls
         preload="metadata"
         className="w-full rounded-[8px] border border-[var(--line)] bg-black"
       >
         <source src={video.src} type="video/mp4" />
-        {/* 字幕は収録とセットで用意する（音を出せない場所でも読めるように・MANUAL-VIDEO-SPEC.md 収録手順6） */}
-        <track
-          kind="captions"
-          srcLang="ja"
-          label="日本語字幕"
-          src={video.src.replace(/\.mp4$/, ".vtt")}
-          default
-        />
+        {/*
+          字幕はここで track タグを足さない。動画そのものに**焼き込み済み**なので、
+          ブラウザ側でも出すと同じ文が二重に重なる（2026-09-16 に実際そうなった）。
+          焼き込みにしている理由は、ファイルを配っても字幕が付いてくるため
+          （パソコンの標準プレーヤーは、横に置いた .vtt を読まないことがある）。
+          外部プレーヤー用の字幕ファイルは、動画と同じ場所に chN.vtt として置いてある。
+        */}
         お使いのブラウザは動画の再生に対応していません。下の手順をお読みください。
       </video>
       <p className="mt-2 text-xs text-[var(--faint)]">
