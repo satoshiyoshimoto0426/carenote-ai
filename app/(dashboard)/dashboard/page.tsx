@@ -81,7 +81,7 @@ export default function DashboardPage() {
   return (
     <div className="animate-fadeIn app-page">
       {/* Header */}
-      <div className="mb-[var(--sp-2)] flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="ダッシュボード" description="評価履歴とスコア推移" helpAnchor="ch1" />
         <Link href="/evaluate" className={btnPrimary}>
           <IconPlus size={15} />
@@ -152,7 +152,11 @@ export default function DashboardPage() {
       )}
 
       {/* History list — 残りの高さを埋める（中身が少ない画面が上に貼りつかないように） */}
-      <Card className="flex min-h-[260px] flex-1 flex-col overflow-hidden">
+      <Card
+        className={`flex flex-col overflow-hidden ${
+          records.length === 0 ? "min-h-[260px] flex-1" : ""
+        }`}
+      >
         <div className="border-b border-[var(--line)] px-5 py-4">
           <SectionTitle>評価履歴</SectionTitle>
         </div>

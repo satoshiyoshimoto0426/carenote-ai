@@ -187,6 +187,16 @@ select:focus-visible {
 }
 
 /*
+ * フッターは本文の一部ではなく「紙の端」。本文カードと地続きに見えないよう、
+ * 上に細い区切りを置いて距離を取る（2026-09-16 縦のバランス調整）。
+ */
+.app-footer {
+  border-top: 1px solid var(--line-soft);
+  padding: 18px 16px 26px;
+  text-align: center;
+}
+
+/*
  * 本文の器。**ここが唯一の幅の決定点**。
  * 以前はページ側が max-w-2xl / 3xl / 4xl / 860px をそれぞれ持っていて、
  * 画面を移るたびに本文の幅と左端が動いていた（2026-09-16 吉本さん指摘
@@ -198,7 +208,7 @@ select:focus-visible {
   width: 100%;
   max-width: 1000px;
   margin-inline: auto;
-  padding: 80px 16px 40px; /* モバイルは固定トップバーぶん上を空ける */
+  padding: 76px 16px 32px; /* モバイルは固定トップバーぶん上を空ける */
   display: flex;
   flex-direction: column;
 }
@@ -251,6 +261,6 @@ select:focus-visible {
   }
 
   .app-main-inner {
-    padding: 32px 40px 56px;
+    padding: 40px 40px 40px;
   }
 }

@@ -39,7 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <SharingStatus variant="compact" />
         </div>
         <main className="app-main-inner">{children}</main>
-        <footer className="text-center py-4 pb-6">
+        <footer className="app-footer">
           <p className="text-xs text-[var(--faint)]">CareNote — Powered by Claude API</p>
         </footer>
       </div>

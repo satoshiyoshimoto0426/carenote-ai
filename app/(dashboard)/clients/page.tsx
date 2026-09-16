@@ -183,9 +183,13 @@ export default function ClientsPage() {
           読み込み中…
         </div>
       ) : clients.length === 0 ? (
-        <p className="text-sm text-[var(--muted)]">
-          まだ利用者がいません。右上の「新規」から作成してください。
-        </p>
+        <Card className="flex min-h-[220px] flex-1 flex-col items-center justify-center px-5 py-16 text-center">
+          <div className="mb-1 text-[15px] font-bold text-[var(--ink)]">まだ利用者がいません</div>
+          <p className="max-w-[26rem] text-[13px] leading-relaxed text-[var(--muted)]">
+            右上の「新規」から登録してください。登録した氏名は暗号化して保存し、 画面では{" "}
+            <span className="code-chip">A様</span> のような記号で表示します。
+          </p>
+        </Card>
       ) : (
         <Card className="overflow-hidden">
           <ul className="divide-y divide-[var(--line-soft)]">
@@ -193,11 +197,11 @@ export default function ClientsPage() {
               <li key={c.id}>
                 <Link
                   href={`/clients/${c.id}`}
-                  className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-[var(--surface-2)]"
+                  className="flex items-center justify-between gap-4 px-5 py-[18px] transition-colors hover:bg-[var(--surface-2)]"
                 >
                   <div className="min-w-0">
                     <span className="code-chip inline-block">{c.code}様</span>
-                    <div className="mt-1.5 truncate text-xs text-[var(--muted)]">
+                    <div className="mt-2 truncate text-[12.5px] text-[var(--muted)]">
                       {attrLine(c) || "（属性未設定）"}
                     </div>
                   </div>
