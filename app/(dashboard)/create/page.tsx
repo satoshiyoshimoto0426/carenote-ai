@@ -1,6 +1,7 @@
 "use client";
 
 import { type ComponentType, useState } from "react";
+import NotesField from "@/components/create/NotesField";
 import AppointmentsPanel from "@/components/drafts/AppointmentsPanel";
 import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
 import AssessmentUpdatesPanel from "@/components/drafts/AssessmentUpdatesPanel";
@@ -22,14 +23,7 @@ import {
   IconSearch,
   IconUsers,
 } from "@/components/ui/icons";
-import {
-  btnPrimary,
-  btnSecondary,
-  Card,
-  inputClass,
-  PageHeader,
-  textareaClass,
-} from "@/components/ui/primitives";
+import { btnPrimary, btnSecondary, Card, inputClass, PageHeader } from "@/components/ui/primitives";
 import {
   assessmentToText,
   carePlanToText,
@@ -39,7 +33,8 @@ import {
 } from "@/lib/draftText";
 import type { KaipokeAssessmentSheet } from "@/lib/kaipoke/assessmentLayout";
 import { type NameAlias, restoreNamesDeep } from "@/lib/privacy/pseudonymize";
-import { AUDIO_MAX_BYTES, explainTranscribeError, validateAudio } from "@/lib/transcribe/validate";
+import { appendTranscript } from "@/lib/transcribe/appendTranscript";
+import { explainTranscribeError, validateAudio } from "@/lib/transcribe/validate";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
@@ -98,11 +93,6 @@ const DOC_ORDER: DocType[] = [
 /** ラベルは常に入力の上・12px・muted（Field と同じ見た目。必須マーク併用のため手書き） */
 const labelClass = "mb-1.5 block text-xs font-medium text-[var(--muted)]";
 
-/** 必須マーク（clay） */
-function Req() {
-  return <span className="text-[var(--clay)]"> *</span>;
-}
-
 function resultToText(result: GeneratedResult): string {
   switch (result.type) {
     case "carePlan":
@@ -157,9 +147,14 @@ export default function CreatePage() {
     setShowRealNames(true);
   };
 
-  /** 第3段: 録音ファイル→文字（外部サービス）。結果は支援メモに足し、通常の「送る前に見る」へ乗せる */
+  /**
+   * 録音ファイル→文字（外部サービス）。結果は**押した欄**へ足し、通常の「送る前に見る」へ乗せる。
+   *
+   * append を引数で受け取るのは、同じ入口をアセスメント・担当者会議・モニタリング・支援経過の
+   * 4つの欄で使うため（docs/specs/recording-pipeline.md R1）。行き先を固定すると他の欄を汚す。
+   */
   const [transcribing, setTranscribing] = useState(false);
-  const transcribeFile = async (file: File) => {
+  const transcribeFile = async (file: File, append: (add: string) => void) => {
     // 送る前に、ここで大きさと形式を見る。
     // 上限を超えたものを投げると、アプリに届く前に置き場（Vercel）が英語の 413 を返し、
     // それを JSON として読もうとして英語の解析エラーが職員の画面に出る（2026-09-17 実測）。
@@ -187,16 +182,20 @@ export default function CreatePage() {
         throw new Error(
           typeof data.error === "string" ? data.error : `エラーが発生しました (${resp.status})`,
         );
-      const text = String(data.text ?? "").trim();
-      setSupportNotes((prev) =>
-        prev.trim() ? `${prev.trim()}\n\n【録音の文字起こし】\n${text}` : text,
-      );
+      append(String(data.text ?? "").trim());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "文字起こしに失敗しました");
     } finally {
       setTranscribing(false);
     }
   };
+
+  /** 「この欄へ文字起こしを足す」入口を作る。busy は共通（同時に2つ走らせない）。 */
+  const entryFor = (set: (update: (prev: string) => string) => void) => ({
+    busy: transcribing,
+    onPick: (file: File) =>
+      transcribeFile(file, (add) => set((prev) => appendTranscript(prev, add))),
+  });
 
   /** カイポケ転記用シート（アセスメントの下書きを10ページの欄に組み替えたもの） */
   const [kaipokeSheet, setKaipokeSheet] = useState<KaipokeAssessmentSheet | null>(null);
@@ -399,107 +398,60 @@ export default function CreatePage() {
 
           {docType === "monitoring" ? (
             <>
-              <div>
-                <label htmlFor="previousPlanSummary" className={labelClass}>
-                  前回のケアプラン（目標・サービスの要約）
-                  <Req />
-                </label>
-                <textarea
-                  id="previousPlanSummary"
-                  value={previousPlanSummary}
-                  onChange={(e) => setPreviousPlanSummary(e.target.value)}
-                  rows={6}
-                  placeholder="前回プランの短期目標・長期目標・サービス内容を貼り付けるか、要約して入力してください。"
-                  className={`${textareaClass} resize-y`}
-                />
-              </div>
-              <div>
-                <label htmlFor="monitoringNotes" className={labelClass}>
-                  最新の状況・モニタリングメモ
-                  <Req />
-                </label>
-                <textarea
-                  id="monitoringNotes"
-                  value={monitoringNotes}
-                  onChange={(e) => setMonitoringNotes(e.target.value)}
-                  rows={8}
-                  placeholder="訪問・電話で確認した最新の様子、本人や家族・事業所からの聞き取り内容を入力してください。"
-                  className={`${textareaClass} resize-y`}
-                />
-              </div>
+              {/* 前回プランは録音では埋まらない（dispatch.ts が必須にしている）ので入口を出さない */}
+              <NotesField
+                id="previousPlanSummary"
+                label="前回のケアプラン（目標・サービスの要約）"
+                required
+                value={previousPlanSummary}
+                onChange={setPreviousPlanSummary}
+                rows={6}
+                placeholder="前回プランの短期目標・長期目標・サービス内容を貼り付けるか、要約して入力してください。"
+              />
+              <NotesField
+                id="monitoringNotes"
+                label="最新の状況・モニタリングメモ"
+                required
+                value={monitoringNotes}
+                onChange={setMonitoringNotes}
+                rows={8}
+                placeholder="訪問・電話で確認した最新の様子、本人や家族・事業所からの聞き取り内容を入力してください。"
+                transcribe={entryFor(setMonitoringNotes)}
+              />
             </>
           ) : docType === "supportLog" ? (
-            <div>
-              <label htmlFor="supportNotes" className={labelClass}>
-                支援の対応メモ（訪問・電話・調整など）
-                <Req />
-              </label>
-              <textarea
-                id="supportNotes"
-                value={supportNotes}
-                onChange={(e) => setSupportNotes(e.target.value)}
-                rows={10}
-                placeholder="電話なら SecondBrain の文字起こし「全文」を貼り付けてください（要約ではなく全文）。手書きメモや複数日の対応が混ざっていてもOK（自動で分割します）。"
-                className={`${textareaClass} resize-y`}
-              />
-              {/* 第3段: 電話の録音を文字にしてメモへ足す（音声は保存しない・文字はこのあと黒塗りを通る） */}
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
-                <label
-                  htmlFor="callAudio"
-                  className={`${btnSecondary} cursor-pointer ${transcribing ? "pointer-events-none opacity-60" : ""}`}
-                >
-                  {transcribing ? "文字にしています…（1〜2分）" : "録音ファイルから文字にする"}
-                </label>
-                <input
-                  id="callAudio"
-                  type="file"
-                  accept=".mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm,audio/*"
-                  className="hidden"
-                  disabled={transcribing}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) transcribeFile(f);
-                    e.target.value = "";
-                  }}
-                />
-                <span>
-                  1つのファイルは{Math.floor(AUDIO_MAX_BYTES / 1024 / 1024)}
-                  MBまで（ふつうの音質で4〜5分ぶん）。
-                  長い録音は短く分けるか、録音アプリの音質を下げてください。音声は保存せず、文字にしたあと
-                  通常の「送る前に確認」を通ります。
-                </span>
-              </div>
-            </div>
+            <NotesField
+              id="supportNotes"
+              label="支援の対応メモ（訪問・電話・調整など）"
+              required
+              value={supportNotes}
+              onChange={setSupportNotes}
+              rows={10}
+              placeholder="録音ファイルから文字にするか、文字起こしの「全文」を貼り付けてください（要約ではなく全文）。手書きメモや複数日の対応が混ざっていてもOK（自動で分割します）。"
+              transcribe={entryFor(setSupportNotes)}
+            />
           ) : docType === "meetingSummary" ? (
-            <div>
-              <label htmlFor="meetingNotes" className={labelClass}>
-                サービス担当者会議のメモ
-                <Req />
-              </label>
-              <textarea
-                id="meetingNotes"
-                value={meetingNotes}
-                onChange={(e) => setMeetingNotes(e.target.value)}
-                rows={10}
-                placeholder="開催日時・場所、出席者、会議で出た発言・報告・決定事項などのメモ（殴り書きでOK）を貼り付けてください。"
-                className={`${textareaClass} resize-y`}
-              />
-            </div>
+            <NotesField
+              id="meetingNotes"
+              label="サービス担当者会議のメモ"
+              required
+              value={meetingNotes}
+              onChange={setMeetingNotes}
+              rows={10}
+              placeholder="開催日時・場所、出席者、会議で出た発言・報告・決定事項などのメモ（殴り書きでOK）を貼り付けてください。録音から文字にすることもできます。"
+              transcribe={entryFor(setMeetingNotes)}
+            />
           ) : (
-            <div>
-              <label htmlFor="assessmentNotes" className={labelClass}>
-                {docType === "carePlan" ? "アセスメント・面談メモ" : "面談メモ・収集した情報"}
-                <Req />
-              </label>
-              <textarea
-                id="assessmentNotes"
-                value={assessmentNotes}
-                onChange={(e) => setAssessmentNotes(e.target.value)}
-                rows={10}
-                placeholder="利用者・家族との面談で得た情報、生活状況、困りごと、本人の希望などを自由に入力してください。"
-                className={`${textareaClass} resize-y`}
-              />
-            </div>
+            <NotesField
+              id="assessmentNotes"
+              label={docType === "carePlan" ? "アセスメント・面談メモ" : "面談メモ・収集した情報"}
+              required
+              value={assessmentNotes}
+              onChange={setAssessmentNotes}
+              rows={10}
+              placeholder="利用者・家族との面談で得た情報、生活状況、困りごと、本人の希望などを自由に入力してください。録音から文字にすることもできます。"
+              transcribe={entryFor(setAssessmentNotes)}
+            />
           )}
 
           {error && (
