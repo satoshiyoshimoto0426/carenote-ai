@@ -17,6 +17,7 @@
  * ここで音声は一切持たない。File を親へ渡すだけで、保存もしない。
  */
 import type { ReactNode } from "react";
+import RecordingPanel from "@/components/recording/RecordingPanel";
 import { btnSecondary, textareaClass } from "@/components/ui/primitives";
 import { AUDIO_MAX_BYTES } from "@/lib/transcribe/validate";
 
@@ -33,6 +34,8 @@ export interface TranscribeEntry {
   busy: boolean;
   /** 選ばれた音声ファイル。親が /api/transcribe へ送り、結果をこの欄へ足す */
   onPick: (file: File) => void;
+  /** 文字になった文章をこの欄へ足す（画面内の録音が区切りごとに呼ぶ） */
+  onText: (text: string) => void;
 }
 
 export interface NotesFieldProps {
@@ -71,7 +74,13 @@ export default function NotesField({
         placeholder={placeholder}
         className={`${textareaClass} resize-y`}
       />
-      {transcribe ? <AudioEntry id={id} entry={transcribe} /> : null}
+      {transcribe ? (
+        <>
+          <AudioEntry id={id} entry={transcribe} />
+          {/* 画面内の録音。表示スイッチが入っていなければ何も出ない（R5 が済むまで既定オフ） */}
+          <RecordingPanel onTranscript={transcribe.onText} disabled={transcribe.busy} />
+        </>
+      ) : null}
     </div>
   );
 }

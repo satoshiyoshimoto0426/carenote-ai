@@ -195,6 +195,7 @@ export default function CreatePage() {
     busy: transcribing,
     onPick: (file: File) =>
       transcribeFile(file, (add) => set((prev) => appendTranscript(prev, add))),
+    onText: (add: string) => set((prev) => appendTranscript(prev, add)),
   });
 
   /** カイポケ転記用シート（アセスメントの下書きを10ページの欄に組み替えたもの） */
