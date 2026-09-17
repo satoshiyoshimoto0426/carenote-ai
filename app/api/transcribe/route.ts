@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
 import { hitRateLimit, type RateState } from "@/lib/extensionAuth";
 import { createOpenAiTranscriber, TranscribeError } from "@/lib/transcribe/provider";
-import { validateAudio } from "@/lib/transcribe/validate";
+import { TRANSCRIBE_RATE_LIMIT, validateAudio } from "@/lib/transcribe/validate";
 
 // 長い通話の文字起こしは時間がかかる
 export const maxDuration = 300;
@@ -19,7 +19,7 @@ export const maxDuration = 300;
  * 限界: 置き場が温まっている間だけ有効（サーバレスの実体ごとに数える）。
  *   完全な制限が要るようになったら KV へ上げる（§2.5-F）。
  */
-const RATE_LIMIT = { limit: 30, windowMs: 60 * 60 * 1000 };
+const RATE_LIMIT = TRANSCRIBE_RATE_LIMIT;
 const rateStore = new Map<string, RateState>();
 
 /**

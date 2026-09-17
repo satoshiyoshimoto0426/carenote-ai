@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { AUDIO_MAX_BYTES, PLATFORM_MAX_BYTES } from "@/lib/transcribe/validate";
+import {
+  AUDIO_MAX_BYTES,
+  PLATFORM_MAX_BYTES,
+  TRANSCRIBE_RATE_LIMIT,
+} from "@/lib/transcribe/validate";
 import {
   BYTES_PER_SECOND,
   configIsSane,
@@ -11,6 +15,7 @@ import {
   SEGMENT_MAX_BYTES,
   SEGMENT_MAX_MS,
   TOTAL_MAX_MS,
+  worstCaseRequests,
 } from "./config";
 
 /**
@@ -62,5 +67,29 @@ describe("録音の決めごと", () => {
 
   it("録音全体の上限は1区切りより長い（押し忘れの歯止めであって、区切りの邪魔をしない）", () => {
     expect(TOTAL_MAX_MS).toBeGreaterThan(SEGMENT_MAX_MS * 2);
+  });
+});
+
+/**
+ * 2026-09-17 の独立審査 critical: 予算の算数が合っていなかった。
+ * 旧: 20区切り × やり直し3回 = 60回 > 1時間30回。
+ * 実際は「3本諦めたら録音が止まる」ので上限はもっと低いが、それを式にしていなかった。
+ */
+describe("文字起こしの回数が、1時間の枠に収まるか", () => {
+  it("最悪の場合でも1時間の上限を超えない", () => {
+    expect(worstCaseRequests()).toBeLessThanOrEqual(TRANSCRIBE_RATE_LIMIT.limit);
+  });
+
+  it("内訳の式が、止まる条件と噛み合っている", () => {
+    // 20区切りのうち3本が諦め（各3回）＋17本が1回ずつ = 26回
+    expect(worstCaseRequests()).toBe(
+      maxSegmentCount() - MAX_CONSECUTIVE_FAILURES + MAX_CONSECUTIVE_FAILURES * MAX_ATTEMPTS,
+    );
+  });
+
+  it("60分の会議なら、やり直しを含めても余裕がある", () => {
+    const segments = Math.ceil((60 * 60 * 1000) / maxSegmentMs());
+    const worst = segments - MAX_CONSECUTIVE_FAILURES + MAX_CONSECUTIVE_FAILURES * MAX_ATTEMPTS;
+    expect(worst).toBeLessThan(TRANSCRIBE_RATE_LIMIT.limit);
   });
 });

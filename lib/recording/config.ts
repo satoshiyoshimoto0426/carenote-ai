@@ -78,3 +78,16 @@ export function configIsSane(): boolean {
     MAX_CONSECUTIVE_FAILURES >= 1
   );
 }
+
+/**
+ * 1回の録音で、文字起こしを最大何回呼ぶか。
+ *
+ * 内訳: 通った区切りは1回ずつ。諦める区切りは MAX_ATTEMPTS 回ずつ使い、
+ * MAX_CONSECUTIVE_FAILURES 本が諦めになった時点で録音そのものが止まる（segments.ts）。
+ * この数が1時間の回数上限を超えると、**会議の途中で枠が尽きる**。
+ */
+export function worstCaseRequests(): number {
+  const segments = maxSegmentCount();
+  const giveUps = Math.min(MAX_CONSECUTIVE_FAILURES, segments);
+  return (segments - giveUps) * 1 + giveUps * MAX_ATTEMPTS;
+}

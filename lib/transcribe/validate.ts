@@ -60,3 +60,12 @@ export function explainTranscribeError(status: number, body: string): string {
   }
   return "文字起こしに失敗しました。しばらくして再度お試しください。";
 }
+
+/**
+ * 1人あたりの文字起こし回数の上限（1時間）。
+ *
+ * ここに置く理由: 録音の区切り数（lib/recording/config.ts）と必ず釣り合っていないといけない。
+ * 別々の場所に書くと、片方だけ変えたときに「60分の会議の途中で枠が尽きる」ことになり、
+ * 気づくのは会議の最中になる。両方から参照して、関係をテストで固定する。
+ */
+export const TRANSCRIBE_RATE_LIMIT = { limit: 30, windowMs: 60 * 60 * 1000 };

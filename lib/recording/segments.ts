@@ -86,7 +86,12 @@ export function reduceQueue(state: QueueState, action: QueueAction): QueueState 
       const target = state.segments.find((s) => s.index === action.index);
       if (!target) return state;
       const giveUp = action.permanent || target.attempts >= MAX_ATTEMPTS;
-      const consecutiveFailures = state.consecutiveFailures + 1;
+      // 数えるのは**諦めた区切りの本数**。試行回数で数えると、1本が3回やり直しただけで
+      // 「3本続けて失敗」になり、実際には1本しか落ちていないのに録音を止めてしまう
+      // （独立審査 2026-09-17 critical。MAX_ATTEMPTS と MAX_CONSECUTIVE_FAILURES が同じ値なので必ず起きた）。
+      const consecutiveFailures = giveUp
+        ? state.consecutiveFailures + 1
+        : state.consecutiveFailures;
       const segments = state.segments.map((s) =>
         s.index === action.index
           ? {
@@ -96,18 +101,39 @@ export function reduceQueue(state: QueueState, action: QueueAction): QueueState 
             }
           : s,
       );
-      const stopped =
-        state.stopped ??
-        (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES
-          ? `${MAX_CONSECUTIVE_FAILURES}本続けて文字にできませんでした（${action.error}）。録音を止めました。`
-          : null);
-      return { segments, consecutiveFailures, stopped };
+      if (state.stopped || consecutiveFailures < MAX_CONSECUTIVE_FAILURES) {
+        return { segments, consecutiveFailures, stopped: state.stopped };
+      }
+      const reason = `${MAX_CONSECUTIVE_FAILURES}本続けて文字にできませんでした（${action.error}）。録音を止めました。`;
+      return { segments: giveUpPending(segments, reason), consecutiveFailures, stopped: reason };
     }
-    case "stop":
-      return { ...state, stopped: state.stopped ?? action.reason };
+    case "stop": {
+      if (state.stopped) return state;
+      return {
+        ...state,
+        segments: giveUpPending(state.segments, action.reason),
+        stopped: action.reason,
+      };
+    }
     default:
       return state;
   }
+}
+
+/**
+ * 止めるときに、まだ送っていない区切りを「諦めた」に落とす。
+ *
+ * なぜ要るか（独立審査 2026-09-17 critical）:
+ *   止めたあと waiting のまま残すと、①送られない ②諦めたことにもならないので
+ *   「◯本目が文字になりませんでした」の知らせに載らない ③画面側が音声を手放す合図を失い、
+ *   会議の音声がメモリに残り続ける ── 3つ同時に壊れる。落とすときは全部落とす。
+ */
+function giveUpPending(segments: Segment[], reason: string): Segment[] {
+  return segments.map((s) =>
+    s.status === "waiting" || s.status === "sending"
+      ? { ...s, status: "gaveUp" as const, error: s.error ?? reason }
+      : s,
+  );
 }
 
 /** 次に送る区切り。無ければ null。 */

@@ -156,3 +156,81 @@ describe("やり直しても直らない断られ方: isPermanentFailure", () =>
     }
   });
 });
+
+/**
+ * 2026-09-17 の独立審査 critical（実物を動かして再現された3件）。
+ * どれも「画面には出るが実際には守られていない」形の壊れ方だった。
+ */
+describe("審査で見つかった壊れ方", () => {
+  it("1本が3回やり直しただけでは録音を止めない（試行回数で数えると必ず誤作動した）", () => {
+    let s = run(add(3));
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      s = run(
+        [
+          { type: "sending", index: 1 },
+          { type: "failed", index: 1, error: "混み合っています", permanent: false },
+        ],
+        s,
+      );
+    }
+    expect(s.segments[0].status).toBe("gaveUp");
+    expect(s.consecutiveFailures).toBe(1); // 落ちたのは1本
+    expect(s.stopped).toBeNull(); // まだ止めない
+    expect(nextWaiting(s)?.index).toBe(2); // 2本目へ進める
+  });
+
+  it("数えるのは諦めた本数。別々の3本が諦めになって初めて止まる", () => {
+    let s = run(add(5));
+    for (let i = 1; i <= 3; i++) {
+      s = run(
+        [
+          { type: "sending", index: i },
+          { type: "failed", index: i, error: "鍵が無効です", permanent: true },
+        ],
+        s,
+      );
+    }
+    expect(s.consecutiveFailures).toBe(3);
+    expect(s.stopped).toContain("録音を止めました");
+  });
+
+  it("止めたら、残っている区切りも全部『諦めた』にする（黙って消えないように）", () => {
+    const s = run([...add(5), { type: "stop", reason: "100分の上限に達しました" }]);
+    expect(s.segments.every((x) => x.status === "gaveUp")).toBe(true);
+    expect(gapIndexes(s)).toEqual([1, 2, 3, 4, 5]);
+    expect(progress(s)).toEqual({ total: 5, done: 0, gaveUp: 5, pending: 0 });
+  });
+
+  it("止めても、すでに文字になった区切りはそのまま残す", () => {
+    const s = run([
+      ...add(3),
+      { type: "sending", index: 1 },
+      { type: "done", index: 1 },
+      { type: "stop", reason: "上限" },
+    ]);
+    expect(s.segments[0].status).toBe("done");
+    expect(gapIndexes(s)).toEqual([2, 3]);
+  });
+
+  it("連続失敗で止まったときも、残りは諦めた扱いになる（送られないまま宙に浮かせない）", () => {
+    let s = run(add(6));
+    for (let i = 1; i <= 3; i++) {
+      s = run(
+        [
+          { type: "sending", index: i },
+          { type: "failed", index: i, error: "つながりません", permanent: true },
+        ],
+        s,
+      );
+    }
+    expect(progress(s).pending).toBe(0);
+    expect(gapIndexes(s)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("止まったあとに区切りを足しても、送られないまま残らない（画面側が足しうる）", () => {
+    const s = run([...add(2), { type: "stop", reason: "上限" }, { type: "add", bytes: 1000 }]);
+    // 足された3本目は waiting のままなので、画面側が拾えるよう pending に出る
+    expect(progress(s).total).toBe(3);
+    expect(nextWaiting(s)).toBeNull(); // 送りはしない
+  });
+});

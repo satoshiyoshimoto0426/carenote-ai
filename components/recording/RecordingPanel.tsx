@@ -43,6 +43,15 @@ import {
   reduceQueue,
 } from "@/lib/recording/segments";
 
+/**
+ * 音が1つも届かないまま、この時間が過ぎたら「音が入っていません」と知らせる。
+ * 区切りの空振り（5分ごと）を待つと気づくのが遅すぎる ── 会議が10分ぶん失われてから出ても手遅れ。
+ */
+const SILENT_AFTER_MS = 30_000;
+
+/** やり直しの前に空ける時間（1回目・2回目・3回目以降）。0ミリ秒の連打を防ぐ。 */
+const RETRY_WAIT_MS = [2000, 8000, 20000];
+
 /** 表示スイッチ。R5（説明書の改訂）が済むまでは出さない。 */
 export const RECORDING_ENABLED = process.env.NEXT_PUBLIC_CARENOTE_RECORDING === "on";
 
@@ -77,6 +86,11 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
   const startedAt = useRef(0);
   const sending = useRef(false);
   const stopping = useRef(false);
+  /** 最後に音が届いた時刻（マイクが外れた・OSでミュートされたのを早く気づくため） */
+  const lastDataAt = useRef(0);
+  const [silent, setSilent] = useState(false);
+  /** やり直しの待ち時間が明ける時刻。0 ならすぐ送ってよい */
+  const [retryAt, setRetryAt] = useState(0);
 
   const type =
     typeof window === "undefined"
@@ -96,11 +110,14 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
 
   /** 溜まった音声を1本の区切りとして確定する。 */
   const closeSegment = useCallback(() => {
+    // 音が1つも来ていなくても**必ず期限を進める**。進めないと期限切れのままになり、
+    // タイマーが毎秒 rotate() を呼び続ける（独立審査 2026-09-17: マイクが外れた8分間、
+    // 画面は「録音中」のまま122回も止めて始め直し、会議は1文字も残らなかった）。
+    segmentStart.current = Date.now();
     if (chunks.current.length === 0 || !type) return;
     const blob = new Blob(chunks.current, { type: type.mimeType });
     chunks.current = [];
     bytes.current = 0;
-    segmentStart.current = Date.now();
     setQueue((q) => {
       const next = reduceQueue(q, { type: "add", bytes: blob.size });
       blobs.current.set(next.segments.length, blob);
@@ -136,11 +153,14 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
         if (e.data.size === 0) return;
         chunks.current.push(e.data);
         bytes.current += e.data.size;
+        lastDataAt.current = Date.now();
       };
       recorder.current = rec;
       stopping.current = false;
       startedAt.current = Date.now();
       segmentStart.current = Date.now();
+      lastDataAt.current = Date.now();
+      setSilent(false);
       rec.start(1000);
       setPhase("recording");
     } catch {
@@ -184,6 +204,7 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
     if (phase !== "recording") return;
     const id = setInterval(() => {
       setElapsed(Date.now() - startedAt.current);
+      setSilent(Date.now() - lastDataAt.current > SILENT_AFTER_MS);
       if (Date.now() - startedAt.current >= TOTAL_MAX_MS) {
         finish(`${Math.round(TOTAL_MAX_MS / 60000)}分の上限に達したので録音を止めました。`);
         return;
@@ -201,6 +222,12 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
   /** 溜まった区切りを1本ずつ送る。 */
   useEffect(() => {
     if (sending.current) return;
+    // やり直しの前に必ず間を空ける。空けないと同じ会議音声を0ミリ秒で3回続けて外へ送る
+    // （独立審査 2026-09-17: やり直し3回の時刻が 0, 0, 0 ミリ秒だった）。
+    if (retryAt > Date.now()) {
+      const id = setTimeout(() => setRetryAt(0), retryAt - Date.now());
+      return () => clearTimeout(id);
+    }
     const target = nextWaiting(queue);
     if (!target) return;
     const blob = blobs.current.get(target.index);
@@ -242,6 +269,10 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
         const permanent = isPermanentFailure(status);
         const message = e instanceof Error ? e.message : "文字にできませんでした";
         if (permanent || target.attempts + 1 >= MAX_ATTEMPTS) blobs.current.delete(target.index);
+        else
+          setRetryAt(
+            Date.now() + RETRY_WAIT_MS[Math.min(target.attempts, RETRY_WAIT_MS.length - 1)],
+          );
         setQueue((q) =>
           reduceQueue(q, { type: "failed", index: target.index, error: message, permanent }),
         );
@@ -249,13 +280,26 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
         sending.current = false;
       }
     })();
-  }, [queue, onTranscript, type]);
+  }, [queue, onTranscript, type, retryAt]);
+
+  /**
+   * 「録音を止めました」が立ったら、**実際に**止める。
+   *
+   * 独立審査 2026-09-17 critical: 画面に「録音を止めました」と出しながら、MediaRecorder は
+   * recording のまま・マイクも掴んだまま・時計も進み続けていた。止めた印を立てるだけで、
+   * それを受け取って実行する側が居なかった。
+   */
+  useEffect(() => {
+    if (!queue.stopped) return;
+    if (phase === "recording" || phase === "paused") finish();
+  }, [queue.stopped, phase, finish]);
 
   /** 全部さばき終えたら待機に戻す。 */
   useEffect(() => {
     if (phase !== "finishing") return;
     const p = progress(queue);
-    if (p.pending === 0 && !sending.current) {
+    // 止まったときは pending が減らないことがあるので、止めた印でも抜ける
+    if ((p.pending === 0 || queue.stopped) && !sending.current) {
       setPhase("idle");
       setElapsed(0);
       releaseAll();
@@ -344,6 +388,12 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
         )}
       </div>
 
+      {silent && (phase === "recording" || phase === "paused") && (
+        <p className="mt-2 text-xs font-medium text-[var(--clay)]">
+          音が入っていません。マイクが外れていないか、パソコンの音量設定を確かめてください
+          （このままでは録っても文字になりません）。
+        </p>
+      )}
       {queue.stopped && (
         <p className="mt-2 text-xs font-medium text-[var(--clay)]">{queue.stopped}</p>
       )}
