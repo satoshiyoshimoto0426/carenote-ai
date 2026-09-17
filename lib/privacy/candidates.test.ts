@@ -31,3 +31,39 @@ describe("名前っぽい言葉の候補: findNameCandidates", () => {
     expect(c.filter((x) => x.word === "佐藤")).toHaveLength(1);
   });
 });
+
+/**
+ * 2026-09-17 の独立審査で見つかった実害2件（どちらも実測で再現）。
+ * 録音の文字起こしを流し込むようになり、どちらも「最後の関門」を壊す規模で効く。
+ */
+describe("敬称の取り違えと取りこぼし", () => {
+  it("「〜の様子」を敬称と取り違えない（会議1本で数百か所が赤くなり確認不能になっていた）", () => {
+    const c = findNameCandidates(
+      "入浴の様子を確認。夜間の様子も家族から聞き取り。食事の様子は良好。",
+    );
+    expect(c).toEqual([]);
+  });
+
+  it("「様式」「様相」も敬称にしない", () => {
+    expect(findNameCandidates("従来の様式で記録する。生活の様相が変わった。")).toEqual([]);
+  });
+
+  it("主治医の「◯◯先生」を拾う（それまで1件も拾えていなかった）", () => {
+    const words = findNameCandidates("主治医の田中先生に相談。宮本先生からも助言。").map(
+      (c) => c.word,
+    );
+    expect(words).toContain("田中");
+    expect(words).toContain("宮本");
+  });
+
+  it("「氏名」は敬称ではない（欄の名前を人名にしない）", () => {
+    expect(findNameCandidates("氏名を入力してください。").map((c) => c.word)).not.toContain("氏名");
+  });
+
+  it("今までどおり拾えるものは拾い続ける", () => {
+    const words = findNameCandidates("長女の佐藤さんより電話。担当の田中氏へ引き継ぎ。").map(
+      (c) => c.word,
+    );
+    expect(words).toEqual(expect.arrayContaining(["佐藤", "田中"]));
+  });
+});

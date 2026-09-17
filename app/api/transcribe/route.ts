@@ -1,10 +1,26 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
+import { hitRateLimit, type RateState } from "@/lib/extensionAuth";
 import { createOpenAiTranscriber, TranscribeError } from "@/lib/transcribe/provider";
 import { validateAudio } from "@/lib/transcribe/validate";
 
 // 長い通話の文字起こしは時間がかかる
 export const maxDuration = 300;
+
+/**
+ * 1人あたりの回数上限（1時間に30回）。
+ *
+ * なぜ要るか:
+ *   文字起こしは1回ごとに外部サービスへ音声を送り、料金もかかる。押し間違いや画面の連打、
+ *   将来の区切り送信（docs/specs/recording-pipeline.md R3）の取りこぼしループで、
+ *   知らないうちに何十回も走りうる。60分の会議を4〜5分ずつに分けても13回程度なので、
+ *   30回あれば実運用を邪魔せず、暴走だけを止められる。
+ *
+ * 限界: 置き場が温まっている間だけ有効（サーバレスの実体ごとに数える）。
+ *   完全な制限が要るようになったら KV へ上げる（§2.5-F）。
+ */
+const RATE_LIMIT = { limit: 30, windowMs: 60 * 60 * 1000 };
+const rateStore = new Map<string, RateState>();
 
 /**
  * 電話の録音ファイルを文字にして返す（第3段・docs/specs/call-pipeline.md）。
@@ -38,6 +54,18 @@ export async function POST(req: NextRequest) {
 
   const check = validateAudio(file.name, file.size);
   if (!check.ok) return NextResponse.json({ error: check.reason }, { status: 400 });
+
+  // 数えるのは**外へ送る直前**。形式違い・大きさ超過・鍵未設定で弾いたものは1回に数えない
+  // （押し間違いで枠を使い切ると、直したときには送れなくなる ── 独立審査 2026-09-17）
+  const rate = hitRateLimit(rateStore, userId, Date.now(), RATE_LIMIT);
+  if (rate.limited) {
+    return NextResponse.json(
+      {
+        error: `文字にする回数が1時間の上限（${RATE_LIMIT.limit}回）に達しました。1時間ほど空けてからもう一度お試しください。急ぐときは管理者に相談してください。`,
+      },
+      { status: 429 },
+    );
+  }
 
   try {
     const { text } = await transcriber.transcribe(file, `audio.${check.ext}`);

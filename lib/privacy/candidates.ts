@@ -75,7 +75,26 @@ const STOPWORDS = new Set([
   "奥様",
 ]);
 
-const HONORIFICS = ["さん", "様", "さま", "氏", "くん", "ちゃん"];
+/**
+ * 敬称。この直前の言葉を「名前かもしれない」として拾う。
+ * 「先生」は 2026-09-17 に追加 ── 主治医は「◯◯先生」と書かれるのが普通なのに、
+ * それまで1件も拾えていなかった（実測: 「田中先生に相談した」→ 候補ゼロ）。
+ */
+const HONORIFICS = ["さん", "様", "さま", "氏", "くん", "ちゃん", "先生"];
+
+/**
+ * 敬称に見えるが敬称ではない並び。直後がこの字なら数えない。
+ *
+ * なぜ要るか（2026-09-17 実測）:
+ *   介護記録に頻出する「入浴の様子」「夜間の様子」の「様」を敬称と取り違え、
+ *   直前の一般名詞（入浴・夜間・食事）を人名候補にしていた。会議の文字起こし1本で
+ *   数百か所が赤くなり、**職員が1か所ずつ確かめること自体を不可能にする**。
+ *   赤が多すぎる安全網は、赤が無いのと同じになる。
+ */
+const NOT_HONORIFIC_AFTER: Record<string, string> = {
+  様: "子式相々態",
+  氏: "名",
+};
 const ORG_SUFFIXES = [
   "病院",
   "クリニック",
@@ -91,7 +110,11 @@ const ORG_SUFFIXES = [
 ];
 
 const JA = "\\p{Script=Han}\\p{Script=Katakana}\\p{Script=Hiragana}ー";
-const HONORIFIC_RE = new RegExp(`([${JA}]{1,8})(${HONORIFICS.join("|")})`, "gu");
+/** 「様子」のような並びを弾くため、敬称ごとに「直後に来てはいけない字」を付ける */
+const HONORIFIC_ALT = HONORIFICS.map((h) =>
+  NOT_HONORIFIC_AFTER[h] ? `${h}(?![${NOT_HONORIFIC_AFTER[h]}])` : h,
+).join("|");
+const HONORIFIC_RE = new RegExp(`([${JA}]{1,8})(${HONORIFIC_ALT})`, "gu");
 const ORG_RE = new RegExp(`([${JA}]{1,12}(?:${ORG_SUFFIXES.join("|")}))`, "gu");
 /** 助詞・読点・敬称で区切り、最後の塊だけを候補にする（「長女の佐藤さん」→「佐藤」） */
 const SPLIT_RE = new RegExp(`[のはがとにをでもへ、。・]|${HONORIFICS.join("|")}`, "u");

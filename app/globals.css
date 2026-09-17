@@ -232,7 +232,22 @@ select:focus-visible {
  * `.app-main-inner` 単独より詳細度が高いため、メディアクエリの外に置くと
  * md+ でも padding-top を上書きしてしまう（display:none でも隣接セレクタは効く）。
  */
+/*
+ * 送る前に見る画面の「前へ/次へ」の帯。
+ * スマホでは上に固定されたバー（.app-topbar・高さ72px・z-index 20）があるので、
+ * top:8px のままだとその裏に潜って押せなくなる（独立審査 2026-09-17 critical）。
+ */
+.presend-nav {
+  position: sticky;
+  top: 8px;
+  z-index: 10;
+}
+
 @media (max-width: 767px) {
+  .presend-nav {
+    top: 80px; /* 固定トップバー（72px）の下に出す */
+  }
+
   .app-sharing-mobile {
     padding: 72px 16px 0; /* 固定トップバーぶん上を空ける（本文側の padding-top は詰める） */
   }
