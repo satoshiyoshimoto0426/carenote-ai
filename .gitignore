@@ -42,3 +42,12 @@ next-env.d.ts
 
 # integration test artifacts (generated drafts)
 /scripts/.output/
+
+# 独立審査（graph-doubt / code-reviewer）のエージェントが、指摘を実証するために
+# 作業ツリーへ一時的に置く検証用ファイル。本人が消し忘れることがあり、
+# 3回（2026-09-17 に R2・R3 で連続）`git add -A` で巻き込んで commit してしまった。
+# 名前は毎回違うが、観測した規則はこの3つ。あわせて「審査が走っている間は
+# git add -A を使わない」を .claude/steering-log.md に記録した。
+**/__*probe*
+**/zz_probe*
+zz_proof/
