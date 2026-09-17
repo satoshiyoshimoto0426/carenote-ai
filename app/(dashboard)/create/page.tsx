@@ -33,6 +33,7 @@ import {
 } from "@/lib/draftText";
 import type { KaipokeAssessmentSheet } from "@/lib/kaipoke/assessmentLayout";
 import { type NameAlias, restoreNamesDeep } from "@/lib/privacy/pseudonymize";
+import type { TranscriptKind } from "@/lib/privacy/transcriptInput";
 import { appendTranscript } from "@/lib/transcribe/appendTranscript";
 import { explainTranscribeError, validateAudio } from "@/lib/transcribe/validate";
 import type { AssessmentDraft } from "@/types/assessment";
@@ -191,11 +192,12 @@ export default function CreatePage() {
   };
 
   /** 「この欄へ文字起こしを足す」入口を作る。busy は共通（同時に2つ走らせない）。 */
-  const entryFor = (set: (update: (prev: string) => string) => void) => ({
+  const entryFor = (set: (update: (prev: string) => string) => void, kind: TranscriptKind) => ({
     busy: transcribing,
     onPick: (file: File) =>
       transcribeFile(file, (add) => set((prev) => appendTranscript(prev, add))),
     onText: (add: string) => set((prev) => appendTranscript(prev, add)),
+    saveKind: kind,
   });
 
   /** カイポケ転記用シート（アセスメントの下書きを10ページの欄に組み替えたもの） */
@@ -417,7 +419,7 @@ export default function CreatePage() {
                 onChange={setMonitoringNotes}
                 rows={8}
                 placeholder="訪問・電話で確認した最新の様子、本人や家族・事業所からの聞き取り内容を入力してください。"
-                transcribe={entryFor(setMonitoringNotes)}
+                transcribe={entryFor(setMonitoringNotes, "monitoring")}
               />
             </>
           ) : docType === "supportLog" ? (
@@ -429,7 +431,7 @@ export default function CreatePage() {
               onChange={setSupportNotes}
               rows={10}
               placeholder="録音ファイルから文字にするか、文字起こしの「全文」を貼り付けてください（要約ではなく全文）。手書きメモや複数日の対応が混ざっていてもOK（自動で分割します）。"
-              transcribe={entryFor(setSupportNotes)}
+              transcribe={entryFor(setSupportNotes, "support")}
             />
           ) : docType === "meetingSummary" ? (
             <NotesField
@@ -440,7 +442,7 @@ export default function CreatePage() {
               onChange={setMeetingNotes}
               rows={10}
               placeholder="開催日時・場所、出席者、会議で出た発言・報告・決定事項などのメモ（殴り書きでOK）を貼り付けてください。録音から文字にすることもできます。"
-              transcribe={entryFor(setMeetingNotes)}
+              transcribe={entryFor(setMeetingNotes, "meeting")}
             />
           ) : (
             <NotesField
@@ -451,7 +453,7 @@ export default function CreatePage() {
               onChange={setAssessmentNotes}
               rows={10}
               placeholder="利用者・家族との面談で得た情報、生活状況、困りごと、本人の希望などを自由に入力してください。録音から文字にすることもできます。"
-              transcribe={entryFor(setAssessmentNotes)}
+              transcribe={entryFor(setAssessmentNotes, "assessment")}
             />
           )}
 

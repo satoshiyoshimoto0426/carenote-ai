@@ -185,6 +185,15 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 各画面の見出しからは `PageHeader` の `helpAnchor` で `/guide#chN` へ飛べる。開閉の要る FAQ だけ `components/manual/FaqAccordion.tsx`（"use client"）。
 **UI の文字を変えたら content.ts も同じ PR で直す**（Doc-as-Code）。
 **決定（2026-09-12）**: `public/manual/` は Next.js の public 配下＝**ログイン無しで URL を知っていれば閲覧できる**（middleware の matcher がドット付きパスを除外）。秘密情報は含めない前提で、研修配布と PDF 生成のためこの形を採る。検索避けは `noindex` と `public/robots.txt`。
+**録音パイプライン (2026-09-17・docs/specs/recording-pipeline.md)**: 対面3帳票へ録音を拡大。
+R0 上限の是正（4MB＝Vercel の実効上限。25MB は到達不能だった）／R1 入口を4帳票へ（`components/create/NotesField.tsx`）／
+R2 確認画面の長文対応（`lib/privacy/previewNav.ts`・赤い言葉に通し番号と「次へ」・畳んでも赤は全部出す）／
+R3 画面内録音（`components/recording/RecordingPanel.tsx`＋`lib/recording/{config,segments,mimeType}.ts`。
+5分区切り・音声は端末にもサーバにも残さない・**表示スイッチ `NEXT_PUBLIC_CARENOTE_RECORDING` は既定 off**）／
+R4 文字起こし全文の保存（`supabase/client_transcripts.sql`＋`lib/db/transcripts.ts`＋`app/api/transcripts/`。
+AES-256-GCM・5年・可視性は `getClientById` に一本化・**AIへは渡さない**）／R5 説明書 v0.6（草案）。
+画面を動かす検査＝`components/recording/RecordingPanel.live.test.tsx`（jsdom）。
+
 **管理者の準備手順（2026-09-13）**: `docs/ADMIN-SETUP.md` が正本（①関係者名簿の表 ②索引 ③Clerk 組織 ④既存データの移行）。SQL の中身は `supabase/client_related.sql` と `supabase/client_org_scope.sql`。
 
 **名簿の範囲（2026-09-13・G3b 吉本さん決定「事業所で共有」）**: `lib/db/clients.ts` の `scopeExpr` が唯一の絞り込みで、掛かるのは **`clients` だけ**。氏名の2表（`client_identities` / `client_related_identities`）は**親の利用者IDで引く**（`selectByClientIds`）── 3表を別々に `org_id` で絞ると、移行が揃わなかったときや組織未選択時に登録された関係者がいるときに**利用者は見えるのに氏名だけ名簿から落ちる**（＝置換も漏れ検査も効かない fail-open。独立審査 2026-09-13）。ルート（8ファイル・11ハンドラ）が範囲を渡すことは `tests/api/orgScope.route.test.ts` が縛る。

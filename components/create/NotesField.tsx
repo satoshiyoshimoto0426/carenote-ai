@@ -17,8 +17,10 @@
  * ここで音声は一切持たない。File を親へ渡すだけで、保存もしない。
  */
 import type { ReactNode } from "react";
+import SaveTranscriptBar from "@/components/create/SaveTranscriptBar";
 import RecordingPanel from "@/components/recording/RecordingPanel";
-import { btnSecondary, textareaClass } from "@/components/ui/primitives";
+import { btnSecondary, inputClass, textareaClass } from "@/components/ui/primitives";
+import type { TranscriptKind } from "@/lib/privacy/transcriptInput";
 import { AUDIO_MAX_BYTES } from "@/lib/transcribe/validate";
 
 /** ラベルは常に入力の上・12px・muted（Field と同じ見た目。必須マーク併用のため手書き） */
@@ -36,6 +38,8 @@ export interface TranscribeEntry {
   onPick: (file: File) => void;
   /** 文字になった文章をこの欄へ足す（画面内の録音が区切りごとに呼ぶ） */
   onText: (text: string) => void;
+  /** 保存するときの種類（アセスメント・担当者会議…）。渡すと「記録として残す」が出る */
+  saveKind?: TranscriptKind;
 }
 
 export interface NotesFieldProps {
@@ -79,6 +83,15 @@ export default function NotesField({
           <AudioEntry id={id} entry={transcribe} />
           {/* 画面内の録音。表示スイッチが入っていなければ何も出ない（R5 が済むまで既定オフ） */}
           <RecordingPanel onTranscript={transcribe.onText} disabled={transcribe.busy} />
+          {/* 文字起こしを利用者の記録として残す（押したときだけ・R4） */}
+          {transcribe.saveKind && (
+            <SaveTranscriptBar
+              text={value}
+              kind={transcribe.saveKind}
+              inputClass={inputClass}
+              secondaryClass={btnSecondary}
+            />
+          )}
         </>
       ) : null}
     </div>

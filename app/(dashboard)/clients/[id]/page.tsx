@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import RelatedPeople from "@/components/clients/RelatedPeople";
+import SavedTranscripts from "@/components/clients/SavedTranscripts";
 import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
 import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
@@ -212,6 +213,11 @@ export default function ClientDetailPage() {
           clientCode={client.code}
           inputClass={inputClass}
           primaryClass={btnPrimary}
+          secondaryClass={btnSecondary}
+        />
+        <SavedTranscripts
+          clientId={client.id}
+          clientCode={client.code}
           secondaryClass={btnSecondary}
         />
       </div>
