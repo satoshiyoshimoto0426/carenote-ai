@@ -82,12 +82,11 @@ export default function SaveTranscriptBar({ text, kind, inputClass, secondaryCla
 
   return (
     <div className="mt-2 rounded-[8px] border border-[var(--line)] bg-[var(--surface)] p-2.5">
-      <p className="text-xs font-medium text-[var(--ink)]">
-        この文字起こしを記録として残す（任意）
-      </p>
+      <p className="text-xs font-medium text-[var(--ink)]">この欄の内容を記録として残す（任意）</p>
       <p className="mt-1 text-xs text-[var(--muted)]">
-        あとで「言った・言わない」を確かめたいときに残します。実名が入ったまま暗号化して保存し、
-        5年で消えます。残さない場合は、下書きを作った時点で消えます。
+        あとで「言った・言わない」を確かめたいときに残します。いま上の欄に書かれている全文
+        （録音から起こした文章も、手で書き足した部分も）を、実名が入ったまま暗号化して保存します。
+        5年で消えます。残さない場合は、画面を離れた時点で消えます。
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <select
