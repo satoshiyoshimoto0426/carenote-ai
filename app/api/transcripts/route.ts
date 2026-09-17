@@ -1,7 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
 import { type DataScope, resolveScope, SCOPE_ERROR_MESSAGE } from "@/lib/db/clients";
-import { getTranscriptsByClient, saveTranscript } from "@/lib/db/transcripts";
+import {
+  getTranscriptsByClient,
+  saveTranscript,
+  TRANSCRIPT_TABLE_MISSING_MESSAGE,
+  TranscriptTableMissingError,
+} from "@/lib/db/transcripts";
 import { checkTranscriptInput } from "@/lib/privacy/transcriptInput";
 
 /**
@@ -53,14 +58,21 @@ export async function POST(req: NextRequest) {
       userId,
       scope,
     });
-    if (!saved) {
-      return NextResponse.json(
-        { error: "保存できませんでした。選んだ利用者が見つからないか、権限がありません。" },
-        { status: 404 },
-      );
+    if (!saved.ok) {
+      // 「利用者が見えない」と「保存に失敗」を取り違えない（独立審査 2026-09-17）
+      if (saved.reason === "client_not_visible") {
+        return NextResponse.json(
+          { error: "選んだ利用者が見つからないか、権限がありません。" },
+          { status: 404 },
+        );
+      }
+      return NextResponse.json({ error: "保存できませんでした。" }, { status: 500 });
     }
-    return NextResponse.json({ transcript: saved });
+    return NextResponse.json({ transcript: saved.transcript });
   } catch (e) {
+    if (e instanceof TranscriptTableMissingError) {
+      return NextResponse.json({ error: TRANSCRIPT_TABLE_MISSING_MESSAGE }, { status: 503 });
+    }
     // 本文はログに出さない（出すと暗号化した意味が消える）
     console.error("[transcripts] save error:", e instanceof Error ? e.message : String(e));
     return NextResponse.json({ error: "保存に失敗しました。" }, { status: 500 });
@@ -80,6 +92,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "利用者が指定されていません。" }, { status: 400 });
   }
 
-  const transcripts = await getTranscriptsByClient(clientId, scope);
-  return NextResponse.json({ transcripts });
+  try {
+    const transcripts = await getTranscriptsByClient(clientId, scope);
+    return NextResponse.json({ transcripts });
+  } catch (e) {
+    if (e instanceof TranscriptTableMissingError) {
+      return NextResponse.json({ error: TRANSCRIPT_TABLE_MISSING_MESSAGE }, { status: 503 });
+    }
+    console.error("[transcripts] list error:", e instanceof Error ? e.message : String(e));
+    return NextResponse.json({ error: "一覧を取れませんでした。" }, { status: 500 });
+  }
 }

@@ -24,8 +24,14 @@ const db = vi.hoisted(() => ({
   getTranscriptText: vi.fn(),
   deleteTranscript: vi.fn(),
 }));
-vi.mock("@/lib/db/transcripts", () => db);
+vi.mock("@/lib/db/transcripts", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/lib/db/transcripts")>();
+  return { ...orig, ...db };
+});
 
+const { TRANSCRIPT_TABLE_MISSING_MESSAGE, TranscriptTableMissingError } = await import(
+  "@/lib/db/transcripts"
+);
 const { POST, GET } = await import("@/app/api/transcripts/route");
 const { GET: GET_ONE, DELETE } = await import("@/app/api/transcripts/[id]/route");
 
@@ -54,7 +60,7 @@ const params = { params: Promise.resolve({ id: "t1" }) };
 beforeEach(() => {
   vi.clearAllMocks();
   clerk.auth.mockResolvedValue({ userId: "u1", orgId: null } satisfies Session);
-  db.saveTranscript.mockResolvedValue(summary);
+  db.saveTranscript.mockResolvedValue({ ok: true, transcript: summary });
   db.getTranscriptsByClient.mockResolvedValue([summary]);
   db.getTranscriptText.mockResolvedValue({ summary, text: "宮本さんより報告。" });
   db.deleteTranscript.mockResolvedValue(true);
@@ -87,7 +93,7 @@ describe("保存: POST /api/transcripts", () => {
   });
 
   it("見えない利用者への保存は 404（他人の利用者に紐づけられない）", async () => {
-    db.saveTranscript.mockResolvedValue(null);
+    db.saveTranscript.mockResolvedValue({ ok: false, reason: "client_not_visible" });
     const res = await POST(post({ clientId: "other", kind: "meeting", text: "あ" }));
     expect(res.status).toBe(404);
   });
@@ -187,5 +193,43 @@ describe("消す: DELETE /api/transcripts/[id]", () => {
     const res = await DELETE(oneReq(), params);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ deleted: true });
+  });
+});
+
+/**
+ * 独立審査 2026-09-17 critical: 表が未作成のとき、職員には「権限がありません」と誤配され、
+ * 真因（管理者が SQL を実行していない）がどこにも出なかった。職員には直せない種類の話なので、
+ * 管理者がやることを名指しして伝える。
+ */
+describe("表が未作成のとき、真因を伝える", () => {
+  it("保存は 503 で、管理者のやることを名指しする", async () => {
+    db.saveTranscript.mockRejectedValue(new TranscriptTableMissingError("missing"));
+    const res = await POST(post({ clientId: "c1", kind: "meeting", text: "あ" }));
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error).toBe(TRANSCRIPT_TABLE_MISSING_MESSAGE);
+    expect(body.error).toContain("supabase/client_transcripts.sql");
+    expect(body.error).not.toContain("権限");
+  });
+
+  it("一覧も 503（「0件」に見せて保存できていないことを隠さない）", async () => {
+    db.getTranscriptsByClient.mockRejectedValue(new TranscriptTableMissingError("missing"));
+    const res = await GET(listReq("?clientId=c1"));
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toContain("supabase/client_transcripts.sql");
+  });
+
+  it("本文を読むときも 503", async () => {
+    db.getTranscriptText.mockRejectedValue(new TranscriptTableMissingError("missing"));
+    const res = await GET_ONE(oneReq(), params);
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toContain("supabase/client_transcripts.sql");
+  });
+
+  it("消すときも 503", async () => {
+    db.deleteTranscript.mockRejectedValue(new TranscriptTableMissingError("missing"));
+    const res = await DELETE(oneReq(), params);
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toContain("supabase/client_transcripts.sql");
   });
 });

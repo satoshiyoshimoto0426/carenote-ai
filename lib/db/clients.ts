@@ -289,7 +289,15 @@ class RelatedTableMissingError extends Error {
     this.name = "RelatedTableMissingError";
   }
 }
-const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
+/**
+ * 表が無いときに PostgREST が返すコード。
+ * 42P01 = PostgreSQL の undefined_table、PGRST205 = スキーマキャッシュに無い。
+ *
+ * export している理由: 同じ罠を踏む表が増えたため（2026-09-17 の独立審査で
+ * client_transcripts が「権限がありません」と誤配されていた）。判定を写して増やすと
+ * 片方だけ直る。lib/db/transcripts.ts はここから読む。
+ */
+export const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
 
 /**
  * 待っても直らない失敗（記号の重複・名簿の件数超過・表記ゆれの衝突）。

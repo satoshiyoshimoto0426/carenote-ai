@@ -1,7 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
 import { type DataScope, resolveScope, SCOPE_ERROR_MESSAGE } from "@/lib/db/clients";
-import { deleteTranscript, getTranscriptText } from "@/lib/db/transcripts";
+import {
+  deleteTranscript,
+  getTranscriptText,
+  TRANSCRIPT_TABLE_MISSING_MESSAGE,
+  TranscriptTableMissingError,
+} from "@/lib/db/transcripts";
 
 /**
  * 保存した文字起こしの本文を読む／消す（docs/specs/recording-pipeline.md R4）。
@@ -37,6 +42,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }
     return NextResponse.json(found);
   } catch (e) {
+    if (e instanceof TranscriptTableMissingError) {
+      return NextResponse.json({ error: TRANSCRIPT_TABLE_MISSING_MESSAGE }, { status: 503 });
+    }
     // 復号に失敗した（鍵が違う・中身が壊れている）。本文は出さず、原因だけ残す
     console.error("[transcripts] read error:", e instanceof Error ? e.message : String(e));
     return NextResponse.json(
@@ -55,9 +63,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!scope) return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
 
   const { id } = await params;
-  const removed = await deleteTranscript(id, scope);
-  if (!removed) {
-    return NextResponse.json({ error: "見つかりませんでした。" }, { status: 404 });
+  try {
+    const removed = await deleteTranscript(id, scope);
+    if (!removed) {
+      return NextResponse.json({ error: "見つかりませんでした。" }, { status: 404 });
+    }
+    return NextResponse.json({ deleted: true });
+  } catch (e) {
+    if (e instanceof TranscriptTableMissingError) {
+      return NextResponse.json({ error: TRANSCRIPT_TABLE_MISSING_MESSAGE }, { status: 503 });
+    }
+    console.error("[transcripts] delete error:", e instanceof Error ? e.message : String(e));
+    return NextResponse.json({ error: "消せませんでした。" }, { status: 500 });
   }
-  return NextResponse.json({ deleted: true });
 }

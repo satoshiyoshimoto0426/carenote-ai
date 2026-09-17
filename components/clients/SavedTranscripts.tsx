@@ -91,7 +91,8 @@ export default function SavedTranscripts({ clientId, clientCode, secondaryClass 
       </h3>
       <p className="mt-1 text-xs text-[var(--faint)]">
         録音から起こしたそのままの文章です。実名が入っているので、画面を人に見せないでください。
-        保存から5年で消えます。
+        保存から5年を過ぎたら消す決まりですが、いまは自動で消えません（管理者がまとめて消します）。
+        すぐ消したいものは、その行の「消す」を押してください。
       </p>
 
       <ul className="mt-2.5 space-y-2">

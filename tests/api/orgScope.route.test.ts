@@ -30,6 +30,17 @@ vi.mock("@/lib/db/clients", async (importOriginal) => {
   return { ...orig, ...db };
 });
 
+const transcripts = vi.hoisted(() => ({
+  saveTranscript: vi.fn(),
+  getTranscriptsByClient: vi.fn(),
+  getTranscriptText: vi.fn(),
+  deleteTranscript: vi.fn(),
+}));
+vi.mock("@/lib/db/transcripts", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/lib/db/transcripts")>();
+  return { ...orig, ...transcripts };
+});
+
 const clerk = await import("@clerk/nextjs/server");
 const { AliasLoadError } = await import("@/lib/db/clients");
 const { GET: listClients, POST: createClient } = await import("@/app/api/clients/route");
@@ -44,6 +55,10 @@ const { POST: generate } = await import("@/app/api/generate/route");
 const { POST: preview } = await import("@/app/api/preview/route");
 const { POST: assessment } = await import("@/app/api/kaipoke/assessment/route");
 const { POST: rescue } = await import("@/app/api/rescue/route");
+const { POST: saveTranscript, GET: listTranscripts } = await import("@/app/api/transcripts/route");
+const { GET: readTranscript, DELETE: deleteTranscript } = await import(
+  "@/app/api/transcripts/[id]/route"
+);
 
 function post(path: string, body: unknown) {
   return new NextRequest(`http://localhost${path}`, {
@@ -69,6 +84,10 @@ beforeEach(() => {
   db.deleteRelatedPerson.mockResolvedValue("not_found");
   db.addRelatedPerson.mockResolvedValue({ ok: false, error: "x" });
   db.createClientRecord.mockResolvedValue(null);
+  transcripts.saveTranscript.mockResolvedValue({ ok: false, reason: "client_not_visible" });
+  transcripts.getTranscriptsByClient.mockResolvedValue([]);
+  transcripts.getTranscriptText.mockResolvedValue(null);
+  transcripts.deleteTranscript.mockResolvedValue(false);
 });
 
 describe("AI へ送る4つの入口は、事業所の範囲で名簿を読む", () => {
@@ -161,5 +180,34 @@ describe("名簿を見せる・書き換える入口も同じ範囲を使う", (
       ctx,
     );
     expect(db.deleteRelatedPerson).toHaveBeenCalledWith("r1", "c1", SCOPE);
+  });
+});
+
+/**
+ * 文字起こしの入口（2026-09-17 追加）。
+ * ここは**黒塗りが効かない生の実名**を出し入れする経路なので、範囲を渡し忘れると
+ * 他事業所の会議録が読めてしまう。上の9本と同じ見張りに入れる。
+ */
+describe("保存した文字起こしの入口も、同じ範囲を使う", () => {
+  it("POST /api/transcripts", async () => {
+    await saveTranscript(post("/api/transcripts", { clientId: "c1", kind: "meeting", text: "あ" }));
+    expect(transcripts.saveTranscript).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: SCOPE, userId: SCOPE.userId }),
+    );
+  });
+
+  it("GET /api/transcripts", async () => {
+    await listTranscripts(new NextRequest("http://localhost/api/transcripts?clientId=c1"));
+    expect(transcripts.getTranscriptsByClient).toHaveBeenCalledWith("c1", SCOPE);
+  });
+
+  it("GET /api/transcripts/[id]", async () => {
+    await readTranscript(new NextRequest("http://localhost/api/transcripts/t1"), ctx);
+    expect(transcripts.getTranscriptText).toHaveBeenCalledWith("c1", SCOPE);
+  });
+
+  it("DELETE /api/transcripts/[id]", async () => {
+    await deleteTranscript(new NextRequest("http://localhost/api/transcripts/t1"), ctx);
+    expect(transcripts.deleteTranscript).toHaveBeenCalledWith("c1", SCOPE);
   });
 });

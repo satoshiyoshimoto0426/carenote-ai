@@ -24,7 +24,38 @@ import { decryptString, encryptString, getPiiKey } from "@/lib/privacy/crypto";
 import { computeRetentionUntil } from "@/lib/privacy/retention";
 import type { TranscriptKind } from "@/lib/privacy/transcriptInput";
 import { createServerClient } from "../supabase/server";
-import { type DataScope, getClientById } from "./clients";
+import { type DataScope, getClientById, MISSING_TABLE_CODES } from "./clients";
+/**
+ * 表（client_transcripts）が未作成のときに投げる。
+ *
+ * なぜ分けるか（独立審査 2026-09-17 critical）:
+ *   ここを null で返すと、入口は「利用者が見えない」と区別できず、職員に
+ *   **「権限がありません」と誤配**していた。真因は「管理者が SQL を実行していない」で、
+ *   職員には直しようがないのに、管理者へ伝わる言葉がどこにも出なかった。
+ *   関係者名簿の表で同じ罠を 2026-09-11 に踏んでおり、判定も文言も既にある。ここでも使う。
+ */
+export class TranscriptTableMissingError extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "TranscriptTableMissingError";
+  }
+}
+
+/** 職員に見せる文言。職員には直せないので、管理者がやることを名指しする。 */
+export const TRANSCRIPT_TABLE_MISSING_MESSAGE =
+  "文字起こしを保存する表が未作成です。管理者が supabase/client_transcripts.sql を Supabase で実行してください。";
+
+/** 表が無いときのエラーなら投げる。それ以外は呼び出し側で扱う。 */
+function throwIfTableMissing(error: { code?: string; message?: string } | null): void {
+  if (error && MISSING_TABLE_CODES.has(error.code ?? "")) {
+    throw new TranscriptTableMissingError(error.message ?? "table missing");
+  }
+}
+
+/** 保存の結果。「利用者が見えない」と「保存に失敗」を取り違えないよう分ける。 */
+export type SaveTranscriptResult =
+  | { ok: true; transcript: TranscriptSummary }
+  | { ok: false; reason: "client_not_visible" | "failed" };
 
 /** 一覧に出す情報。**本文は含めない**（一覧のたびに復号しないため）。 */
 export interface TranscriptSummary {
@@ -73,9 +104,9 @@ export async function saveTranscript(params: {
   text: string;
   userId: string;
   scope: DataScope;
-}): Promise<TranscriptSummary | null> {
+}): Promise<SaveTranscriptResult> {
   const client = await getClientById(params.clientId, params.scope);
-  if (!client) return null;
+  if (!client) return { ok: false, reason: "client_not_visible" };
 
   const db = createServerClient();
   const { data, error } = await db
@@ -92,12 +123,13 @@ export async function saveTranscript(params: {
     })
     .select(SUMMARY_COLUMNS)
     .single();
+  throwIfTableMissing(error);
   if (error || !data) {
     // 本文はログに出さない（出すと暗号化した意味が消える）
     console.error("[db] saveTranscript error:", error?.message);
-    return null;
+    return { ok: false, reason: "failed" };
   }
-  return toSummary(data as Row);
+  return { ok: true, transcript: toSummary(data as Row) };
 }
 
 /** 指定利用者の文字起こし一覧（新しい順）。本文は返さない。 */
@@ -114,6 +146,7 @@ export async function getTranscriptsByClient(
     .select(SUMMARY_COLUMNS)
     .eq("client_id", clientId)
     .order("created_at", { ascending: false });
+  throwIfTableMissing(error);
   if (error) {
     console.error("[db] getTranscriptsByClient error:", error.message);
     return [];
@@ -135,6 +168,7 @@ export async function getTranscriptText(
     .select(`${SUMMARY_COLUMNS}, text_encrypted`)
     .eq("id", id)
     .single();
+  throwIfTableMissing(error);
   if (error || !data) return null;
 
   const row = data as Row;
@@ -156,6 +190,7 @@ export async function deleteTranscript(id: string, scope: DataScope): Promise<bo
     .select("id, client_id")
     .eq("id", id)
     .single();
+  throwIfTableMissing(error);
   if (error || !data) return false;
 
   const client = await getClientById((data as Row).client_id, scope);
