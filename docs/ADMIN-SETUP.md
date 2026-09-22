@@ -42,19 +42,110 @@
 
 ## ②-2 文字起こしを保存する表を作る（録音を使うときだけ）
 
-**これをやらないと**: 録音の文字起こしを「記録として残す」を押したときに保存できません
-（録音と文字起こし自体は、この表が無くても使えます）。
+**これをやらないと**: 「記録として残す」を押したときに
+「文字起こしを保存する表が未作成です。管理者が supabase/client_transcripts.sql を Supabase で
+実行してください。」と出て保存できません。**録音と文字起こし自体は、この表が無くても使えます。**
 
-1. Supabase を開く → 左のメニューの **SQL Editor**
-2. `supabase/client_transcripts.sql` の中身を**全部**コピーして貼り付ける
-3. 右下の **Run** を押す
-4. エラーが出なければ終わり
+所要時間 **3分ほど**。パソコンのファイルを開く必要はありません（下の文章をコピーするだけ）。
 
-**保存されるもの**: 会議や面談の文字起こし**全文**。実名が入ったまま**暗号化して**保存され、
-Supabase の画面から中身は読めません（読めないのが正常です）。保存から5年で消す決まりですが、
-**自動で消す仕組みはまだありません**。月1回を目安に、同じファイルの【手順4】を実行してください。
+### 手順1 SQL の画面を開く
+
+このリンクを開きます（この事業所の Supabase に直接つながります）:
+
+**https://supabase.com/dashboard/project/hesemzpjmljmxhxgqmyi/sql/new**
+
+- ログインを求められたら、Supabase のアカウントで入ってください
+- リンクが開けないときは、Supabase にログイン →（左のメニュー）**SQL Editor** →
+  緑の **New query** を押しても同じ画面になります
+
+### 手順2 下の文章をまるごとコピーして貼り付ける
+
+真ん中の広い入力欄（カーソルが出る所）に貼ります。**全部を一度に**貼ってください。
+
+```sql
+create table if not exists client_transcripts (
+  id              uuid primary key default gen_random_uuid(),
+  client_id       uuid not null references clients (id) on delete cascade,
+  org_id          text,
+  kind            text not null,
+  title           text,
+  text_encrypted  text not null,
+  chars           integer not null,
+  retention_until timestamptz not null,
+  created_by      text not null,
+  created_at      timestamptz not null default now()
+);
+
+create index if not exists client_transcripts_client_idx
+  on client_transcripts (client_id, created_at desc);
+create index if not exists client_transcripts_owner_idx
+  on client_transcripts (created_by, created_at desc);
+create index if not exists client_transcripts_retention_idx
+  on client_transcripts (retention_until);
+
+alter table client_transcripts enable row level security;
+```
+
+### 手順3 実行する
+
+右下の緑の **Run** を押します（キーボードなら **Ctrl + Enter**）。
+
+**成功したとき**: 画面の下に **Success. No rows returned** と出ます。
+「行が返りませんでした」＝**表を作っただけで中身は空**、という意味なので、これが正解です。
+
+### 手順4 本当にできたか確かめる（任意・30秒）
+
+入力欄の文章をすべて消してから、これだけを貼って **Run**:
+
+```sql
+select count(*) as 件数 from client_transcripts;
+```
+
+**件数 0** と表が出れば成功です（まだ何も保存していないので 0 が正しい）。
+`relation "client_transcripts" does not exist` と出たら、手順2〜3がうまくいっていません。
+
+### 手順5 アプリ側で確かめる
+
+1. https://carenote-ai.vercel.app の「作成する」を開く
+2. どれかの帳票タブで、メモ欄に何か1行書く
+3. 下に出る「この欄の内容を記録として残す（任意）」で**保存先の利用者を選ぶ**
+4. 「記録として残す」を押す → **「保存しました」**と緑で出れば完了
+5. 「利用者」→ その利用者の画面に「保存した文字起こし」が出ていれば、読み返しも動いています
+
+### うまくいかないとき
+
+| 画面に出た言葉 | 意味とやること |
+|---|---|
+| `Success. No rows returned` | **成功です**（何も表示されないのが正常） |
+| `relation "clients" does not exist` | 先に①の表が要ります。①を実行してから、もう一度②-2を |
+| `permission denied` | ログインしている Supabase のアカウントが違います。この事業所のプロジェクトに入り直してください |
+| `syntax error` | 貼り付けが途中で切れています。入力欄を全部消して、手順2をもう一度まるごと貼り直してください |
+| アプリで「表が未作成です」と出続ける | 手順4の確認を実行してください。0件で返るのに出続ける場合は、開いている Supabase のプロジェクトが別のものです |
+
+### 保存されるもの（大事なところ）
+
+会議や面談の文字起こし**全文**です。**利用者・ご家族・他事業所の方・主治医の実名が入ったまま**
+暗号化して保存されます。Supabase の画面から中身を開いても**読めません**（読めないのが正常です）。
+
+- 見られるのは、その利用者を扱える職員だけです
+- 保存から5年を過ぎたら消す決まりですが、**自動で消す仕組みはまだありません**
+- 1件ずつ消すのはアプリの画面から（利用者の画面の「消す」）
+
+### 月1回やること（期限切れの掃除）
+
+同じ SQL の画面で、これを貼って **Run**:
+
+```sql
+delete from client_transcripts where retention_until < now();
+```
+
+消した件数が返ります。**0 件なら期限切れはまだありません**（5年経つまでは 0 のままです）。
+
+ある利用者ぶんをまとめて消すとき（開示・削除の求めに応じるとき）は、
+アプリの利用者画面で1件ずつ「消す」を押すのが確実です。
 
 ---
+
 
 ## ③ 事業所のアカウント（Clerk の組織）を有効にする
 
