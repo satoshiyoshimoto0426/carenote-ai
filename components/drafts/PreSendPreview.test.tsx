@@ -102,7 +102,7 @@ describe("送る前に見る画面の既定表示", () => {
     expect(html).toContain(">7字</span>");
   });
 
-  it("「なぜ赤いか」が文字で読める（ふきだしだけだとタッチ端末に届かない）", () => {
+  it("畳んだ欄でも「なぜ赤いか」が文字で読める（ふきだしだけだとタッチ端末に届かない）", () => {
     const html = view({ meetingNotes: `${FILLER}長女の佐藤さんより電話。` });
     // 以前は html 全体に「敬称の前」があるかだけを見ていたため、<mark title="敬称の前"> の
     // ふきだしだけで満たされ、画面の文字が消えても緑だった（2026-09-23 計画 F0a）。
@@ -114,6 +114,35 @@ describe("送る前に見る画面の既定表示", () => {
     );
     expect(rows).toHaveLength(1);
     expect(textOf(rows[0])).toContain("（敬称の前）");
+  });
+
+  it("開いた欄でも「なぜ赤いか」が文字で読める（本文には差し込まず、欄の下に言葉ごとに並べる）", () => {
+    // 2026-09-23 検収: 開いた欄（3000字以下の欄と、全文を表示した欄）は理由が <mark title> の
+    // ふきだしにしか無く、タッチ端末では読めなかった。上の検査は畳んだ欄しか見ていなかった
+    const text = "長女の佐藤さんより電話。佐藤さんがひまわり病院へ付き添う。";
+    // 前提: 本物の検出器で、理由の違う2語が拾われる（佐藤は2回出るが、候補は言葉ごとに1つ）
+    expect(findNameCandidates(text)).toEqual([
+      { word: "佐藤", reason: "敬称の前" },
+      { word: "ひまわり病院", reason: "施設名の可能性" },
+    ]);
+    const sections = elementsOf(view({ meetingNotes: text })).filter(
+      (el) => el.tagName === "section",
+    );
+    expect(sections).toHaveLength(1);
+    const [section] = sections;
+    // 短い欄なので開いている（畳んだ欄の一覧ではなく、本文がそのまま出る）
+    expect(textOf(section)).not.toContain("全文を表示する");
+    // 理由は言葉ごとに1行、本文に出てくる順。どの言葉がどの理由かを取り違えない
+    const reasons = within(section, (el) => el.tagName === "li").map(textOf);
+    expect(reasons).toEqual(["佐藤（敬称の前）", "ひまわり病院（施設名の可能性）"]);
+    // 本文は送る文章そのまま（理由を差し込まない）で、赤い印は出てくる回数どおり3つ（一覧は印を増やさない）
+    const bodies = within(
+      section,
+      (el) => el.tagName === "p" && within(el, (m) => m.tagName === "mark").length > 0,
+    );
+    expect(bodies).toHaveLength(1);
+    expect(textOf(bodies[0])).toBe(text);
+    expect(within(section, (el) => el.tagName === "mark")).toHaveLength(3);
   });
 });
 

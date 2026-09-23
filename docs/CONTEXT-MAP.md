@@ -187,7 +187,8 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 **決定（2026-09-12）**: `public/manual/` は Next.js の public 配下＝**ログイン無しで URL を知っていれば閲覧できる**（middleware の matcher がドット付きパスを除外）。秘密情報は含めない前提で、研修配布と PDF 生成のためこの形を採る。検索避けは `noindex` と `public/robots.txt`。
 **録音パイプライン (2026-09-17・docs/specs/recording-pipeline.md)**: 対面3帳票へ録音を拡大。
 R0 上限の是正（4MB＝Vercel の実効上限。25MB は到達不能だった）／R1 入口を4帳票へ（`components/create/NotesField.tsx`）／
-R2 確認画面の長文対応（`lib/privacy/previewNav.ts`・赤い言葉に通し番号と「次へ」・畳んでも赤は全部出す）／
+R2 確認画面の長文対応（`lib/privacy/previewNav.ts`・赤い言葉に通し番号と「次へ」・畳んでも赤は全部出す・
+「なぜ赤いか」は畳んだ欄は各行の末尾、開いた欄は本文の下に `redWordReasons` で文字で出す ── ふきだしはタッチ端末に出ない・2026-09-23）／
 R3 画面内録音（`components/recording/RecordingPanel.tsx`＋`lib/recording/{config,segments,mimeType}.ts`。
 5分区切り・音声は端末にもサーバにも残さない・**表示スイッチ `NEXT_PUBLIC_CARENOTE_RECORDING` は既定 off**）／
 R4 文字起こし全文の保存（`supabase/client_transcripts.sql`＋`lib/db/transcripts.ts`＋`app/api/transcripts/`。
