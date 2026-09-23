@@ -204,6 +204,18 @@ AES-256-GCM・5年・可視性は `getClientById` に一本化・**AIへは渡�
 
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
+### 見た目の土台 ── デザイントークン v2（A案「作業台」・2026-09-23・ブランチ `redesign/a`）
+値の正本は **`app/globals.css` の `:root`**。地（`--paper` `--card` `--pane` `--rail` `--active` `--row-selected`）／
+文字4段（`--ink` → `--ink-2` / `--ink-table` → `--muted` → `--faint`）／線（`--line` `--btn-line` `--line-inner` `--line-faint`）／
+**飾り専用 `--dash`（「—」と区切りの「/」だけ。文字に使わない）**／色の役割（`--green`=主ボタン・選択中、`--red-word`=赤い言葉だけ、
+`--amber*`=注意、`--clay*`=エラー）／書体（`--sans`=IBM Plex Sans JP、`--mono`=IBM Plex Mono ── 記号・件数・日付）。
+書体の読み込みは `app/layout.tsx` の Google Fonts `<link>`（next/font はビルドが外部通信に左右されるので使わない）。
+Clerk の画面用の**写し**が `lib/clerkAppearance.ts`（Clerk は CSS 変数を解釈しない箇所があるため16進数で持つ）。
+センサー: `app/globals.test.ts`（①層の外で要素の余白を決める規則 ── `@media`/`@supports`/`@container` の中と `@layer a, b;` の直後も見る
+②文字色トークンが地〔paper/card/pane/surface-2〕の上で WCAG AA 4.5:1 以上 ③`--sans`/`--mono` の先頭の書体を layout.tsx が読み込む）、
+`lib/clerkAppearance.test.ts`（写しとトークンのずれ）。CSS の読み取り器は `tests/helpers/cssTokens.ts`（テスト専用）。
+**`--faint` は 58 か所で本物の文字（赤い言葉の理由など）に使われている** ── 4.5:1 を割る値にしない。
+
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
 - API ルートの追加・データフローの変更
@@ -211,6 +223,7 @@ AES-256-GCM・5年・可視性は `getClientById` に一本化・**AIへは渡�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

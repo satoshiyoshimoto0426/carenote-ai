@@ -19,6 +19,9 @@
 ## 3. 確定済みの前提（再議しない）
 - スタック: Next.js 16 / React 19 / TypeScript / Biome / Tailwind / Supabase(RLS) / Clerk / Claude API。
 - デザインシステム v0: ライト×深緑 editorial（紙 `#F7F5F1` / 深緑 `#15604D` / 明朝見出し / 線アイコン / グラデ・絵文字なし / 余白と髪の毛罫線）。
+  - **置き換え済み（2026-09-23）**: v0 → v1（2026-09-16・冷たい紙色）→ **v2＝A案「作業台」**（画面いっぱいの区画を 1px の線で区切る・IBM Plex）。
+    色と書体の値の正本は `app/globals.css` の `:root`（この節の16進数は当時の記録）。センサーは `app/globals.test.ts`・`lib/clerkAppearance.test.ts`。
+    線アイコン・グラデ/絵文字なし・髪の毛罫線の方針は v2 でも同じ。
 - IA: ホーム（横断ハブ・今日やること＋運用指標）＋利用者軸＋「救済→確認→カイポケ流し込み→人が保存」の一本動線＋設定。
 - **利用者保存=A案で確定**（要配慮個人情報をDB保存）。既存の `lib/generation`・`extension`・評価は部品として流用。
 

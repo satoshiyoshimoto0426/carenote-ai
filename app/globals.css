@@ -10,44 +10,75 @@
 @source "../components";
 
 /*
- * CareNote AI design tokens (design system v1, 2026-09-16).
+ * CareNote AI design tokens (design system v2 = A案「作業台」, 2026-09-23).
  *
- * v0 からの変更と理由（吉本さん指摘「AIが作った感を消したい」）:
- *   v0 は「温かいクリーム色の地 ＋ 明朝体の見出し ＋ アクセント1色」だった。
- *   これは生成AIが作るUIで最も多い定番の組み合わせで、それ自体が「量産物」の記号に
- *   なっていた。地の色を**冷たい紙色**へ移し、見出しの明朝体をやめ、記号（A様）だけ
- *   等幅書体にして「これは氏名ではなく符号」と読めるようにした。
- *   深緑のブランド色は残す（色自体は定番化しておらず、地を替えるだけで印象が変わるため）。
+ * v2 の考え方（吉本さん決定 2026-09-23・原寸の案は Main / A-clients のアートボード）:
+ *   カードを積むのをやめ、画面いっぱいの区画（ペイン）を 1px の細い線で区切る「道具」の見た目。
+ *   地は冷たい灰色、文字は 4 段（--ink → --ink-2 → --muted → --faint）、線も 3 段。
+ *   緑は「主ボタン」と「選択中の印」だけ、赤（--red-word）は「赤い言葉」だけに使う。
+ *   注意の黄色（--amber*）とエラーのレンガ色（--clay*）は v1 のまま残す（色の役割を変えない）。
+ *
+ * v1（2026-09-16）からの経緯: v0 の「温かいクリーム色の地＋明朝体の見出し」は生成AIの定番で
+ *   「量産物」の記号になっていたため、v1 で冷たい紙色へ移した。v2 はその延長で、値をアートボードに揃えた。
+ *
+ * 文字の色は、地の色（--paper / --card / --pane / --surface-2）の上で 4.5:1 以上（WCAG AA）。
+ *   app/globals.test.ts が計算して縛る。**--dash（#a9b0b7）は地の上で約 2:1 なので文字に使わない**
+ *   （「—」の飾り・区切りの「/」専用）。A案の原案は --faint をこの色にしていたが、--faint は
+ *   赤い言葉の理由「（敬称の前）」など 58 か所の本物の文字に使われているため採らなかった。
  *
  * 使い方: 直書きの16進数は置かず、必ず var(--token) を通す。
+ * 例外: lib/clerkAppearance.ts は Clerk の都合で16進数を写して持つ。ずれは lib/clerkAppearance.test.ts が止める。
  * 参照元: components/ui/primitives.tsx と各ページ。
  */
 :root {
-  --paper: #eef1f4;
-  --card: #ffffff;
-  --surface-2: #f7f9fa;
-  --ink: #10151a;
-  --muted: #47535f;
-  --faint: #78848f;
-  --line: #dbe2e8;
-  --line-soft: #eaeff3;
-  --green: #0e5c46;
-  --green-deep: #0a4735;
-  --green-soft: #e6f0ec;
+  /* 地と面 */
+  --paper: #f5f6f7; /* 画面の地 */
+  --card: #ffffff; /* 入力欄・ボタン・ログイン枠の面 */
+  --surface-2: #f7f9fa; /* 薄い面（v1 の画面が使う） */
+  --pane: #fcfcfd; /* 右側の区画（AIに送る文章・利用者の詳細） */
+  --rail: #eceef0; /* 左の縦メニューの地 */
+  --active: #dde2e6; /* 縦メニューで開いている項目の地 */
+  --row-selected: #e7efeb; /* 一覧で選んでいる行の地 */
+
+  /* 文字（濃い順）。どれも地の上で 4.5:1 以上 */
+  --ink: #15181c; /* 本文・見出し */
+  --ink-2: #3d444b; /* 補助の本文・ラベル */
+  --ink-table: #2a2f35; /* 表の本文（属性など） */
+  --muted: #59616a; /* 補足・件数・日付 */
+  --faint: #646c75; /* いちばん淡い文字（ヒント・字数など）。--paper の上で 4.9:1 */
+
+  /* 線（濃い順） */
+  --line: #dfe3e7; /* 区画の境目（1px） */
+  --btn-line: #d3d9de; /* 白いボタンの枠 */
+  --line-inner: #e6e9ec; /* 区画の中の区切り・表の行 */
+  --line-soft: #eaeff3; /* v1 の画面が使う薄い線 */
+  --line-faint: #eceef1; /* いちばん薄い区切り */
+  --dash: #a9b0b7; /* 飾り専用（「—」・区切りの「/」）。文字に使わない */
+
+  /* 色の役割 */
+  --green: #0e5c46; /* 主ボタン・選択中の印・リンク */
+  --green-deep: #0a4735; /* 主ボタンを押す直前（hover） */
+  --green-soft: #e6f0ec; /* 記号の札の地 */
   --green-line: #bcd6cc;
-  --clay: #a83226;
+  --mic-soft: #e3eee9; /* 録音の印の地 */
+  --red-word: #b42318; /* 赤い言葉（名前かもしれないのに消せなかったもの）だけに使う */
+  --clay: #a83226; /* エラー */
   --clay-soft: #fdeeec;
-  --amber: #9a5b06;
+  --amber: #9a5b06; /* 注意（共有していない・救済モードなど） */
   --amber-soft: #fdf4e6;
   --amber-line: #f0dcbb;
-  /* 記号（A様・B様）と件数に使う。氏名ではなく符号であることを書体で示す */
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
   /*
-   * 本文書体。app/layout.tsx で Noto Sans JP を読み込んでいるのに、ここが
-   * Hiragino/Yu Gothic UI のままで**一度も使われていなかった**（2026-09-16 に発覚）。
-   * Windows の既定 Yu Gothic UI は細く字間が詰まり、それが「安っぽさ」の主因だった。
+   * 記号（A様・B様）・件数・日付に使う等幅書体。氏名ではなく符号であることを書体で示す。
+   * 先頭の書体は app/layout.tsx で読み込む（app/globals.test.ts が一致を確かめる）。
    */
-  --sans: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /*
+   * 本文書体。app/layout.tsx で読み込む書体と一致させる（2026-09-16 に、読み込んだ Noto Sans JP を
+   * ここが一度も使っていなかったずれが発覚した。いまは app/globals.test.ts が一致を確かめる）。
+   * Windows の既定 Yu Gothic UI は細く字間が詰まるので、読み込めなかったときの控えに回す。
+   */
+  --sans: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
   --serif: "Hiragino Mincho ProN", "Yu Mincho", serif;
 
   /*
