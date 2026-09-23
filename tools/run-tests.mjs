@@ -17,8 +17,11 @@
  *   ② ディスク上の *.test.ts の数と、vitest が「走った」と報告した数を突き合わせる
  *   ③ 数が合わない／`Errors` が出ている／vitest 自体が失敗した場合は、非ゼロで終わる
  *   ④ 集計行（Test Files / Tests）に skipped・todo・expected fail が1件でもあれば非ゼロで終わる
- *      （2026-09-23 追加。安全テストを消しても飛ばしても緑のままだった穴 ── 吉本さん決定）
- *   ②と④で落ちたときは、vitest の JSON レポートから「走らなかったファイル」「飛ばされたテスト」を
+ *      （2026-09-23 追加。安全テストを消しても飛ばしても緑のままだった穴 ── 吉本さん決定）。
+ *      集計行は **stdout だけ**から読む（テストが console.error で書いた偽の集計行に負けないため ── 検収の指摘 2026-09-23）
+ *   ⑤ 引数なしの実行では、vitest の JSON レポートでも「全ファイルが走り・全テストが合格」かを確かめる
+ *      （集計行とは別の2つ目の判定。読めなければ失敗 ── 同じ検収の指摘）
+ *   ②④⑤で落ちたときは、JSON レポートから「走らなかったファイル」「飛ばされたテスト」を
  *   ファイル名とテスト名で挙げる（集計行は件数しか言わない ── 検収の指摘 2026-09-23）
  *
  * 使い方: npm test（package.json の test スクリプトがこれを呼ぶ）。引数はそのまま vitest へ渡す。
@@ -28,11 +31,13 @@ import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  checkAllPassed,
   checkManifest,
+  checkReportDetails,
+  checkRunSummary,
   diffTestFiles,
   formatNotPassed,
   readReportDetails,
+  stripAnsi,
 } from "./testManifest.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -116,7 +121,7 @@ const run = spawnSync("npx", ["vitest", "run", ...args, ...reporterArgs], {
 const raw = `${run.stdout ?? ""}${run.stderr ?? ""}`;
 process.stdout.write(raw);
 
-// JSON レポートは名指しのための補助。合否は集計行で決めるので、読めなくても合格にはしない
+// JSON レポートは、落ちたときの名指しと、⑤の2つ目の判定に使う。読めなかったら⑤で失敗にする
 // （読めなかった理由は、落ちたときの表示に出す）。一時ファイルは読んだらすぐ消す。
 let details = null;
 let detailsProblem = "引数つきの実行なので JSON レポートを書かせていません";
@@ -134,9 +139,9 @@ if (fullRun) {
 }
 
 // NO_COLOR を渡しても、別経路で色が付く可能性に備えて照合前に ESC 列を落とす（二重の備え）。
-// 正規表現リテラルに制御文字を直接書かないよう、ESC は文字コードから組み立てる。
-const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
-const output = raw.replace(ANSI, "");
+// `Errors` 行はわざと stdout と stderr の両方から探す: 増えるのは「落ちる」側だけで、偽の行で緑にはできないため。
+// 集計行（④）は逆に stdout だけから読む（checkRunSummary ── 偽の行が緑を作る側なので）。
+const output = stripAnsi(raw);
 
 if (run.status !== 0) {
   console.error(`\n[run-tests] vitest が失敗しました（終了コード ${run.status}）`);
@@ -159,8 +164,9 @@ if (errorLine) {
 if (args.length > 0) process.exit(0);
 
 // ④ 集計行が「全部合格」だけか。skipped・todo は終了コード 0 のまま緑に見えるので、ここで落とす。
-const fileSummary = checkAllPassed(output, "Test Files");
-const testSummary = checkAllPassed(output, "Tests");
+// stdout だけから読む。stderr をつなぐと、テストが console.error で書いた偽の集計行が本物より後ろに来て勝ち、
+// `it.skip` を入れたまま緑になった（検収の指摘 2026-09-23 ── 実行して確かめた）。
+const { files: fileSummary, tests: testSummary } = checkRunSummary(run);
 const summaryErrors = [...fileSummary.errors, ...testSummary.errors];
 if (summaryErrors.length > 0) {
   const named = details ? formatNotPassed(details.notPassed) : [];
@@ -195,7 +201,18 @@ if (ran !== onDisk.length) {
   );
   process.exit(1);
 }
+
+// ⑤ JSON レポートでも確かめる（集計行とは別の2つ目の判定）。集計行は画面の文字なので、テストが同じ形の
+// 行を書けてしまう。JSON レポートは vitest がテストの状態から直接書くので、テストの出力とは混ざらない。
+const reportErrors = checkReportDetails(details, onDisk, detailsProblem);
+if (reportErrors.length > 0) {
+  console.error(
+    `\n[run-tests] 集計行は全部合格ですが、JSON レポートでの確かめに通りません:\n${reportErrors.map((e) => `  - ${e}`).join("\n")}` +
+      "\n（テストが集計行に似せた行を書いている／レポートを読めない のどちらかです。確かめられないものは合格にしません）",
+  );
+  process.exit(1);
+}
 console.log(
   `\n[run-tests] テストファイル ${ran} 件すべてが実際に走り、飛ばされたテストもありません` +
-    `（安全テストの一覧 ${MANIFEST} も確認済み）。`,
+    `（安全テストの一覧 ${MANIFEST} と、集計行・JSON レポートの両方で確認済み）。`,
 );

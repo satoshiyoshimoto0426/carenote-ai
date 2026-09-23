@@ -48,6 +48,25 @@ const MARKER_RES = [
 const SUMMARY_STATES = ["failed", "passed", "expected fail", "skipped", "todo"];
 
 /**
+ * 色の ESC 列（例: ESC[32m）。正規表現リテラルに制御文字を直接書かないよう、ESC は文字コードから組み立てる。
+ * 使うたびに作るのは、g フラグの正規表現が lastIndex を持ち回るのを避けるため。
+ */
+const ansiPattern = () => new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
+/**
+ * vitest の出力から色の ESC 列を落とす。
+ * なぜ: GitHub Actions（CI=true）では NO_COLOR を渡しても別経路で色が付くことがあり、
+ * 付いたままだと集計行の正規表現が当たらなくなる（2026-09-13 に CI だけ赤になった）。
+ * 呼ぶ側: tools/run-tests.mjs（`Errors` 行の検査）と checkRunSummary（集計行の検査）。
+ *
+ * @param {string} text vitest の出力
+ * @returns {string} ESC 列を落とした文字
+ */
+export function stripAnsi(text) {
+  return text.replace(ansiPattern(), "");
+}
+
+/**
  * 集計行で「全部合格」以外を表す項目と、職員にも伝わる言い方。
  * `failed` は vitest が非ゼロで終わるので普段はここまで来ないが、念のため同じ扱いにする。
  */
@@ -174,6 +193,10 @@ export function checkManifest(manifest, testFiles, readFile) {
 /**
  * vitest の集計行（例: `      Tests  2 failed | 10 passed | 1 skipped (13)`）を数に分ける。
  * 出力の途中に同じ見出しの行があっても、最後の集計行を使う。色の ESC 列は呼ぶ側で落としておくこと。
+ * **渡すのは標準出力（stdout）だけにすること**: 「最後の行が本物」が成り立つのは、vitest が集計を
+ * stdout の最後に書き、テストの console.log はそれより前に出るから。stderr（テストの console.error）を
+ * 後ろにつなぐと、テストが書いた偽の集計行が本物より後ろに来て勝つ（検収の指摘 2026-09-23 ── 実際に
+ * `it.skip` を1件入れたまま緑になった）。実行結果から読むときは checkRunSummary を使う。
  *
  * @param {string} output vitest の出力（色なし）
  * @param {"Test Files" | "Tests"} title 集計行の見出し
@@ -231,6 +254,26 @@ export function checkAllPassed(output, title) {
   return { total: summary.total, errors };
 }
 
+/**
+ * vitest の実行結果から、集計行（Test Files / Tests）を**標準出力（stdout）だけ**から読んで判定する。
+ *
+ * なぜ stdout だけか（検収の指摘 2026-09-23）: 以前は stdout と stderr をつないだ文字から最後の集計行を
+ * 読んでいた。テストが `console.error("      Tests  628 passed (628)")` と書くと、その偽の行は stderr に出て、
+ * つないだ文字では vitest の本物（stdout の末尾）より後ろに来る。本物が「627 passed | 1 skipped (628)」でも
+ * 偽物が勝ち、飛ばしたテストが緑のまま通った（実行して確かめた）。vitest は集計を stdout の最後に書くので、
+ * stdout の最後の集計行が本物。テストが console.log（stdout）で書いた偽物は本物より前に出るので負ける。
+ * それでも字面だけでは見分けきれない書き方に備え、引数なしの実行では JSON レポートでも判定する（checkReportDetails）。
+ * 呼ぶ側: tools/run-tests.mjs（④）。
+ *
+ * @param {{ stdout?: string | null, stderr?: string | null }} run spawnSync の結果。stderr は**わざと読まない**
+ * @returns {{ files: { total: number | null, errors: string[] }, tests: { total: number | null, errors: string[] } }}
+ *   Test Files と Tests それぞれの checkAllPassed の結果
+ */
+export function checkRunSummary(run) {
+  const stdout = stripAnsi(run.stdout ?? "");
+  return { files: checkAllPassed(stdout, "Test Files"), tests: checkAllPassed(stdout, "Tests") };
+}
+
 /** JSON レポートの状態を、職員にも伝わる言い方に。ここに無い状態も「合格以外」として名前を挙げる。 */
 const JSON_STATUS_LABEL = {
   skipped: "飛ばされています",
@@ -244,9 +287,10 @@ const JSON_STATUS_LABEL = {
  *
  * なぜ: 集計行は「Tests: 1 件が飛ばされています」としか言わず、どのファイルのどのテストかが分からない。
  * 55 ファイルを手で探すことになる（検収の指摘 2026-09-23 ── 別名 `const s = it.skip` で再現）。
- * 合否の判定は集計行（checkAllPassed）のまま。ここは「どれか」を名指しするための補助で、
- * 読めなければ null を返し、呼ぶ側（tools/run-tests.mjs）は「特定できなかった」と書いたうえで失敗のまま終える。
- * 注意: `it.fails`（失敗して合格）は JSON では passed と出るので、ここでは挙がらない。
+ * 結果は2か所で使う: ①集計行で落ちたときに「どれか」を名指しする ②引数なしの実行で、集計行とは別の
+ * 2つ目の判定にする（checkReportDetails ── 集計行はテストが書いた偽の行と字面では見分けきれないため）。
+ * 読めなければ null を返し、呼ぶ側（tools/run-tests.mjs）は引数なしの実行なら失敗にする。
+ * 注意: `it.fails`（失敗して合格）は JSON では passed と出るので、ここでは挙がらない（集計行の「expected fail」が拾う）。
  *
  * @param {unknown} report JSON.parse した vitest の JSON レポート
  * @param {(absolutePath: string) => string} toRelative 絶対パスをリポジトリ直下からの / 区切りに直す関数
@@ -313,4 +357,44 @@ export function diffTestFiles(onDisk, ranFiles) {
     notRun: onDisk.filter((f) => !ran.has(f)).sort(),
     notOnDisk: ranFiles.filter((f) => !disk.has(f)).sort(),
   };
+}
+
+/**
+ * vitest の JSON レポートを、集計行とは別の2つ目の判定として使う（引数なしの実行＝npm test と CI だけ）。
+ * 全ファイルが走り（ディスクと一致）、全テストが合格（skipped・todo・走っていない が0件）のときだけ合格。
+ *
+ * なぜ（検収の指摘 2026-09-23）: 集計行は画面に出る文字なので、テストが同じ形の偽の行を書けてしまう。
+ * stdout だけを読むようにして（checkRunSummary）直した抜け道のほかにも、字面だけでは見分けきれない書き方が
+ * 残りうる。JSON レポートは vitest がテストの状態から直接書くファイルで、テストの出力とは混ざらない。
+ * 読めないときは「確かめられない」ので失敗にする（読めない＝合格、にしない）。
+ * `it.fails`（失敗して合格）は JSON では passed なので、ここでは拾えない ── 集計行の「expected fail」が拾う。
+ * 呼ぶ側: tools/run-tests.mjs（⑤）。材料は readReportDetails と diffTestFiles。
+ *
+ * @param {ReportDetails | null} details readReportDetails の結果（読めなければ null）
+ * @param {readonly string[]} onDisk ディスク上のテストファイル（/ 区切り）
+ * @param {string} [problem] details が null のとき、読めなかった理由（表示に添える）
+ * @returns {string[]} 見つかった問題（空なら合格）。ファイル名とテスト名を含む
+ */
+export function checkReportDetails(details, onDisk, problem = "") {
+  if (!details) {
+    return [
+      `vitest の JSON レポートで確かめられませんでした（${problem || "形が想定と違います"}）。` +
+        "集計行だけでは、テストが書いた偽の集計行と見分けきれないので失敗にします",
+    ];
+  }
+  const errors = [];
+  const { notRun, notOnDisk } = diffTestFiles(onDisk, details.ranFiles);
+  for (const f of notRun) errors.push(`走らなかったファイル: ${f}`);
+  for (const f of notOnDisk) {
+    errors.push(
+      `ディスクの数え方の外で走ったファイル: ${f}（tools/run-tests.mjs の数え方と vitest.config.ts の include を揃えてください）`,
+    );
+  }
+  if (details.notPassed.length > 0) {
+    const lines = formatNotPassed(details.notPassed).map((l) => `      ${l}`);
+    errors.push(
+      `JSON レポートでは、合格以外のテストが ${details.notPassed.length} 件あります（ファイルごと）:\n${lines.join("\n")}`,
+    );
+  }
+  return errors;
 }

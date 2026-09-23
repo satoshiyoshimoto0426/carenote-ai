@@ -32,7 +32,9 @@
   名指しのファイルが消えた・名前が変わった／守るフォルダ（`lib/privacy` `tests/api` `lib/recording` `lib/transcribe` `lib/rescue`）が
   最低件数を下回った／守るファイルに `.skip(` `.only(` `.todo(` など飛ばす書き方がある（`const s = it.skip` のように括弧なしで別名へ入れる形も）／集計に skipped・todo が1件でもある、のどれかで失敗する
   （判定は `tools/testManifest.mjs`、その検査は `tools/testManifest.test.ts`）。
-  落ちたときは vitest の JSON レポートから、飛ばされたテスト・走らなかったファイルを**ファイル名とテスト名で**挙げる。
+  集計行は **stdout だけ**から読む（テストが `console.error` で書いた偽の集計行を本物と取り違えないため）。
+  引数なしの実行では vitest の JSON レポートでも「全ファイルが走り・全テストが合格」かを確かめ（2つ目の判定・読めなければ失敗）、
+  落ちたときは JSON レポートから、飛ばされたテスト・走らなかったファイルを**ファイル名とテスト名で**挙げる。
   入口を書き換えて見張りごと飛ばす変更（`package.json` の test を `vitest run` にする・CI の `npm run test` を変える・
   `quality-gates.yml` に `continue-on-error` や `if:` を足す）も、同じ検査が落とす。
   安全テストを足したら一覧にも足す。消す・弱めるときは吉本さんの承認（横断規約 §2.7-C）のうえで、一覧も同じコミットで直す

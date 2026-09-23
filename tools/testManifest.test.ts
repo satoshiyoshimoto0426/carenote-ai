@@ -3,7 +3,7 @@
  *
  * なぜ: 見張りそのものが壊れると、安全テストが消えても飛ばされても誰も気づけない。
  * ここでは「わざと壊した状態」（ファイルを消す・名前を変える・飛ばす書き方を入れる・
- * 集計に skipped を混ぜる）を1つずつ作り、見張りが該当の名前を挙げて止めることを確かめる。
+ * 集計に skipped を混ぜる・テストが偽の集計行を書く）を1つずつ作り、見張りが該当の名前を挙げて止めることを確かめる。
  * 繋がり: 判定= tools/testManifest.mjs／呼ぶ側= tools/run-tests.mjs（npm test）／一覧= tools/safety-tests.json。
  * 入口の固定: package.json の test と CI（.github/workflows/quality-gates.yml）が run-tests.mjs を通ること、
  * CI に落ちても緑にする書き方（continue-on-error・if:）が無いことも、ここで確かめる。
@@ -16,11 +16,14 @@ import realManifest from "./safety-tests.json";
 import {
   checkAllPassed,
   checkManifest,
+  checkReportDetails,
+  checkRunSummary,
   diffTestFiles,
   findSkipMarkers,
   formatNotPassed,
   parseSummaryLine,
   readReportDetails,
+  stripAnsi,
   validateManifest,
 } from "./testManifest.mjs";
 
@@ -239,6 +242,54 @@ describe("readReportDetails・formatNotPassed・diffTestFiles: 落ちたとき�
   });
 });
 
+describe("checkReportDetails: JSON レポートを、集計行とは別の2つ目の判定にする", () => {
+  // なぜ（検収の指摘 2026-09-23）: 集計行は画面の文字なので、テストが同じ形の偽の行を書ける。
+  // JSON レポートは vitest がテストの状態から直接書くので、偽の集計行が勝っても、ここで落ちる。
+  const onDisk = ["lib/a.test.ts", "lib/privacy/vault.test.ts"];
+  const allPassed = {
+    ranFiles: ["lib/a.test.ts", "lib/privacy/vault.test.ts"],
+    notPassed: [],
+  };
+
+  it("全ファイルが走り、全テストが合格なら、問題は0件", () => {
+    expect(checkReportDetails(allPassed, onDisk)).toEqual([]);
+  });
+
+  it("飛ばされたテストが1件でもあれば、ファイル名とテスト名を挙げて止める（集計行が全部合格と言っていても）", () => {
+    const errors = checkReportDetails(
+      {
+        ...allPassed,
+        notPassed: [
+          { file: "lib/privacy/vault.test.ts", name: "札入れ > 戻す", status: "skipped" },
+        ],
+      },
+      onDisk,
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("1 件");
+    expect(errors[0]).toContain("lib/privacy/vault.test.ts");
+    expect(errors[0]).toContain("札入れ > 戻す ── 飛ばされています");
+  });
+
+  it("走らなかったファイル・ディスクの数え方の外で走ったファイルを、名前で挙げて止める（件数が同じでも）", () => {
+    // 1件走らず・別の1件が数え方の外で走ると、件数の突き合わせ（②）は一致して素通りする
+    const errors = checkReportDetails(
+      { ranFiles: ["lib/a.test.ts", "other/y.test.ts"], notPassed: [] },
+      onDisk,
+    );
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toContain("走らなかったファイル: lib/privacy/vault.test.ts");
+    expect(errors[1]).toContain("ディスクの数え方の外で走ったファイル: other/y.test.ts");
+  });
+
+  it("JSON レポートを読めなければ、理由を添えて止める（読めない＝合格、にしない）", () => {
+    const errors = checkReportDetails(null, onDisk, "JSON レポートを読めませんでした（ENOENT）");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("ENOENT");
+    expect(checkReportDetails(null, onDisk)[0]).toContain("形が想定と違います");
+  });
+});
+
 describe("validateManifest: 一覧の形", () => {
   it("正しい形なら誤りは0件", () => {
     expect(validateManifest(MANIFEST)).toEqual([]);
@@ -308,6 +359,57 @@ describe("checkAllPassed: vitest の集計行に飛ばしたテストが混ざ�
     const result = checkAllPassed("RUN v4.1.8\n", "Tests");
     expect(result.total).toBeNull();
     expect(result.errors[0]).toContain("読み取れませんでした");
+  });
+});
+
+describe("checkRunSummary: 集計行は stdout だけから読む（テストが書いた偽の集計行に負けない）", () => {
+  // vitest の本物の集計は stdout の最後に出る（その後ろは JSON レポートの書き出しの知らせだけ）
+  const realStdout = [
+    " ✓ lib/privacy/vault.test.ts (3 tests) 12ms",
+    "",
+    " Test Files  62 passed (62)",
+    "      Tests  627 passed | 1 skipped (628)",
+    "   Start at  10:56:24",
+    "   Duration  61.20s",
+    "JSON report written to /repo/node_modules/.cache/run-tests-report-1.json",
+    "",
+  ].join("\n");
+  // テストが console.error で書いた偽の集計行（stderr に出る）
+  const fakeStderr =
+    "stderr | lib/draftText.test.ts > fake summary probe\n      Tests  628 passed (628)\n\n";
+
+  it("stderr の偽の集計行で、本物の skipped を隠せない（検収の指摘 2026-09-23 で緑のまま通った形）", () => {
+    const { files, tests } = checkRunSummary({ stdout: realStdout, stderr: fakeStderr });
+    expect(files.errors).toEqual([]);
+    expect(tests.total).toBe(628);
+    expect(tests.errors).toHaveLength(1);
+    expect(tests.errors[0]).toContain("skipped");
+  });
+
+  it("（なぜ stdout だけか）stdout と stderr をつないで読むと、偽の集計行が勝って緑になってしまう", () => {
+    // 以前の tools/run-tests.mjs の読み方。この形に戻すと上の検査が赤になることの裏づけ
+    expect(checkAllPassed(`${realStdout}${fakeStderr}`, "Tests").errors).toEqual([]);
+  });
+
+  it("テストが console.log（stdout）で書いた偽の集計行は本物より前に出るので、最後の本物を使う", () => {
+    const stdout = `stdout | lib/draftText.test.ts > fake summary probe\n      Tests  628 passed (628)\n\n${realStdout}`;
+    expect(checkRunSummary({ stdout, stderr: "" }).tests.errors[0]).toContain("skipped");
+  });
+
+  it("集計が stderr にしか無ければ、読めないとして止める（stderr からは合格を拾わない）", () => {
+    const { files, tests } = checkRunSummary({
+      stdout: "",
+      stderr: " Test Files  62 passed (62)\n      Tests  628 passed (628)\n",
+    });
+    expect(files.errors[0]).toContain("読み取れませんでした");
+    expect(tests.errors[0]).toContain("読み取れませんでした");
+  });
+
+  it("色の ESC 列が付いていても読める（CI で色が付いた場合の備え）", () => {
+    const esc = String.fromCharCode(27);
+    const colored = realStdout.replace(" skipped", ` ${esc}[33mskipped${esc}[39m`);
+    expect(stripAnsi(colored)).toBe(realStdout);
+    expect(checkRunSummary({ stdout: colored }).tests.errors[0]).toContain("skipped");
   });
 });
 
