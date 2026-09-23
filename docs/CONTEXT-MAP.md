@@ -287,7 +287,11 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - **`components/clients/NewClientForm.tsx`**: 右の区画の登録の欄（`/clients?new=1` のとき `app/(dashboard)/clients/page.tsx` が出す）。欄の id（`#c-name` `#c-age` `#c-gender` `#c-care-level` `#c-household`）・名前・「氏名は暗号化して保存し、画面では記号で表示します」は以前と同じ。
   登録できたら表の先頭へ足して、その方の画面（`/clients/{id}`）を開く（以前は欄を閉じて一覧に行が増えるだけ）。**一覧を読めていないあいだは登録を止める**（表が見えないと、もういる方を気づかずに二重に登録できるため ── U0 で救済モードの保存を止めたのと同じ理由）。
 - **`lib/clients/clientList.ts`（純粋）**: `clientAttrLine`（「85歳・女性・要介護2・独居」）・`filterClients`（記号と属性を画面の中だけで絞る・全角半角をそろえる・空白区切りは全部を含む・「B様」は記号そのものと比べる）・`formatRegisteredDate`・`selectedClientIdOf`。`clients/[id]/page.tsx` も属性の1行はここを使う。
-- **`app/(dashboard)/clients/[id]/page.tsx`**: 右の区画の中身になった（`.legacy-page`・幅の上限・道しるべを外し、余白だけ付ける）。**中身はまだ以前の見た目**（関係者名簿・残した文字起こし・書類と承認 ── 作り替えは計画 U3a/U3b/U4）。
+- **`app/(dashboard)/clients/[id]/page.tsx`**: 右の区画の中身になった（`.legacy-page`・幅の上限・道しるべを外し、余白だけ付ける）。**中身はまだ以前の見た目**（関係者名簿・残した文字起こし・書類と承認 ── 作り替えは計画 U3b/U4）。
+- **`components/clients/DocumentPanel.tsx`**（A6・計画 U3a）: 開いた書類の**承認（G4）の操作と中身**。以前はページに直接書いてあり検査が無かったので、文字も動きも変えずにここへ移した。
+  下書き＝「承認する」＋押せない「コピー」＋「承認後にコピーできます」／承認済み＝「コピー」（`lib/draftText.documentContentToText`）・「カイポケ用データ」（**`JSON.stringify(content, null, 2)` そのもの ── 拡張 `extension/src/panel.html` の「下書きJSONを貼り付けて読み込む」との約束**）・「承認を取り消す」。
+  承認・取消は `PATCH /api/documents/{id}`、通ったら `onChange` で呼ぶ側が行を差し替える。状態の札 `StatusBadge`（下書き＝黄・承認済み＝緑）もここ。
+  テスト `components/clients/DocumentPanel.live.test.tsx`（jsdom ── 下書きはコピーできない・カイポケ用データの中身・承認／取消の失敗が画面に出る）。
 - **見た目** `app/globals.css` の2つ目の `@layer components`（`.client-table*`・`.client-code-link`・`.clients-*`）。部品に `btnSecondary` などの Tailwind の指定がある要素の上書きは、ここ（層 components）ではなく部品の側の Tailwind で書く（層 utilities に負けて効かない ── A5 の本番用ビルドで「新しい利用者」の押した色が出なかった）。
   スマホ（768px 未満）: 上の帯が狭いので、見出しは読み上げ用に残して見た目だけ隠し、人数と道しるべは出さない（一覧へ戻るのは下のタブ）。案内だけの右の区画は出さない。**スマホ用の形はまだ**（選んだ方の詳細や登録の欄は表の下に出る ── 計画 M1）。
 - テスト: `components/clients/ClientTable.test.tsx`（jsdom・本物の Context ＋偽の通信 ── 行のリンク・行は押す物にしない・絞り込み・まだいないときの約束の文・読めなかったら知らせ〔空の一覧に見せない〕・読み直し・API に氏名が紛れても出さない・表の上の約束の1行・選んだ行の地と寸法の CSS・見出しの行の高さと区画の `--sticky-top` が同じ値）・
@@ -303,7 +307,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記。同日: 利用者の作業台（一覧の表・右の 440px の区画・上の帯への差し込み・ClientsContext・勝手に選ばない ── A5）を追記し、利用者の2画面を .legacy-page から外した。同日: A5 の検証の直し（表の見出しの行の高さぶん区画の --sticky-top を下げる・氏名を記号で表示する約束の1行を表の上に戻した）を追記*
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記。同日: 利用者の作業台（一覧の表・右の 440px の区画・上の帯への差し込み・ClientsContext・勝手に選ばない ── A5）を追記し、利用者の2画面を .legacy-page から外した。同日: A5 の検証の直し（表の見出しの行の高さぶん区画の --sticky-top を下げる・氏名を記号で表示する約束の1行を表の上に戻した）を追記。同日: 開いた書類の承認（G4）の操作を components/clients/DocumentPanel.tsx へ中身を変えずに移し、検査を足した（A6 U3a）*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

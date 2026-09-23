@@ -3,18 +3,12 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import DocumentPanel, { StatusBadge } from "@/components/clients/DocumentPanel";
 import RelatedPeople from "@/components/clients/RelatedPeople";
 import SavedTranscripts from "@/components/clients/SavedTranscripts";
-import AssessmentDraftView from "@/components/drafts/AssessmentDraftView";
-import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
-import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
-import MonitoringDraftView from "@/components/drafts/MonitoringDraftView";
-import SupportLogDraftView from "@/components/drafts/SupportLogDraftView";
 import {
   IconAlert,
-  IconCheck,
   IconChevronRight,
-  IconCopy,
   IconFileText,
   IconLayers,
   IconLoader,
@@ -30,56 +24,8 @@ import {
 } from "@/components/ui/primitives";
 import { clientAttrLine } from "@/lib/clients/clientList";
 import { DOC_ORDER, DOC_TYPE_LABELS } from "@/lib/create/docTypes";
-import { documentContentToText } from "@/lib/draftText";
-import type { AssessmentDraft } from "@/types/assessment";
-import type { CarePlanDraft } from "@/types/carePlan";
 import type { ClientRecord } from "@/types/client";
 import type { CareDocumentRecord } from "@/types/document";
-import type { MeetingSummaryDraft } from "@/types/meetingSummary";
-import type { MonitoringDraft } from "@/types/monitoring";
-import type { SupportLogDraft } from "@/types/supportLog";
-
-/** 承認日時（ISO）を「7/17」形式の短い表示にする（承認済みバッジ用）。 */
-function approvedDateLabel(iso: string | null): string {
-  if (!iso) return "";
-  return new Date(iso).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" });
-}
-
-/**
- * 保存済み帳票の中身表示。docType に応じて components/drafts/ の対応 View へ振り分ける
- * （救済モードの DocView と同じ switch）。content は保存経路が各 Draft 型を保証するためキャスト。
- */
-function SavedDocView({ doc }: { doc: CareDocumentRecord }) {
-  switch (doc.docType) {
-    case "assessment":
-      return <AssessmentDraftView draft={doc.content as AssessmentDraft} />;
-    case "carePlan":
-      return <CarePlanDraftView draft={doc.content as CarePlanDraft} />;
-    case "meetingSummary":
-      return <MeetingSummaryDraftView draft={doc.content as MeetingSummaryDraft} />;
-    case "supportLog":
-      return <SupportLogDraftView draft={doc.content as SupportLogDraft} />;
-    case "monitoring":
-      return <MonitoringDraftView draft={doc.content as MonitoringDraft} />;
-  }
-}
-
-/** 書類の状態バッジ（G4）。draft=amber「下書き」／approved=緑「承認済み」。 */
-function StatusBadge({ doc }: { doc: CareDocumentRecord }) {
-  if (doc.status === "approved") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-0.5 text-xs text-[var(--green)]">
-        <IconCheck size={12} />
-        承認済み
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-[6px] border border-[var(--amber-line)] bg-[var(--amber-soft)] px-2.5 py-0.5 text-xs text-[var(--amber)]">
-      下書き
-    </span>
-  );
-}
 
 /**
  * 利用者の詳細（/clients/[id]）。一覧の表の右の、幅 440px の区画の中身（2026-09-24 A5 ＝ 計画 U2）。
@@ -87,7 +33,8 @@ function StatusBadge({ doc }: { doc: CareDocumentRecord }) {
  * 表と上の帯は app/(dashboard)/clients/layout.tsx（components/clients/ClientsLayout.tsx）にあり、ここは右の区画だけ。
  * 道しるべ「利用者 / B様」は上の帯へ移した（以前はこの画面の頭にあった）。以前の本文の器（.legacy-page・幅の上限）も外した。
  * 中身（関係者名簿・残した文字起こし・書類と承認）はまだ以前の見た目のまま ── A案の区画の形（見出し・つくる・
- * 書類の種類ごとの行）への作り替えは計画 U3a/U3b/U4。
+ * 書類の種類ごとの行）への作り替えは計画 U3b/U4。開いた書類の承認（G4）の操作と中身は components/clients/DocumentPanel.tsx
+ * （計画 U3a で中身を変えずに移した）。
  * この画面は読み込み中・見つからない・本体の3通りの根元を返すので、余白を1か所で付けられるよう中身を ClientDetail に分けた。
  */
 export default function ClientDetailPage() {
@@ -105,11 +52,8 @@ function ClientDetail() {
   const [documents, setDocuments] = useState<CareDocumentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // G4 承認UIの状態: 展開中の書類（1件のみ）・PATCH中の書類・操作エラー・コピー完了表示
+  // 開いている書類（1件のみ）。承認の操作は components/clients/DocumentPanel.tsx が持つ
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [patchingId, setPatchingId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!params.id) return;
@@ -129,47 +73,12 @@ function ClientDetail() {
   }, [params.id]);
 
   const toggleExpand = (id: string) => {
-    setActionError(null);
     setExpandedId((cur) => (cur === id ? null : id));
   };
 
-  // 承認・承認取消（PATCH /api/documents/[id]）。成功時は更新後レコードで行を即時更新する
-  const patchDocument = async (id: string, action: "approve" | "unapprove") => {
-    setPatchingId(id);
-    setActionError(null);
-    try {
-      const resp = await fetch(`/api/documents/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) {
-        throw new Error((data as { error?: string }).error || "更新に失敗しました");
-      }
-      const updated = data as CareDocumentRecord;
-      setDocuments((prev) => prev.map((doc) => (doc.id === id ? updated : doc)));
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : "更新に失敗しました");
-    } finally {
-      setPatchingId(null);
-    }
-  };
-
-  // 承認済み書類のコピー（G4: コピーできるのは approved のみ。draft は disabled＋hint）
-  const copyDocument = async (doc: CareDocumentRecord) => {
-    await navigator.clipboard.writeText(documentContentToText(doc.docType, doc.content));
-    setCopiedId(doc.id);
-    setTimeout(() => setCopiedId(null), 1500);
-  };
-
-  // カイポケ拡張へ渡す用のJSONコピー（V3-lite）。拡張パネルの
-  // 「下書きJSONを貼り付けて読み込む」に貼ると、生成し直さずに流し込みできる。
-  // G4準拠: 承認済み書類のみ（このボタン自体を approved 分岐にのみ置く）。
-  const copyForExtension = async (doc: CareDocumentRecord) => {
-    await navigator.clipboard.writeText(JSON.stringify(doc.content, null, 2));
-    setCopiedId(`ext-${doc.id}`);
-    setTimeout(() => setCopiedId(null), 1500);
+  // 承認・取消が通ったら、サーバーが返した書類で同じ行を差し替える
+  const replaceDocument = (updated: CareDocumentRecord) => {
+    setDocuments((prev) => prev.map((doc) => (doc.id === updated.id ? updated : doc)));
   };
 
   if (loading)
@@ -275,114 +184,7 @@ function ClientDetail() {
                 </span>
               </button>
 
-              {expandedId === d.id && (
-                <div className="animate-fadeIn border-t border-[var(--line-soft)]">
-                  {/* 操作行（G4 承認モデル）: draft=承認する＋コピー不可 / approved=コピー＋承認取消 */}
-                  <div className="space-y-3 border-b border-[var(--line-soft)] bg-[var(--paper)] px-5 py-4">
-                    {d.status === "draft" ? (
-                      <>
-                        <p className="text-xs leading-relaxed text-[var(--muted)]">
-                          内容を確認しました。この書類を承認します（承認者と日時が記録されます）
-                        </p>
-                        <div className="flex flex-wrap items-center gap-4">
-                          <button
-                            type="button"
-                            onClick={() => patchDocument(d.id, "approve")}
-                            disabled={patchingId === d.id}
-                            className={btnPrimary}
-                          >
-                            {patchingId === d.id ? (
-                              <>
-                                <IconLoader size={15} className="animate-spin" />
-                                承認中…
-                              </>
-                            ) : (
-                              <>
-                                <IconCheck size={15} />
-                                承認する
-                              </>
-                            )}
-                          </button>
-                          <span className="flex items-center gap-2.5">
-                            <button type="button" disabled className={btnSecondary}>
-                              <IconCopy size={15} />
-                              コピー
-                            </button>
-                            <span className="text-xs text-[var(--faint)]">
-                              承認後にコピーできます
-                            </span>
-                          </span>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="flex flex-wrap items-center gap-4">
-                        <span className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-0.5 text-xs text-[var(--green)]">
-                          <IconCheck size={12} />
-                          承認済み・<span className="tnum">{approvedDateLabel(d.approvedAt)}</span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => copyDocument(d)}
-                          className={btnSecondary}
-                        >
-                          {copiedId === d.id ? (
-                            <>
-                              <IconCheck size={15} className="text-[var(--green)]" />
-                              コピーしました
-                            </>
-                          ) : (
-                            <>
-                              <IconCopy size={15} />
-                              コピー
-                            </>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => copyForExtension(d)}
-                          className={btnSecondary}
-                          title="カイポケ拡張のサイドパネル「下書きJSONを貼り付けて読み込む」に貼ると、生成し直さずに流し込みできます"
-                        >
-                          {copiedId === `ext-${d.id}` ? (
-                            <>
-                              <IconCheck size={15} className="text-[var(--green)]" />
-                              コピーしました
-                            </>
-                          ) : (
-                            <>
-                              <IconLayers size={15} />
-                              カイポケ用データ
-                            </>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => patchDocument(d.id, "unapprove")}
-                          disabled={patchingId === d.id}
-                          className="text-xs text-[var(--clay)] underline underline-offset-4 transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {patchingId === d.id ? "取消中…" : "承認を取り消す"}
-                        </button>
-                      </div>
-                    )}
-                    {d.status === "approved" && (
-                      <p className="text-xs leading-relaxed text-[var(--faint)]">
-                        「カイポケ用データ」をコピー → カイポケ画面で拡張パネルを開き、帳票の種類を
-                        合わせて「下書きJSONを貼り付けて読み込む」→「この画面に流し込む」
-                      </p>
-                    )}
-                    {actionError && (
-                      <p className="flex items-start gap-1.5 text-xs text-[var(--clay)]">
-                        <IconAlert size={14} className="mt-0.5 shrink-0" />
-                        {actionError}
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-3 px-5 py-5">
-                    <SavedDocView doc={d} />
-                  </div>
-                </div>
-              )}
+              {expandedId === d.id && <DocumentPanel doc={d} onChange={replaceDocument} />}
             </li>
           ))}
           {missingTypes.map((t) => (
