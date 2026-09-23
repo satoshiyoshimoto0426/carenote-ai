@@ -58,6 +58,27 @@
     `git diff <ファイル>` が空なのを確かめてから `git add <ファイル>` で消す。中身も変えたファイルは、いつもどおり自分の変更として扱う。
   - 根本の直し（repo の根の `.gitattributes` に `* text=auto eol=lf`）は枝 `harness/stop-gates` で進行中（2026-09-23 時点・コミット前）。
     main に入り、main をこの枝に取り込んだら、この項目は消す（経緯と未了の追跡= `.claude/steering-log.md` 2026-09-23「git が書き出したファイルが CRLF になり」）。
+- **`npm run build` が `EPERM: operation not permitted, unlink '…\carenote-ai\.next\…'` で落ちたら、コードではなく OneDrive を疑う**（2026-09-23〜24 に3回）。
+  repo が OneDrive の中にあり、ビルドの作業場所 `.next` も同期されている。Next はビルドの最初に `.next` の中（cache 以外）を消すが、
+  フォルダをファイルとして消そう（unlink）として止まる。OneDrive が書き出した直後のフォルダを同期している最中に起きる、と推定（未確認）。
+  - 確かめる: ①ログに `EPERM`・`unlink`・`\.next\` の3つがそろう ②名前の出た場所がフォルダ
+    （Bash: `node -e "console.log(require('fs').statSync(process.argv[1]).isDirectory())" '<ログに出たパス>'` → `true`）。
+    `fsutil reparsepoint query` は見分けに使えない ── OneDrive の中は `app` や `node_modules` にも同じ種類の印（`0x9000?01a`）が付き、その状態の `.next` でもビルドは通る。
+  - 戻す: ①数分待って、同じ場所で1回だけやり直す（2026-09-24 は失敗の約15分後に、`.next` を消さずに通った。待つ長さの目安は未確認）。
+    ②同じ形で2回目も落ちたら、そこでやり直しをやめ（同じ理由で2回＝止める規則）、OneDrive の外の写しでビルドする（Bash・carenote-ai の中で）:
+    ```
+    T=$(mktemp -d)   # %TEMP% の下 = OneDrive の外
+    git ls-files -z -co --exclude-standard | xargs -0 cp --parents -t "$T"
+    MSYS_NO_PATHCONV=1 cmd /c mklink /J "$(cygpath -w "$T/node_modules")" "$(cygpath -w "$PWD/node_modules")"
+    (cd "$T" && npm run build > build.log 2>&1; echo rc=$?)
+    MSYS_NO_PATHCONV=1 cmd /c rmdir "$(cygpath -w "$T/node_modules")"
+    ```
+    写しはコミット前の変更も含み、`.gitignore` で外れる `.env.local` は写さない（鍵を外へ出さない。ビルドは鍵なしで通る）。
+    **片づけは最後の行（node_modules への橋＝ジャンクションを外す）が先**。`$T` に node_modules が無いのを確かめてから `$T` を消す。
+    橋を付けたまま `$T` を消すと、道具によっては本物の node_modules の中まで消すおそれがある（試していないので、必ず先に外す）。
+    ③`.next` を丸ごと消す手は、ファイルの削除なので吉本さんに聞いてから（①②で足りるので、ふつうは要らない）。
+  - 根本の直し（repo を OneDrive の外へ移す・`.next` を同期から外す など）は環境の選択で、決めるのは吉本さん。
+    決まって直ったら、この項目は消す（経緯と未了の追跡= `.claude/steering-log.md` 2026-09-24「OneDrive の中の `.next`」）。
 
 ## Flywheel 状態（自己評価 2026-05-13 Phase 4 完了時点）
 
