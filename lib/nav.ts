@@ -8,7 +8,8 @@
  * **どの項目の中にあるか**をここ1か所で決める。画面の部品（左の帯・下のタブ・上の帯の
  * 「この画面の使い方」）はここを読むだけにして、各画面が別々に判断しないようにする。
  *
- * 繋がる先: 左の帯と上の帯（components/shell/ ── 後のスライスで作る）、
+ * 繋がる先: 左の帯 components/shell/Rail.tsx（どれが光るか）と上の帯 components/shell/TopBar.tsx
+ * （項目の名前・「この画面の使い方」の行き先）、
  * 使い方の章（lib/manual/content.ts の MANUAL_CHAPTERS の id ＝ /guide#chN）。
  * テストは lib/nav.test.ts（古い URL の振り分けと、章の id が実在することを確かめる）。
  */

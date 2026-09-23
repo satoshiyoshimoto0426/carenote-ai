@@ -18,7 +18,7 @@
 | `app/api/blob-upload/` | Vercel Blob のアップロード用トークン発行 |
 | `app/api/evaluate/` | Claude API でPDFを評価→JSON整形→Supabase保存→Blob削除 |
 | `app/api/history/` | ログインユーザーの評価履歴を返す |
-| `components/` | UI部品（FileUploader / LoadingProgress / EvaluationResults / CategoryCard / ScoreRing / MiniBar / Sidebar） |
+| `components/` | UI部品（FileUploader / LoadingProgress / EvaluationResults / CategoryCard / ScoreRing / MiniBar / SharingStatus）。外枠（左の帯・上の帯）は `components/shell/`（§3「外枠」） |
 | `lib/db.ts` | Supabase データアクセス（saveEvaluation / getEvaluations / getEvaluationById） |
 | `lib/evaluationCriteria.ts` | 評価プロンプト（8カテゴリ・27点満点の採点基準） |
 | `lib/exportExcel.ts` | 評価結果の Excel 出力（xlsx） |
@@ -182,7 +182,7 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 `tools/check-reading.mjs` が文字起こしで読み間違いを検出する）→ `tools/shoot-run.mjs`＋`tools/shoot-plans.mjs`（Chrome を自動操作して撮る）
 → `tools/make-card.mjs`（撮れない場面の説明カード）→ `tools/make-video.mjs`（ffmpeg で合成）。
 **字幕は動画へ焼き込む一本化**（再生ページに track タグを足すと二重に出る ── 再発防止テストは `lib/manual/videoScript.test.ts`）。
-各画面の見出しからは `PageHeader` の `helpAnchor` で `/guide#chN` へ飛べる。開閉の要る FAQ だけ `components/manual/FaqAccordion.tsx`（"use client"）。
+各画面の見出しからは `PageHeader` の `helpAnchor` で `/guide#chN` へ飛べる（A案の外枠では上の帯の「この画面の使い方」も同じ章へ飛ぶ ── 行き先は `lib/nav.ts` の `helpAnchorOf`）。開閉の要る FAQ だけ `components/manual/FaqAccordion.tsx`（"use client"）。
 **UI の文字を変えたら content.ts も同じ PR で直す**（Doc-as-Code）。
 **決定（2026-09-12）**: `public/manual/` は Next.js の public 配下＝**ログイン無しで URL を知っていれば閲覧できる**（middleware の matcher がドット付きパスを除外）。秘密情報は含めない前提で、研修配布と PDF 生成のためこの形を採る。検索避けは `noindex` と `public/robots.txt`。
 **録音パイプライン (2026-09-17・docs/specs/recording-pipeline.md)**: 対面3帳票へ録音を拡大。
@@ -200,7 +200,7 @@ AES-256-GCM・5年・可視性は `getClientById` に一本化・**AIへは渡�
 
 記号（A様）の採番は**範囲内の最大＋1**（件数だと範囲が混ざったとき同じ記号を二度振る）。安全網は3段: ①`assertClientCodesUnique`（同じ記号の利用者が2人 ── **復号する前に**見るので復号失敗行があっても取りこぼさない）②`expandAliasVariants` が「同じ表記が違う記号」を見つけたら `AliasConflictError`（空白違いの別人・同姓同名を黙って捨てない）③`assertUnderRowLimit`（900件超で停止 ── PostgREST の既定1000行の黙った打ち切り対策）。これらは待っても直らないので `ALIAS_PERMANENT_MESSAGE`（管理者へ連絡）で返し、読み直さない。
 
-**⚠ Clerk の `orgId` は「所属」ではなく「いま選んでいる事業所（Active Organization）」**。所属させただけでは null のまま＝共有は始まらない。だから `components/SharingStatus.tsx` が状態を常時表示し、その場で切り替えられるようにしている（`OrganizationSwitcher`）。`getClientAliases` は orgId が null のとき warn を残す（センサー）。**有効化には Clerk の組織設定＋SQL 2本の実行＋既存データの移行＋各職員が事業所を選ぶこと が要る**（手順の正本= `docs/ADMIN-SETUP.md`）。保存書類（`documents`）の共有は未対応で `created_by` のまま。
+**⚠ Clerk の `orgId` は「所属」ではなく「いま選んでいる事業所（Active Organization）」**。所属させただけでは null のまま＝共有は始まらない。だから `components/SharingStatus.tsx` が状態を常時表示し、その場で切り替えられるようにしている（`OrganizationSwitcher`）。**置き場所は外枠の上の帯の右側**（どの幅でも出る。2026-09-23 A案 ── それまでは左メニューとスマホ用の2か所）。`getClientAliases` は orgId が null のとき warn を残す（センサー）。**有効化には Clerk の組織設定＋SQL 2本の実行＋既存データの移行＋各職員が事業所を選ぶこと が要る**（手順の正本= `docs/ADMIN-SETUP.md`）。保存書類（`documents`）の共有は未対応で `created_by` のまま。
 
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
@@ -227,12 +227,23 @@ elements の部品が「押す／押さない／まだ計測していない」�
   `sectionOf(pathname)` が古い URL も振り分ける（`/rescue`→つくる、`/dashboard`→点検。URL は消さない ── ブックマーク・マニュアル・撮影の道具が使う）。
   `helpAnchorOf(pathname, mode)` が「この画面の使い方」の行き先（利用者→ch2、つくる→ch3、一式まとめて〔`mode=bundle` か `/rescue`〕→ch6、点検→ch1、使い方→なし）。
   テスト `lib/nav.test.ts` は、返す章が `lib/manual/content.ts` に実在することと、今の各ページの `PageHeader helpAnchor` と同じ行き先であることも確かめる。
-  **まだどの画面も読んでいない**（左の帯・上の帯を作るスライスで使う）。
+  読む側: 左の帯 `components/shell/Rail.tsx`（どれが光るか）と上の帯 `components/shell/TopBar.tsx`（項目の名前・「この画面の使い方」の行き先）。
 - **`components/ui/icons.tsx`**: `strokeWidth`（既定 1.6。A案は選択中のナビを 1.8）。A案用に `IconPeople`（利用者）・`IconPencil`（つくる）・`IconCheckCircle`（点検）・`IconMic`・`IconChevronUp/Down` を追加（使い方は既存の `IconHelpCircle`）。
   センサー `components/ui/icons.test.tsx` ── 書き出した全アイコンが `aria-hidden="true"`・`currentColor`・`strokeWidth` を守るか（アートボードの SVG をそのまま貼ると aria-hidden が無い）。
 - **`lib/create/docTypes.ts`**: 書類5種類の並び順 `DOC_ORDER` と、画面ごとの名前 `DOC_TYPE_LABELS`（`tab`=つくるの種類ボタン／`description`=その下の1行／`saved`=利用者の画面の書類の行／`bundle`=救済モードの結果の見出し／`output`=A案の送信の帯の「作るもの」・**まだ画面に出していない**）。
   create・clients/[id]・rescue の3画面がここを読む（前は各画面に別々に書いてあった）。**画面の文字は変えていない**（`lib/create/docTypes.test.ts` が固定）。
   `output` の担当者会議以外の4つは案（画面に出す前に吉本さんの確認が要る）。`app/api/documents/route.ts` の `ALLOWED_TYPES` は同じ5種類を別に持っている。
+
+### 外枠 ── 左の帯・上の帯・共有状態（A案「作業台」・2026-09-23・ブランチ `redesign/a`）
+`app/(dashboard)/layout.tsx` = `[Rail] [列: TopBar（上の帯＋注意の帯）→ main.app-main-inner → 送り先の表示]`。旧 `components/Sidebar.tsx`（6項目・220px）とスマホ用の `MobileNav`・`.app-topbar`・`.app-sharing-mobile` は廃止。
+- **`components/shell/Rail.tsx`**: 768px 以上は幅 72px の左の帯（CN・4項目・下端に Clerk `UserButton` とメールの「@」より前を文字で）。768px 未満は**同じ4項目が画面の下のタブ**（文字つき・高さ 56px・safe-area）── スマホから利用者・つくるへ行けるようになった。光る項目は `lib/nav.ts` の `sectionOf`（`aria-current="page"`・緑の線 1.8）。スマホの下のタブにはアカウントのボタンを入れていない（以前のスマホ画面と同じ）。
+- **`components/shell/TopBar.tsx`**: 高さ 52px の上の帯（スクロールしても上に貼りつく）。左 = ページの差し込み（無ければ項目の名前）、右 = 「この画面の使い方」（`helpAnchorOf`。使い方の画面では出さない）＋ 共有状態。帯＋注意の帯の実際の高さを ResizeObserver で測って `--shell-head-h` に書く（`.presend-nav` と使い方の章の飛び先 `.shell-anchor` が読む。旧: 固定の 72/76/80px）。画面が描かれていない（隠れたタブの）間は測れず、見えた時に書き直す。
+- **`components/shell/TopBarSlot.tsx`**: ページが上の帯の左に見出し・道しるべを差し込む口（`TopBarSlotProvider` を layout が持ち、`TopBarSlot` で包んだ中身を createPortal で帯へ）。**まだどのページも使っていない**（利用者・つくるを作り直すスライスで使う）。
+- **`components/SharingStatus.tsx`**: `variant="bar"`（点・「共有状態を確認中／事業所で共有中＋事業所の名前／自分の登録分のみ」・`OrganizationSwitcher`）と `variant="strip"`（共有していないときだけ帯の下に `role="status"` で「…置き換わりません。複数人で使うときは、右上の事業所の切り替えから選んでください。」）。旧 `full`/`compact` は廃止。
+- 高さは `calc(100dvh - …)` で決めない（注意の帯が出ると下の端が画面の外へ出るため）。寸法トークン `--topbar-h` `--rail-w` `--tabbar-h` は `app/globals.css` の `:root`。
+- 「CareNote — Powered by Claude API」（AI の送り先が画面に出る唯一の場所）は、送る帯に送信先の表示が入るまで本文の終わりに残す。
+- テスト: `components/shell/Rail.test.tsx`・`TopBar.test.tsx`（帯の高さを読む CSS が固定の数字・引き算に戻らないことも）・`TopBarSlot.live.test.tsx`（jsdom・差し込みと高さの書き込み）・`components/SharingStatus.test.tsx`（3つの状態・注意の帯・切り替え・44px）・`app/(dashboard)/layout.test.tsx`（外枠が共有状態・4項目・送り先の表示を持つ）。外枠の文字と地の組み合わせの 4.5:1 は `app/globals.test.ts`。
+- **まだ直していない文書**（後のマイルストーンでまとめて書き直す・作り直しは本番に出さない決定）: `lib/manual/content.ts`（共有状態は「画面の左下」・6項目のメニュー・スマホの2アイコン など）、`docs/ADMIN-SETUP.md`・`docs/DATA-HANDLING-EXPLANATION.md`（共有状態の場所）、`docs/MANUAL-VIDEO-SPEC.md`（左メニューの名前とメールで録画のアカウントを確かめる手順）、6章の動画（旧い左メニューが映っている）。
 
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
@@ -241,7 +252,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記*
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

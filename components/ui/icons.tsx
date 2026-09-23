@@ -52,17 +52,7 @@ function Svg({
   );
 }
 
-/** 家の形。旧ナビの「ダッシュボード」とスマホ上部のリンクで使う（A案のナビでは使わない）。 */
-export function IconHome(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M3 9.5 12 3l9 6.5V20a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20Z" />
-      <path d="M9.5 21.5v-7h5v7" />
-    </Svg>
-  );
-}
-
-/** 2人の人の形（旧デザイン）。旧ナビの「利用者」と、つくるの「担当者会議（第4表）」ボタンで使う。 */
+/** 2人の人の形（旧デザイン）。つくるの「担当者会議（第4表）」ボタンで使う（ナビの利用者は IconPeople）。 */
 export function IconUsers(props: IconProps) {
   return (
     <Svg {...props}>
@@ -121,7 +111,7 @@ export function IconMic(props: IconProps) {
   );
 }
 
-/** 文字のついた書類。旧ナビの「作成する」と、書類の行・ファイルの印に使う。 */
+/** 文字のついた書類。書類の行・ファイルの印に使う。 */
 export function IconFileText(props: IconProps) {
   return (
     <Svg {...props}>
@@ -134,7 +124,7 @@ export function IconFileText(props: IconProps) {
   );
 }
 
-/** 重なった層。旧ナビの「救済モード」と、つくるの「支援経過（第5表）」ボタンなど一式まわりの印に使う。 */
+/** 重なった層。つくるの「支援経過（第5表）」ボタンなど一式まわりの印に使う。 */
 export function IconLayers(props: IconProps) {
   return (
     <Svg {...props}>
@@ -145,7 +135,7 @@ export function IconLayers(props: IconProps) {
   );
 }
 
-/** 虫めがね。旧ナビの「評価する」と、つくるの「アセスメント」ボタンの印に使う。 */
+/** 虫めがね。つくるの「アセスメント」ボタンの印に使う。 */
 export function IconSearch(props: IconProps) {
   return (
     <Svg {...props}>

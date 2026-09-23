@@ -174,6 +174,27 @@ describe("文字の色が地の色の上で読める（WCAG AA 4.5:1）", () => 
     expect(failures).toEqual([]);
   });
 
+  /**
+   * A案の外枠（components/shell/・components/SharingStatus.tsx）は、上の4つ以外の地に文字を載せる。
+   * [文字, 地, どこか]。外枠の CSS（globals.css の .rail* / .sharing-strip）で組み合わせを変えたら、ここも直す。
+   */
+  const SHELL_PAIRS: [string, string, string][] = [
+    ["--muted", "--rail", "左の帯の項目の名前（開いていない項目）・ログイン中の人の短い名前"],
+    ["--ink", "--rail", "左の帯の CN・項目にマウスを載せたとき"],
+    ["--ink", "--active", "左の帯の開いている項目の名前"],
+    ["--ink-2", "--active", "「この画面の使い方」にマウスを載せたとき"],
+    ["--ink-2", "--amber-soft", "共有していないときの注意の帯の文"],
+    ["--ink", "--amber-soft", "注意の帯の太字「置き換わりません」"],
+  ];
+
+  it("A案の外枠で使う文字と地の組み合わせも 4.5:1 以上", () => {
+    const failures = SHELL_PAIRS.filter(
+      ([text, ground]) =>
+        contrastRatio(resolveColor(tokens, text), resolveColor(tokens, ground)) < AA_TEXT,
+    ).map(([text, ground, where]) => `${text} on ${ground}（${where}）`);
+    expect(failures).toEqual([]);
+  });
+
   it("計算そのものが正しい（既知の値と一致する）", () => {
     expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 5);
     // #767676 は白地で AA を満たす最も淡い灰色として知られる値（4.54:1）
