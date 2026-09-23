@@ -865,3 +865,264 @@
     }
   }
 }
+
+/*
+ * 利用者の画面（A案「作業台」・A5・2026-09-24 ── 計画 U1/U2）。部品は components/clients/ClientsLayout.tsx と ClientTable.tsx。
+ * 寸法はアートボード A-clients: 表の見出しの行 40px・行 52px・左右の端 24px・行の区切り 1px（--line-inner）。
+ * 選んでいる行（URL が /clients/{id} の行）だけ地を --row-selected にする（緑系の地は「選択中の印」の役割）。
+ * 行そのもの（<tr>）は押せる物にしない ── 押せるのは記号のリンク（行の見出しのセルの中の <a>）だけ。
+ * 上の帯に差し込む見出し・道しるべ・探す欄・「新しい利用者」もここ（差し込み口 .topbar-slot は箱を作らないので、
+ * これらは上の帯の左側 .topbar-left の並びにそのまま入る）。
+ * @layer components に入れる理由は上の区画と同じ（部品に足した Tailwind の指定が勝てるように）。
+ * テスト: components/clients/ClientTable.test.tsx（選んだ行の地・行と見出しの高さ）。
+ */
+@layer components {
+  .client-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+
+  /*
+   * 見出しの行。表を動かしても区画の上に貼りつく（区画 .pane が自分の中で動くので top は 0）。
+   * 下の線は border でなく影で引く（行をまとめて線にする表の組み方では、貼りついた見出しの border が消えるため）。
+   */
+  .client-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    height: 40px;
+    padding: 0 12px 0 0;
+    background: var(--pane-bg, var(--paper));
+    box-shadow: inset 0 -1px 0 var(--line);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--muted);
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .client-table tbody tr {
+    height: 52px;
+    border-bottom: 1px solid var(--line-inner);
+  }
+
+  .client-table tbody tr[data-selected] {
+    background: var(--row-selected);
+  }
+
+  .client-table tbody th,
+  .client-table tbody td {
+    padding: 0 12px 0 0;
+    text-align: left;
+    font-weight: 400;
+  }
+
+  /* 1列目（記号）は左の端 24px。幅は「AB様」まで収まる分 */
+  .client-table thead th:first-child,
+  .client-table tbody th {
+    width: 88px;
+    padding-left: 24px;
+  }
+
+  /* 最後の列（登録日）は右寄せで、右の端 24px */
+  .client-table .client-cell-end {
+    width: 128px;
+    padding-right: 24px;
+    text-align: right;
+  }
+
+  /* 記号のリンク（行を開く唯一の押す場所）。等幅・500。押す場所は 44px（行は 52px） */
+  .client-code-link {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    font-family: var(--mono);
+    font-weight: 500;
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .client-code-link:hover {
+    color: var(--green);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .client-attr {
+    color: var(--ink-table);
+  }
+
+  .client-attr-empty {
+    color: var(--muted);
+  }
+
+  .client-date {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* 読み込み中・読めなかった・当てはまる人がいない、の知らせ（表の代わりに出す） */
+  .client-table-note {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 20px 24px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+
+  .client-table-error {
+    flex-wrap: nowrap;
+    color: var(--clay);
+  }
+
+  .client-table-error-icon {
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+
+  /* まだ利用者がいないとき */
+  .client-table-empty {
+    padding: 48px 24px;
+    max-width: 34rem;
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--muted);
+  }
+
+  .client-table-empty-title {
+    margin-bottom: 4px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .client-table-code-sample {
+    font-family: var(--mono);
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  /* 上の帯: 見出し「利用者」と人数 */
+  .clients-title {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+
+  .clients-count {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  /* 上の帯: 道しるべ「利用者 / B様」（アートボード Main の「現在地」と同じ形） */
+  .clients-crumbs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .clients-crumbs a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  .clients-crumbs a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .clients-crumbs-sep {
+    color: var(--dash);
+  }
+
+  .clients-crumbs-here {
+    font-family: var(--mono);
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  /* 上の帯: 「記号・属性で探す」。枠は欄全体（label）に付け、フォーカスの輪も欄全体に出す */
+  .clients-search {
+    flex: 0 1 280px;
+    min-width: 0;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: 12px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+
+  .clients-search:focus-within {
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(14, 92, 70, 0.13);
+  }
+
+  .clients-search input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: var(--ink);
+  }
+
+  .clients-search input:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .clients-search input::placeholder {
+    color: var(--muted);
+  }
+
+  /*
+   * 上の帯: 「新しい利用者」（脇のボタン）。帯の左側の並びの右端へ寄せる。
+   * 登録の欄を開いているあいだの押した色は、部品の側の Tailwind の指定（aria-[current=page]:bg-…）で付ける
+   * ── ここ（層 components）に書くと、btnSecondary の白い地（層 utilities）に負けて効かない（2026-09-24 A5 の計測で発覚）。
+   */
+  .clients-new {
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  @media (max-width: 767px) {
+    /* スマホ: 探す欄も指で押せる高さに。文字 16px 未満だと iPhone が欄に入るたびに画面を拡大する */
+    .clients-search {
+      height: 44px;
+      margin-left: 0;
+    }
+
+    .clients-search input {
+      font-size: 16px;
+    }
+
+    /* スマホ: 「新しい利用者」は + の印だけ（文字は読み上げ用に残す ── 部品の max-md:sr-only）。押す場所は 44px 四方 */
+    .clients-new {
+      min-width: 44px;
+    }
+  }
+}

@@ -195,6 +195,25 @@ describe("文字の色が地の色の上で読める（WCAG AA 4.5:1）", () => 
     expect(failures).toEqual([]);
   });
 
+  /**
+   * 利用者の一覧で選んでいる行（globals.css の `.client-table tbody tr[data-selected]` ── 地 --row-selected）に載る文字。
+   * [文字, 地, どこか]。一覧の表（components/clients/ClientTable.tsx）の文字の色を変えたら、ここも直す（2026-09-24 A5）。
+   */
+  const SELECTED_ROW_PAIRS: [string, string, string][] = [
+    ["--ink", "--row-selected", "選んだ行の記号（B様）"],
+    ["--green", "--row-selected", "選んだ行の記号にマウスを載せたとき"],
+    ["--ink-table", "--row-selected", "選んだ行の属性"],
+    ["--muted", "--row-selected", "選んだ行の登録日・（属性未設定）"],
+  ];
+
+  it("利用者の一覧で選んでいる行の文字も 4.5:1 以上", () => {
+    const failures = SELECTED_ROW_PAIRS.filter(
+      ([text, ground]) =>
+        contrastRatio(resolveColor(tokens, text), resolveColor(tokens, ground)) < AA_TEXT,
+    ).map(([text, ground, where]) => `${text} on ${ground}（${where}）`);
+    expect(failures).toEqual([]);
+  });
+
   it("計算そのものが正しい（既知の値と一致する）", () => {
     expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 5);
     // #767676 は白地で AA を満たす最も淡い灰色として知られる値（4.54:1）

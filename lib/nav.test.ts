@@ -94,8 +94,24 @@ describe("helpAnchorOf", () => {
     expect(helpAnchorOf("/evaluate", BUNDLE_MODE)).toBe("ch1");
   });
 
+  it("利用者の画面は自分の見出しに「この画面の使い方」を持たず、上の帯の1つだけ（ch2）", () => {
+    // 2026-09-24 A5（計画 U1）で、利用者の画面の見出し（PageHeader helpAnchor="ch2"）を上の帯へ移した。
+    // 下の「今の画面の見出しと同じ章」の検査から /clients を外した代わりに、
+    // 行き先が ch2 のままであることと、画面の中に2つ目の入口が残っていないことを見る。
+    expect(helpAnchorOf("/clients")).toBe("ch2");
+    for (const file of [
+      "app/(dashboard)/clients/page.tsx",
+      "app/(dashboard)/clients/layout.tsx",
+      "components/clients/ClientsLayout.tsx",
+    ]) {
+      // 説明の文（JSDoc）に書いた「/guide#ch2」は数えず、画面を作るコード（helpAnchor= と href の中）だけを見る
+      expect(readFileSync(join(ROOT, file), "utf8")).not.toMatch(
+        /helpAnchor=|href=[{"`'\s]*\/guide#/,
+      );
+    }
+  });
+
   it.each([
-    ["/clients", "app/(dashboard)/clients/page.tsx"],
     ["/create", "app/(dashboard)/create/page.tsx"],
     ["/rescue", "app/(dashboard)/rescue/page.tsx"],
     ["/evaluate", "app/(dashboard)/evaluate/page.tsx"],

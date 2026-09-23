@@ -28,6 +28,7 @@ import {
   inputClass,
   SectionTitle,
 } from "@/components/ui/primitives";
+import { clientAttrLine } from "@/lib/clients/clientList";
 import { DOC_ORDER, DOC_TYPE_LABELS } from "@/lib/create/docTypes";
 import { documentContentToText } from "@/lib/draftText";
 import type { AssessmentDraft } from "@/types/assessment";
@@ -37,11 +38,6 @@ import type { CareDocumentRecord } from "@/types/document";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import type { MonitoringDraft } from "@/types/monitoring";
 import type { SupportLogDraft } from "@/types/supportLog";
-
-function attrLine(c: ClientRecord): string {
-  const a = c.attributes ?? {};
-  return [a.age, a.gender, a.careLevel, a.household].filter(Boolean).join(" ・ ");
-}
 
 /** 承認日時（ISO）を「7/17」形式の短い表示にする（承認済みバッジ用）。 */
 function approvedDateLabel(iso: string | null): string {
@@ -86,15 +82,17 @@ function StatusBadge({ doc }: { doc: CareDocumentRecord }) {
 }
 
 /**
- * 利用者の詳細（/clients/[id]）。
+ * 利用者の詳細（/clients/[id]）。一覧の表の右の、幅 440px の区画の中身（2026-09-24 A5 ＝ 計画 U2）。
  *
- * まだ A案の区画に作り替えていないので、以前の本文の幅と余白の器（app/globals.css の .legacy-page）に入れる。
- * この画面は読み込み中・見つからない・本体の3通りの根元を返すので、1か所で包めるよう中身を ClientDetail に分けた。
- * 作り替え（計画 U2/U3b ── 一覧の右の 440px の区画にする）で、この器は外す。
+ * 表と上の帯は app/(dashboard)/clients/layout.tsx（components/clients/ClientsLayout.tsx）にあり、ここは右の区画だけ。
+ * 道しるべ「利用者 / B様」は上の帯へ移した（以前はこの画面の頭にあった）。以前の本文の器（.legacy-page・幅の上限）も外した。
+ * 中身（関係者名簿・残した文字起こし・書類と承認）はまだ以前の見た目のまま ── A案の区画の形（見出し・つくる・
+ * 書類の種類ごとの行）への作り替えは計画 U3a/U3b/U4。
+ * この画面は読み込み中・見つからない・本体の3通りの根元を返すので、余白を1か所で付けられるよう中身を ClientDetail に分けた。
  */
 export default function ClientDetailPage() {
   return (
-    <div className="legacy-page">
+    <div className="px-7 pt-7 pb-10">
       <ClientDetail />
     </div>
   );
@@ -183,7 +181,7 @@ function ClientDetail() {
     );
   if (error || !client)
     return (
-      <div className="mx-auto max-w-2xl">
+      <div>
         <div className="flex items-center gap-2 text-sm text-[var(--clay)]">
           <IconAlert size={15} className="shrink-0" />
           {error || "利用者が見つかりません"}
@@ -202,18 +200,7 @@ function ClientDetail() {
   const missingTypes = DOC_ORDER.filter((t) => !documents.some((d) => d.docType === t));
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <nav aria-label="パンくず" className="mb-5 flex items-center gap-1.5 text-xs">
-        <Link
-          href="/clients"
-          className="text-[var(--muted)] transition-colors hover:text-[var(--green)]"
-        >
-          利用者
-        </Link>
-        <IconChevronRight size={13} className="text-[var(--faint)]" />
-        <span className="code-chip">{client.code}様</span>
-      </nav>
-
+    <div>
       {/* D4: 関係者名簿（家族・担当者・主治医）。登録した名前は黒塗りで「A様の長女」等に置き換わる */}
       <div className="mb-5">
         <RelatedPeople
@@ -240,7 +227,9 @@ function ClientDetail() {
             仮名表示中
           </span>
         </div>
-        <p className="mt-2 text-sm text-[var(--muted)]">{attrLine(client) || "（属性未設定）"}</p>
+        <p className="mt-2 text-sm text-[var(--muted)]">
+          {clientAttrLine(client) || "（属性未設定）"}
+        </p>
       </header>
 
       <div className="mb-10 flex items-center gap-5">

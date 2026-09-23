@@ -238,7 +238,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 `app/(dashboard)/layout.tsx` = `[Rail] [列: TopBar（上の帯＋注意の帯）→ main.app-main-inner → 送り先の表示]`。旧 `components/Sidebar.tsx`（6項目・220px）とスマホ用の `MobileNav`・`.app-topbar`・`.app-sharing-mobile` は廃止。
 - **`components/shell/Rail.tsx`**: 768px 以上は幅 72px の左の帯（CN・4項目・下端に Clerk `UserButton` とメールの「@」より前を文字で）。768px 未満は**同じ4項目が画面の下のタブ**（文字つき・高さ 56px・safe-area）── スマホから利用者・つくるへ行けるようになった。光る項目は `lib/nav.ts` の `sectionOf`（`aria-current="page"`・緑の線 1.8）。スマホの下のタブにはアカウントのボタンを入れていない（以前のスマホ画面と同じ）。
 - **`components/shell/TopBar.tsx`**: 高さ 52px の上の帯（スクロールしても上に貼りつく）。左 = ページの差し込み（無ければ項目の名前）、右 = 「この画面の使い方」（`helpAnchorOf`。使い方の画面では出さない）＋ 共有状態。帯＋注意の帯の実際の高さを ResizeObserver で測って `--shell-head-h` に書く（`.presend-nav` と `html` の `scroll-padding-top` が読む。旧: 固定の 72/76/80px）。`html` の scroll-padding（上 = 帯＋8px、スマホの下 = タブ＋safe-area＋8px・`app/globals.css` の `@layer base`）が、フォーカスした部品・使い方の章の飛び先（`/guide#chN`）を帯やタブの裏に隠さない（WCAG 2.2 AA 2.4.11。章ごとの旧 `.shell-anchor` は廃止 ── 両方あると二重に下がる）。画面が描かれていない（隠れたタブの）間は測れず、見えた時に書き直す。
-- **`components/shell/TopBarSlot.tsx`**: ページが上の帯の左に見出し・道しるべを差し込む口（`TopBarSlotProvider` を layout が持ち、`TopBarSlot` で包んだ中身を createPortal で帯へ）。**まだどのページも使っていない**（利用者・つくるを作り直すスライスで使う）。
+- **`components/shell/TopBarSlot.tsx`**: ページが上の帯の左に見出し・道しるべを差し込む口（`TopBarSlotProvider` を layout が持ち、`TopBarSlot` で包んだ中身を createPortal で帯へ）。使っているのは利用者（A5・`components/clients/ClientsLayout.tsx`）。つくるは作り直すスライスで使う。**1画面で差し込むのは1か所だけ**（2つの差し込みが同じ口に入ると、並び順が描かれた順に左右されるため）。
 - **`components/SharingStatus.tsx`**: `variant="bar"`（点・「共有状態を確認中／事業所で共有中＋事業所の名前／自分の登録分のみ」・`OrganizationSwitcher`）と `variant="strip"`（共有していないときだけ帯の下に `role="status"` で「…置き換わりません。複数人で使うときは、右上の事業所の切り替えから選んでください。」）。旧 `full`/`compact` は廃止。`OrganizationSwitcher` の見た目で文字を隠す指定は**切り替えのボタンの中だけ**に書く（Clerk は `__personalWorkspace` など一部の名前を、押すと開く一覧の行にも使う。`SharingStatus.test.tsx` が見張る）。
 - 高さは `calc(100dvh - …)` で決めない（注意の帯が出ると下の端が画面の外へ出るため）。寸法トークン `--topbar-h` `--rail-w` `--tabbar-h` `--pane-header-h` は `app/globals.css` の `:root`。
   768px 以上は外枠（`.app-shell`）が画面の高さちょうど（`100dvh`）で**文書は動かない** ── 列を flex の縦並びにして本文に残りの高さを渡し、本文の中の区画が自分の中で動く（下の「区画」）。スマホは今までどおり文書が動き、上の帯が貼りつく。
@@ -261,12 +261,38 @@ elements の部品が「押す／押さない／まだ計測していない」�
   overflow-hidden の一覧（角を丸めた Card）は縮む下限が 0 になり、器の高さで自分の行を切り落として下の行へ行けなくなる（2026-09-24 A4 の検証の blocker ──
   利用者の一覧と点検の履歴）。**残りの高さを埋める物は `grow`**（flex-grow だけ）を付け、`flex-1` は使わない（縮む指定と高さ 0 の出発点を入れ直すので、
   overflow-hidden や小さい `min-h` と組むと同じ切り落としが起きる）。器の中で縮めて中だけ動かしたい物だけが `flex-1 min-h-0` を自分で付ける。
-- **まだ作り替えていない画面の器 `.legacy-page`**: 7画面（`clients`・`clients/[id]`・`create`・`evaluate`・`dashboard`・`rescue`・`guide`）の根元に付ける（`clients/[id]` は根元が3通りあるので `ClientDetail` を包む形）。
+- **まだ作り替えていない画面の器 `.legacy-page`**: 5画面（`create`・`evaluate`・`dashboard`・`rescue`・`guide`）の根元に付ける（A4 では7画面。`clients`・`clients/[id]` は A5 で外した ── 下の「利用者の作業台」）。
   以前の本文の幅（最大 1000px＝中身 920px＋左右 40px）と余白（スマホ 16/16/32px）を再現し、768px 以上ではそれ自体が1つの区画のように動く。旧 `.app-main-inner` の「幅の決定点」の決まりはここが引き継いだ。作り替えたページから外し、全部外れたら消す（計画 X1）。
 - **ホーム = 利用者**（吉本さん決定 2026-09-23）: `app/page.tsx` が `/` を `/clients` へ（旧 `/evaluate`）。ログイン直後の行き先は Clerk の `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` / `AFTER_SIGN_UP_URL`。
   手元の見本 `.env.local.example` は `/clients` にした（ただしこのファイルは `.gitignore` の `.env*` に当たり **git に入っていない**）。本番の Vercel の値は吉本さんが変える（`docs/REDESIGN-A-SIGNOFF.md` の 8）。
 - テスト: `components/ui/primitives.test.tsx`（部品が付けるクラス・ボタンの 44px・区画の CSS の形〔層・768px 以上で動く・動く器の直下の物は縮まない・`.pane-640`／`.pane-440` の幅・区画の境目の 1px の線（スマホは上・768px 以上は左）・`--sticky-top`・旧画面の器の幅〕）・`app/page.test.ts`（`/` → `/clients`）。
 - **まだ直していない文書**（D1a/D2 でまとめて）: 「ログインすると、ダッシュボードか評価するの画面が開きます」── `lib/manual/content.ts`:248（あわせて 98-99・216-217・302）・`docs/MANUAL-VIDEO-SPEC.md`:221・`docs/manual-video/ch2.draft.vtt`・公開中の ch2 の字幕。
+
+### 利用者の作業台 ── 一覧の表と右の 440px の区画（A案「作業台」・A5・2026-09-24・ブランチ `redesign/a` ＝ 計画 U1＋U2）
+- **並び**: `app/(dashboard)/clients/layout.tsx`（サーバー）→ `components/clients/ClientsLayout.tsx`（ブラウザ）が `/clients` と `/clients/{id}` を包む。
+  上の帯（`TopBarSlot` で差し込む）= 見出し「利用者」＋人数（等幅）か、道しるべ「利用者 / B様」（`/clients/{id}`）＋「記号・属性で探す」＋「新しい利用者」（脇のボタン → `/clients?new=1`）。
+  本文 = `.panes` の中に [左 = 一覧の表（`Pane`・残りの幅）] | 1px の線 | [右 = `Pane as="aside" width={440} tinted` ＝ ページの中身]。
+  layout は利用者を選び替えても作り直されないので、**表は消えず、一覧も読み直さない**。右の区画だけがページで入れ替わる。
+- **何を選んでいるか**は URL だけで決める（`usePathname` → `lib/clients/clientList.ts` の `selectedClientIdOf`）。選んだ行は地 `--row-selected`（`tr[data-selected]`）とリンクの `aria-current="page"`。
+  **`/clients` を開いただけでは誰も選ばない**（右の区画は案内「左の一覧から利用者を選ぶと、書類と関係者名簿がここに出ます」だけ）── 関係者名簿の実名は、行を押してその方の URL を開いたときだけ出す（吉本さん決定 2026-09-23）。
+  `?new=1` は `useSearchParams` で読む（layout は searchParams を受け取れない ── 計画の指摘 U2）。`/clients?new=1` のときだけ登録の欄で、「新しい利用者」を押した色にする。
+- **`components/clients/ClientsContext.tsx`**（`ClientsProvider` / `useClients`）: 一覧（GET `/api/clients`）・読み込みの状態（`loading`/`ready`/`error`）・探す言葉・`addClient`（登録した利用者を読み直さずに先頭へ）・`reload` を、表・上の帯の探す欄・登録の欄が分け合う。
+  **読めなかったら「0人」にしない**: 通信の失敗・200 以外・JSON でない・配列でない、はすべて `error` にし、「利用者一覧を読めませんでした」＋サーバーの文を出す（まだ利用者がいません、も人数も出さない ── 計画 U0 と同じ決まり）。
+  ※ 枝 `redesign/a-backend` の U0（コミット 988cc85）に同じ役目の `lib/clients/listError.ts` の `fetchClientList` がある。この枝にはまだ無いので同じ決まりをここに持った。**取り込むときは `fetchClientList` に寄せて1つにする**（同じ枝の `tests/ui/clientListErrors.live.test.tsx` の「/clients」の検査は、一覧がページから layout へ移ったので `ClientsLayout` を描く形に直す ── 確かめる中身は同じ）。
+- **`components/clients/ClientTable.tsx`**: 表（見出しの行 40px・行 52px・列 = 記号〔等幅・行の見出しのセル `<th scope="row">` の中の `<a href="/clients/{id}">`〕・属性〔`clientAttrLine` か「（属性未設定）」〕・登録日〔等幅・日本時間の 2026/09/01〕）。
+  **行（`<tr>`）は押す物にしない**（押せるのは記号のリンクだけ ── 撮影の道具 `tools/shoot-run.mjs` の openClient と救済モードの保存後のリンクがこの形を使う）。書類の種類ごとの日付の列は後の段（計画 U5）。
+  読み込み中・読めなかった（「一覧をもう一度読む」）・まだいない（氏名を暗号化して記号で表示する約束の文）・探して当てはまる人がいない（「探す言葉を消す」）の4つの知らせ。`ClientSearchField` が上の帯の探す欄。**実名は描かない**（`ClientRecord` は氏名を持たず、ここは記号・属性・登録日だけ）。
+- **`components/clients/NewClientForm.tsx`**: 右の区画の登録の欄（`/clients?new=1` のとき `app/(dashboard)/clients/page.tsx` が出す）。欄の id（`#c-name` `#c-age` `#c-gender` `#c-care-level` `#c-household`）・名前・「氏名は暗号化して保存し、画面では記号で表示します」は以前と同じ。
+  登録できたら表の先頭へ足して、その方の画面（`/clients/{id}`）を開く（以前は欄を閉じて一覧に行が増えるだけ）。**一覧を読めていないあいだは登録を止める**（表が見えないと、もういる方を気づかずに二重に登録できるため ── U0 で救済モードの保存を止めたのと同じ理由）。
+- **`lib/clients/clientList.ts`（純粋）**: `clientAttrLine`（「85歳・女性・要介護2・独居」）・`filterClients`（記号と属性を画面の中だけで絞る・全角半角をそろえる・空白区切りは全部を含む・「B様」は記号そのものと比べる）・`formatRegisteredDate`・`selectedClientIdOf`。`clients/[id]/page.tsx` も属性の1行はここを使う。
+- **`app/(dashboard)/clients/[id]/page.tsx`**: 右の区画の中身になった（`.legacy-page`・幅の上限・道しるべを外し、余白だけ付ける）。**中身はまだ以前の見た目**（関係者名簿・残した文字起こし・書類と承認 ── 作り替えは計画 U3a/U3b/U4）。
+- **見た目** `app/globals.css` の2つ目の `@layer components`（`.client-table*`・`.client-code-link`・`.clients-*`）。部品に `btnSecondary` などの Tailwind の指定がある要素の上書きは、ここ（層 components）ではなく部品の側の Tailwind で書く（層 utilities に負けて効かない ── A5 の本番用ビルドで「新しい利用者」の押した色が出なかった）。
+  スマホ（768px 未満）: 上の帯が狭いので、見出しは読み上げ用に残して見た目だけ隠し、人数と道しるべは出さない（一覧へ戻るのは下のタブ）。案内だけの右の区画は出さない。**スマホ用の形はまだ**（選んだ方の詳細や登録の欄は表の下に出る ── 計画 M1）。
+- テスト: `components/clients/ClientTable.test.tsx`（jsdom・本物の Context ＋偽の通信 ── 行のリンク・行は押す物にしない・絞り込み・まだいないときの約束の文・読めなかったら知らせ〔空の一覧に見せない〕・読み直し・API に氏名が紛れても出さない・選んだ行の地と寸法の CSS）・
+  `components/clients/ClientsLayout.test.tsx`（jsdom・本物の上の帯と一緒に ── 選んだ行が URL に付いてくる・**勝手に選ばない**〔`/clients` では一覧しか問い合わせない〕・選び替えても読み直さない・道しるべ・登録した利用者が読み直さずに表に出る・読めないあいだは登録できない）・`lib/clients/clientList.test.ts`。
+  選んだ行の文字の 4.5:1 は `app/globals.test.ts`。利用者の画面の「この画面の使い方」が上の帯の1つだけになったことは `lib/nav.test.ts`。
+- **まだ直していない文書**（D1a/D2 でまとめて）: `lib/manual/content.ts`:102・260（右上の「新規」→「新しい利用者」）・108-110・272-274（登録すると、その方の画面が開く）・280（「利用者 ＞ A様」のパンくずは上の帯の「利用者 / A様」になった）、
+  `tools/shoot-plans.mjs`:55・103（`click: "新規"`。本番はまだ「新規」なので、本番に出すまで変えない）、`docs/MANUAL-VIDEO-SPEC.md`:204・224。
 
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
@@ -275,7 +301,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記*
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記。同日: 利用者の作業台（一覧の表・右の 440px の区画・上の帯への差し込み・ClientsContext・勝手に選ばない ── A5）を追記し、利用者の2画面を .legacy-page から外した*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*
