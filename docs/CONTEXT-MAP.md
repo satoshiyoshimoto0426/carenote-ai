@@ -216,7 +216,7 @@ npm test ─> tools/run-tests.mjs
    └─ ④ 集計行 Test Files / Tests に skipped・todo・expected fail が1件でもあれば失敗
 ```
 なぜ: ②だけでは、安全テストを1つ消すと両方の数が減って緑のまま、`it.skip` を入れても緑のままだった（吉本さん決定「安全テストが消えない・飛ばされない見張り」）。
-見張りの検査は `tools/testManifest.test.ts`（わざと壊した状態を作って止まることを確かめる）。CI（`quality-gates.yml`）は `npm run test` 経由で同じ見張りを通る。
+見張りの検査は `tools/testManifest.test.ts`（わざと壊した状態を作って止まることを確かめる）。CI（`quality-gates.yml`）は `npm run test` 経由で同じ見張りを通る（`package.json` の test が `node tools/run-tests.mjs` のままか・CI の行が `npm run test` のままか・`quality-gates.yml` に落ちても緑にする `continue-on-error` や段を飛ばす `if:` が無いかも、同じ検査が確かめる ── 入口を書き換えて見張りごと飛ばす抜け道を塞ぐ）。
 引数つき（`npm test -- <ファイル>`）でも⓪と `Errors` 行・終了コードの確認は必ず走る。件数の突き合わせと④は引数なしのときだけ（`-t` で絞ると外れたテストが skipped と数えられるため）。
 一覧の抜けを防ぐ検査: `lib/generation` で「AI への指示に氏名・実名・個人情報を書かせない」を固定している検査は、字面から拾って一覧と突き合わせる（2026-09-23 の検収で `kaipokeAssessment.test.ts` の抜けが見つかったため）。
 **未了（redesign/a を本番へ出す前に必須）**: 一覧の最低件数を下げる・名指しを消す・判定を緩める変更を人に知らせる注意喚起（MaouCastle ルートの `.claude/hooks/pre-tool-guard.sh`）に、見張りの3ファイルがまだ入っていない。

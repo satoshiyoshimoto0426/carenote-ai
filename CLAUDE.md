@@ -32,6 +32,8 @@
   名指しのファイルが消えた・名前が変わった／守るフォルダ（`lib/privacy` `tests/api` `lib/recording` `lib/transcribe` `lib/rescue`）が
   最低件数を下回った／守るファイルに `.skip(` `.only(` `.todo(` など飛ばす書き方がある／集計に skipped・todo が1件でもある、のどれかで失敗する
   （判定は `tools/testManifest.mjs`、その検査は `tools/testManifest.test.ts`）。
+  入口を書き換えて見張りごと飛ばす変更（`package.json` の test を `vitest run` にする・CI の `npm run test` を変える・
+  `quality-gates.yml` に `continue-on-error` や `if:` を足す）も、同じ検査が落とす。
   安全テストを足したら一覧にも足す。消す・弱めるときは吉本さんの承認（横断規約 §2.7-C）のうえで、一覧も同じコミットで直す
 - React コンポーネントテスト: `@testing-library/react` は必要時に追加
 - E2E: `Playwright` 導入予定（P2 のブラウザ拡張フローで）

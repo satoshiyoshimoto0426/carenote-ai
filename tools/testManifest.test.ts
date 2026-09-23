@@ -5,10 +5,13 @@
  * ここでは「わざと壊した状態」（ファイルを消す・名前を変える・飛ばす書き方を入れる・
  * 集計に skipped を混ぜる）を1つずつ作り、見張りが該当の名前を挙げて止めることを確かめる。
  * 繋がり: 判定= tools/testManifest.mjs／呼ぶ側= tools/run-tests.mjs（npm test）／一覧= tools/safety-tests.json。
+ * 入口の固定: package.json の test と CI（.github/workflows/quality-gates.yml）が run-tests.mjs を通ること、
+ * CI に落ちても緑にする書き方（continue-on-error・if:）が無いことも、ここで確かめる。
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import packageJson from "../package.json";
 import realManifest from "./safety-tests.json";
 import {
   checkAllPassed,
@@ -276,5 +279,24 @@ describe("いま使っている一覧 tools/safety-tests.json", () => {
     for (const path of found) {
       expect(paths, `${path} を tools/safety-tests.json に足してください`).toContain(path);
     }
+  });
+});
+
+describe("見張りを通らずにテストを走らせる抜け道が無いこと", () => {
+  const readQualityGates = () =>
+    readFileSync(join(process.cwd(), ".github", "workflows", "quality-gates.yml"), "utf8");
+
+  it("npm test も CI も、必ず tools/run-tests.mjs（一覧の照合と skipped の検査）を通る", () => {
+    // なぜ: package.json の test を "vitest run" に書き換えるだけで、一覧の照合も skipped の検査も
+    // 丸ごと飛ぶ。そう書き換えても vitest 自体は走るので、この検査がそこで落とす。
+    expect(packageJson.scripts.test).toBe("node tools/run-tests.mjs");
+    expect(readQualityGates()).toMatch(/^\s*run:\s*npm run test\s*$/m);
+  });
+
+  it("CI の Quality Gates に、落ちても緑にする continue-on-error や、段を飛ばす if: が無い", () => {
+    // なぜ: `run: npm run test` の行を残したままでも、その段（またはジョブ）に continue-on-error: true や
+    // if: false を足すだけで、見張りが落ちても・走らなくても CI は緑になる。入口の書き換えと同じ抜け道なので
+    // ここで一緒に塞ぐ。本当に条件が要るときは、この検査を直す差分がレビューに見える形で出る。
+    expect(readQualityGates()).not.toMatch(/^\s*(-\s+)?(continue-on-error|if)\s*:/m);
   });
 });
