@@ -28,22 +28,15 @@ import {
   inputClass,
   SectionTitle,
 } from "@/components/ui/primitives";
+import { DOC_ORDER, DOC_TYPE_LABELS } from "@/lib/create/docTypes";
 import { documentContentToText } from "@/lib/draftText";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
 import type { ClientRecord } from "@/types/client";
-import type { CareDocumentRecord, CareDocumentType } from "@/types/document";
+import type { CareDocumentRecord } from "@/types/document";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import type { MonitoringDraft } from "@/types/monitoring";
 import type { SupportLogDraft } from "@/types/supportLog";
-
-const DOC_LABELS: Record<CareDocumentType, string> = {
-  assessment: "アセスメント（課題分析）",
-  carePlan: "ケアプラン 第1・2表",
-  meetingSummary: "第4表 担当者会議の要点",
-  supportLog: "第5表 支援経過",
-  monitoring: "モニタリング",
-};
 
 function attrLine(c: ClientRecord): string {
   const a = c.attributes ?? {};
@@ -188,10 +181,9 @@ export default function ClientDetailPage() {
       </div>
     );
 
-  // 表示用の派生値: 標準5帳票のうち、まだ書類が無い種別（「＋つくる」行に使う）
-  const missingTypes = (Object.keys(DOC_LABELS) as CareDocumentType[]).filter(
-    (t) => !documents.some((d) => d.docType === t),
-  );
+  // 表示用の派生値: 標準5帳票のうち、まだ書類が無い種別（「＋つくる」行に使う）。
+  // 並び順は lib/create/docTypes.ts の DOC_ORDER（ケアマネジメントの流れ順）。
+  const missingTypes = DOC_ORDER.filter((t) => !documents.some((d) => d.docType === t));
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -261,7 +253,7 @@ export default function ClientDetailPage() {
                 <span className="flex min-w-0 items-center gap-2.5">
                   <IconFileText size={16} className="shrink-0 text-[var(--faint)]" />
                   <span className="truncate text-sm text-[var(--ink)]">
-                    {DOC_LABELS[d.docType] ?? d.docType}
+                    {DOC_TYPE_LABELS[d.docType]?.saved ?? d.docType}
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2.5">
@@ -396,7 +388,9 @@ export default function ClientDetailPage() {
               >
                 <span className="flex min-w-0 items-center gap-2.5">
                   <IconFileText size={16} className="shrink-0 text-[var(--faint)]" />
-                  <span className="truncate text-sm text-[var(--faint)]">{DOC_LABELS[t]}</span>
+                  <span className="truncate text-sm text-[var(--faint)]">
+                    {DOC_TYPE_LABELS[t].saved}
+                  </span>
                 </span>
                 <span className="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--faint)]">
                   <IconPlus size={13} />

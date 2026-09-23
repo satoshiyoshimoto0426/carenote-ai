@@ -222,6 +222,18 @@ elements の部品が「押す／押さない／まだ計測していない」�
 これが無いと Clerk の層外スタイルが Tailwind のクラスに勝ち、`clerkAppearance.elements`（ログイン枠・組織切替の見た目）が画面に効かない（2026-09-23 に /sign-in で計測）。
 ログインが要る画面の見た目の確認で**まだ済んでいないもの**は `docs/REDESIGN-A-SIGNOFF.md`（redesign/a を main へ出す前に全部済ませる）。
 
+### ナビ4項目・アイコン・書類の種類の正本（A案「作業台」・2026-09-23・ブランチ `redesign/a`）
+- **`lib/nav.ts`（純粋）**: ナビは6項目→4項目（吉本さん決定）。`NAV_ITEMS` = 利用者 `/clients`・つくる `/create`・点検 `/evaluate`・使い方 `/guide`。
+  `sectionOf(pathname)` が古い URL も振り分ける（`/rescue`→つくる、`/dashboard`→点検。URL は消さない ── ブックマーク・マニュアル・撮影の道具が使う）。
+  `helpAnchorOf(pathname, mode)` が「この画面の使い方」の行き先（利用者→ch2、つくる→ch3、一式まとめて〔`mode=bundle` か `/rescue`〕→ch6、点検→ch1、使い方→なし）。
+  テスト `lib/nav.test.ts` は、返す章が `lib/manual/content.ts` に実在することと、今の各ページの `PageHeader helpAnchor` と同じ行き先であることも確かめる。
+  **まだどの画面も読んでいない**（左の帯・上の帯を作るスライスで使う）。
+- **`components/ui/icons.tsx`**: `strokeWidth`（既定 1.6。A案は選択中のナビを 1.8）。A案用に `IconPeople`（利用者）・`IconPencil`（つくる）・`IconCheckCircle`（点検）・`IconMic`・`IconChevronUp/Down` を追加（使い方は既存の `IconHelpCircle`）。
+  センサー `components/ui/icons.test.tsx` ── 書き出した全アイコンが `aria-hidden="true"`・`currentColor`・`strokeWidth` を守るか（アートボードの SVG をそのまま貼ると aria-hidden が無い）。
+- **`lib/create/docTypes.ts`**: 書類5種類の並び順 `DOC_ORDER` と、画面ごとの名前 `DOC_TYPE_LABELS`（`tab`=つくるの種類ボタン／`description`=その下の1行／`saved`=利用者の画面の書類の行／`bundle`=救済モードの結果の見出し／`output`=A案の送信の帯の「作るもの」・**まだ画面に出していない**）。
+  create・clients/[id]・rescue の3画面がここを読む（前は各画面に別々に書いてあった）。**画面の文字は変えていない**（`lib/create/docTypes.test.ts` が固定）。
+  `output` の担当者会議以外の4つは案（画面に出す前に吉本さんの確認が要る）。`app/api/documents/route.ts` の `ALLOWED_TYPES` は同じ5種類を別に持っている。
+
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
 - API ルートの追加・データフローの変更
@@ -229,7 +241,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた*
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

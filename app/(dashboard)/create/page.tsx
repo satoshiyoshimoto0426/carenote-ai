@@ -24,6 +24,7 @@ import {
   IconUsers,
 } from "@/components/ui/icons";
 import { btnPrimary, btnSecondary, Card, inputClass, PageHeader } from "@/components/ui/primitives";
+import { DOC_ORDER, DOC_TYPE_LABELS } from "@/lib/create/docTypes";
 import {
   assessmentToText,
   carePlanToText,
@@ -38,11 +39,13 @@ import { appendTranscript } from "@/lib/transcribe/appendTranscript";
 import { explainTranscribeError, validateAudio } from "@/lib/transcribe/validate";
 import type { AssessmentDraft } from "@/types/assessment";
 import type { CarePlanDraft } from "@/types/carePlan";
+import type { CareDocumentType } from "@/types/document";
 import type { MeetingSummaryDraft } from "@/types/meetingSummary";
 import type { MonitoringDraft } from "@/types/monitoring";
 import type { SupportLogDraft } from "@/types/supportLog";
 
-type DocType = "carePlan" | "assessment" | "monitoring" | "meetingSummary" | "supportLog";
+/** 作る書類の種類（保存する書類の種類と同じ5種類）。 */
+type DocType = CareDocumentType;
 
 type GeneratedResult =
   | { type: "carePlan"; draft: CarePlanDraft }
@@ -51,45 +54,17 @@ type GeneratedResult =
   | { type: "meetingSummary"; draft: MeetingSummaryDraft }
   | { type: "supportLog"; draft: SupportLogDraft };
 
-const DOC_META: Record<
-  DocType,
-  { icon: ComponentType<IconProps>; label: string; description: string }
-> = {
-  assessment: {
-    icon: IconSearch,
-    label: "アセスメント",
-    description: "面談メモから課題分析の下書き",
-  },
-  carePlan: {
-    icon: IconFileText,
-    label: "ケアプラン（第1・2表）",
-    description: "アセス結果から計画書の下書き",
-  },
-  monitoring: {
-    icon: IconCheck,
-    label: "モニタリング",
-    description: "前回プラン＋最新状況から記録の下書き",
-  },
-  meetingSummary: {
-    icon: IconUsers,
-    label: "担当者会議（第4表）",
-    description: "会議メモから要点の下書き",
-  },
-  supportLog: {
-    icon: IconLayers,
-    label: "支援経過（第5表）",
-    description: "対応メモから経過記録の下書き",
-  },
+/**
+ * 種類ボタンのアイコン。並び順と名前・説明は lib/create/docTypes.ts が正本
+ * （アイコンは画面の部品なので、lib ではなくここに置く）。
+ */
+const DOC_ICONS: Record<DocType, ComponentType<IconProps>> = {
+  assessment: IconSearch,
+  carePlan: IconFileText,
+  monitoring: IconCheck,
+  meetingSummary: IconUsers,
+  supportLog: IconLayers,
 };
-
-/** ケアマネジメントの流れ順に表示する */
-const DOC_ORDER: DocType[] = [
-  "assessment",
-  "carePlan",
-  "meetingSummary",
-  "supportLog",
-  "monitoring",
-];
 
 /** ラベルは常に入力の上・12px・muted（Field と同じ見た目。必須マーク併用のため手書き） */
 const labelClass = "mb-1.5 block text-xs font-medium text-[var(--muted)]";
@@ -342,8 +317,7 @@ export default function CreatePage() {
       <Card className="mb-[var(--sp-4)] p-2">
         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
           {DOC_ORDER.map((t) => {
-            const meta = DOC_META[t];
-            const Icon = meta.icon;
+            const Icon = DOC_ICONS[t];
             const active = docType === t;
             return (
               <button
@@ -357,7 +331,9 @@ export default function CreatePage() {
                 }`}
               >
                 <Icon size={19} />
-                <span className="text-[12.5px] font-bold leading-[1.5]">{meta.label}</span>
+                <span className="text-[12.5px] font-bold leading-[1.5]">
+                  {DOC_TYPE_LABELS[t].tab}
+                </span>
               </button>
             );
           })}
@@ -383,7 +359,9 @@ export default function CreatePage() {
         </div>
       ) : !result ? (
         <div className="animate-fadeIn space-y-4">
-          <p className="-mt-2 text-xs text-[var(--faint)]">{DOC_META[docType].description}</p>
+          <p className="-mt-2 text-xs text-[var(--faint)]">
+            {DOC_TYPE_LABELS[docType].description}
+          </p>
 
           <div>
             <label htmlFor="clientInfo" className={labelClass}>
@@ -480,7 +458,7 @@ export default function CreatePage() {
                   送る文章を確認中…
                 </>
               ) : (
-                `${DOC_META[docType].label}の下書きを作る`
+                `${DOC_TYPE_LABELS[docType].tab}の下書きを作る`
               )}
             </button>
           </div>

@@ -38,6 +38,7 @@ import {
   SectionTitle,
   textareaClass,
 } from "@/components/ui/primitives";
+import { DOC_ORDER, DOC_TYPE_LABELS } from "@/lib/create/docTypes";
 import {
   assessmentToText,
   carePlanToText,
@@ -81,14 +82,14 @@ const TIMELINE_PLACEHOLDER = [
   "5月 自宅で転倒、通所を週2に増回",
 ].join("\n");
 
-/** 表示順とラベル（ケアマネジメントの流れ順）。 */
-const DOC_ORDER: { key: DocKey; label: string }[] = [
-  { key: "assessment", label: "アセスメント（課題分析）" },
-  { key: "carePlan", label: "ケアプラン 第1・2表" },
-  { key: "meetingSummary", label: "第4表 サービス担当者会議の要点" },
-  { key: "supportLog", label: "第5表 支援経過" },
-  { key: "monitoring", label: "モニタリング" },
-];
+/**
+ * 表示順とラベル（ケアマネジメントの流れ順）。順と名前の正本は lib/create/docTypes.ts
+ * （この画面の見出しは DocTypeLabels の bundle）。
+ */
+const BUNDLE_DOCS: { key: DocKey; label: string }[] = DOC_ORDER.map((key) => ({
+  key,
+  label: DOC_TYPE_LABELS[key].bundle,
+}));
 
 /** 帳票カード内のコピー用・小さめのセカンダリボタン（primitives の小サイズ版）。 */
 const btnSecondarySmall =
@@ -374,7 +375,7 @@ export default function RescuePage() {
 
   const copyAll = async () => {
     if (!bundle) return;
-    const all = DOC_ORDER.map(
+    const all = BUNDLE_DOCS.map(
       ({ key, label }) => `==== ${label} ====\n${docToText(key, bundle)}`,
     ).join("\n\n\n");
     await navigator.clipboard.writeText(all);
@@ -399,7 +400,7 @@ export default function RescuePage() {
         if (!resp.ok) throw new Error(created.error || "利用者の作成に失敗しました");
         clientId = (created as ClientRecord).id;
       }
-      for (const { key } of DOC_ORDER) {
+      for (const { key } of BUNDLE_DOCS) {
         const resp = await fetch("/api/documents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -813,7 +814,7 @@ export default function RescuePage() {
             </button>
           </div>
 
-          {DOC_ORDER.map(({ key, label }) => (
+          {BUNDLE_DOCS.map(({ key, label }) => (
             <Card key={key} className="space-y-4 p-6">
               <div className="flex items-center justify-between gap-3">
                 <SectionTitle>{label}</SectionTitle>

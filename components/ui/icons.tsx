@@ -1,20 +1,39 @@
 import type { ReactNode } from "react";
 
 /**
- * CareNote AI line-icon set (design system v0).
+ * CareNote AI の線アイコン集（A案「作業台」でも同じ約束で使う）。
  *
- * Why: the UI bans emoji and filled icons — every pictogram is a 24x24
- * stroke-only inline SVG (strokeWidth 1.6, round caps/joins) so it inherits
- * `currentColor` from the surrounding text. Used by Sidebar, dashboard layout,
- * and page-level components instead of an external icon library.
+ * なぜ自前で持つか: 画面に絵文字と塗りつぶしアイコンを使わない決まりがあり、
+ * 外部のアイコン部品を入れずに 24×24 の線だけの SVG（端と角は丸）で揃えている。
+ * 色は `currentColor` なので、置いた場所の文字色をそのまま受け継ぐ。
+ *
+ * どれも `aria-hidden="true"` を付けて出す（読み上げには、横に並ぶ文字を読ませる）。
+ * これを外すと Biome の noSvgWithoutTitle（error）に当たる。守られていることは
+ * `components/ui/icons.test.tsx` が全アイコンを1つずつ描いて確かめる。
+ *
+ * ナビの4項目（正本は `lib/nav.ts` の NAV_ITEMS）とアイコンの対応:
+ * 利用者 = IconPeople ／ つくる = IconPencil ／ 点検 = IconCheckCircle ／ 使い方 = IconHelpCircle。
+ * 選択中の項目は strokeWidth 1.8 で描く（A案のアートボード Main.dc.html の値）。
  */
 export type IconProps = {
+  /** 縦横の大きさ（px）。既定は 17。 */
   size?: number;
+  /** 置き場所の Tailwind クラス（色は text-* で currentColor に渡る）。 */
   className?: string;
+  /**
+   * 線の太さ。既定は 1.6（全アイコン共通の太さ）。
+   * なぜ変えられるか: A案のナビは選択中の項目だけ 1.8 で太く描き、小さな上下の矢印は 2 で描くため。
+   */
+  strokeWidth?: number;
 };
 
-/** Shared SVG shell so every icon keeps the exact same stroke contract. */
-function Svg({ size = 17, className, children }: IconProps & { children: ReactNode }) {
+/** 全アイコン共通の SVG の外枠。線の太さ・端の形・読み上げの扱いをここ1か所で決める。 */
+function Svg({
+  size = 17,
+  className,
+  strokeWidth = 1.6,
+  children,
+}: IconProps & { children: ReactNode }) {
   return (
     <svg
       width={size}
@@ -22,7 +41,7 @@ function Svg({ size = 17, className, children }: IconProps & { children: ReactNo
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.6}
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -33,7 +52,7 @@ function Svg({ size = 17, className, children }: IconProps & { children: ReactNo
   );
 }
 
-/** House outline — dashboard nav. */
+/** 家の形。旧ナビの「ダッシュボード」とスマホ上部のリンクで使う（A案のナビでは使わない）。 */
 export function IconHome(props: IconProps) {
   return (
     <Svg {...props}>
@@ -43,7 +62,7 @@ export function IconHome(props: IconProps) {
   );
 }
 
-/** Two-person outline — clients (利用者) nav. */
+/** 2人の人の形（旧デザイン）。旧ナビの「利用者」と、つくるの「担当者会議（第4表）」ボタンで使う。 */
 export function IconUsers(props: IconProps) {
   return (
     <Svg {...props}>
@@ -55,7 +74,54 @@ export function IconUsers(props: IconProps) {
   );
 }
 
-/** Document with text lines — create (作成する) nav and record items. */
+/**
+ * 2人の人の形（A案）。ナビの「利用者」に使う。
+ * なぜ IconUsers と別に持つか: A案のアートボード（Main.dc.html）の線の形が IconUsers と違うため。
+ * 旧画面の見た目を変えないよう、IconUsers はそのまま残している。
+ */
+export function IconPeople(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
+      <path d="M16 4.6a3.5 3.5 0 0 1 0 6.8" />
+      <path d="M18 14.3c2.2.7 3.5 2.8 3.5 5.7" />
+    </Svg>
+  );
+}
+
+/** 鉛筆。ナビの「つくる」に使う（A案のアートボード Main.dc.html の線の形）。 */
+export function IconPencil(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 20h4L19 9l-4-4L4 16z" />
+      <path d="M13.5 6.5l4 4" />
+    </Svg>
+  );
+}
+
+/** 丸で囲んだチェック。ナビの「点検」に使う（A案のアートボード Main.dc.html の線の形）。 */
+export function IconCheckCircle(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M8.5 12.2l2.4 2.4 4.6-5" />
+    </Svg>
+  );
+}
+
+/** マイク。A案の録音の帯（components/recording/ の画面内録音）の印に使う（アートボード Main.dc.html の線の形）。 */
+export function IconMic(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.5 11a6.5 6.5 0 0 0 13 0" />
+      <path d="M12 17.5V21" />
+    </Svg>
+  );
+}
+
+/** 文字のついた書類。旧ナビの「作成する」と、書類の行・ファイルの印に使う。 */
 export function IconFileText(props: IconProps) {
   return (
     <Svg {...props}>
@@ -68,7 +134,7 @@ export function IconFileText(props: IconProps) {
   );
 }
 
-/** Stacked layers — rescue mode (救済モード) nav. */
+/** 重なった層。旧ナビの「救済モード」と、つくるの「支援経過（第5表）」ボタンなど一式まわりの印に使う。 */
 export function IconLayers(props: IconProps) {
   return (
     <Svg {...props}>
@@ -79,7 +145,7 @@ export function IconLayers(props: IconProps) {
   );
 }
 
-/** Magnifier — evaluate (評価する) nav and search inputs. */
+/** 虫めがね。旧ナビの「評価する」と、つくるの「アセスメント」ボタンの印に使う。 */
 export function IconSearch(props: IconProps) {
   return (
     <Svg {...props}>
@@ -89,7 +155,7 @@ export function IconSearch(props: IconProps) {
   );
 }
 
-/** Gear — settings entry points. */
+/** 歯車。設定の入口用。 */
 export function IconSettings(props: IconProps) {
   return (
     <Svg {...props}>
@@ -99,7 +165,7 @@ export function IconSettings(props: IconProps) {
   );
 }
 
-/** Plus — "add new" actions. */
+/** 十字。「新しく足す」操作に使う。 */
 export function IconPlus(props: IconProps) {
   return (
     <Svg {...props}>
@@ -109,7 +175,7 @@ export function IconPlus(props: IconProps) {
   );
 }
 
-/** Two overlapping sheets — copy-to-clipboard actions. */
+/** 重なった2枚の紙。コピーの操作に使う。 */
 export function IconCopy(props: IconProps) {
   return (
     <Svg {...props}>
@@ -119,7 +185,7 @@ export function IconCopy(props: IconProps) {
   );
 }
 
-/** Checkmark — success / copied states. */
+/** チェックの印。できた・コピーした状態と、承認済みの印に使う。 */
 export function IconCheck(props: IconProps) {
   return (
     <Svg {...props}>
@@ -128,7 +194,7 @@ export function IconCheck(props: IconProps) {
   );
 }
 
-/** Chevron pointing right — list rows and breadcrumbs. */
+/** 右向きの山形。一覧の行・パンくず・開閉の印に使う。 */
 export function IconChevronRight(props: IconProps) {
   return (
     <Svg {...props}>
@@ -137,7 +203,31 @@ export function IconChevronRight(props: IconProps) {
   );
 }
 
-/** Arrow pointing right — primary CTA affordance. */
+/**
+ * 上向きの山形。A案のアートボードでは「AIに送る文章」の赤い言葉を1つ前へ戻る操作に描かれている。
+ * 押す場所は文字のボタン「前へ」のまま残す決定（パソコンに不慣れな職員向け）なので、使うときは文字に添える。
+ */
+export function IconChevronUp(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 15l6-6 6 6" />
+    </Svg>
+  );
+}
+
+/**
+ * 下向きの山形。A案のアートボードでは「AIに送る文章」の赤い言葉を1つ先へ進む操作に描かれている。
+ * 押す場所は文字のボタン「次へ」のまま残す決定（パソコンに不慣れな職員向け）なので、使うときは文字に添える。
+ */
+export function IconChevronDown(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 9l6 6 6-6" />
+    </Svg>
+  );
+}
+
+/** 右向きの矢印。先へ進む操作の印に使う。 */
 export function IconArrowRight(props: IconProps) {
   return (
     <Svg {...props}>
@@ -147,7 +237,7 @@ export function IconArrowRight(props: IconProps) {
   );
 }
 
-/** Padlock — auth / privacy notices. */
+/** 錠前。ログインや個人情報の扱いの注意に使う。 */
 export function IconLock(props: IconProps) {
   return (
     <Svg {...props}>
@@ -157,7 +247,7 @@ export function IconLock(props: IconProps) {
   );
 }
 
-/** Triangle with exclamation — errors and destructive warnings. */
+/** 三角に感嘆符。エラーと、取り返しのつかない操作の注意に使う。 */
 export function IconAlert(props: IconProps) {
   return (
     <Svg {...props}>
@@ -168,7 +258,7 @@ export function IconAlert(props: IconProps) {
   );
 }
 
-/** Spinner spokes — loading states (pair with a rotation animation class). */
+/** 放射状の線。読み込み中の印に使う（回転のクラス animate-spin と組み合わせる）。 */
 export function IconLoader(props: IconProps) {
   return (
     <Svg {...props}>
@@ -184,7 +274,7 @@ export function IconLoader(props: IconProps) {
   );
 }
 
-/** Arrow rising out of a tray — file upload affordances (rescue source docs). */
+/** 受け皿から上がる矢印。ファイルを選ぶ場所（一式まとめての参考資料）に使う。 */
 export function IconUpload(props: IconProps) {
   return (
     <Svg {...props}>
@@ -195,7 +285,7 @@ export function IconUpload(props: IconProps) {
   );
 }
 
-/** Trash can — remove-item actions (e.g. deleting a selected source doc). */
+/** ごみ箱。選んだものを外す操作（例: 選んだ参考資料を外す）に使う。 */
 export function IconTrash(props: IconProps) {
   return (
     <Svg {...props}>
@@ -208,7 +298,7 @@ export function IconTrash(props: IconProps) {
   );
 }
 
-/** Clock face — timeline / chronology inputs (rescue 関わりの経過). */
+/** 時計。時系列の入力（一式まとめての「関わりの経過」）に使う。 */
 export function IconClock(props: IconProps) {
   return (
     <Svg {...props}>
@@ -218,7 +308,7 @@ export function IconClock(props: IconProps) {
   );
 }
 
-/** Circled question mark — 使い方（マニュアル）nav and per-screen help links. */
+/** 丸で囲んだ疑問符。ナビの「使い方」と、各画面の「この画面の使い方」リンクに使う。 */
 export function IconHelpCircle(props: IconProps) {
   return (
     <Svg {...props}>
@@ -229,7 +319,7 @@ export function IconHelpCircle(props: IconProps) {
   );
 }
 
-/** Circled play triangle — manual video sections. */
+/** 丸で囲んだ再生の三角。使い方の動画の場所に使う。 */
 export function IconPlayCircle(props: IconProps) {
   return (
     <Svg {...props}>
@@ -239,7 +329,7 @@ export function IconPlayCircle(props: IconProps) {
   );
 }
 
-/** Printer outline — print / PDF handout links. */
+/** 印刷機。印刷・PDF の配布物へのリンクに使う。 */
 export function IconPrinter(props: IconProps) {
   return (
     <Svg {...props}>
@@ -250,7 +340,7 @@ export function IconPrinter(props: IconProps) {
   );
 }
 
-/** Tray with a down arrow — file downloads (mirror of IconUpload). */
+/** 受け皿へ下りる矢印。ファイルのダウンロードに使う（IconUpload の逆向き）。 */
 export function IconDownload(props: IconProps) {
   return (
     <Svg {...props}>
@@ -261,7 +351,7 @@ export function IconDownload(props: IconProps) {
   );
 }
 
-/** Circled "i" — explanatory callouts inside the manual. */
+/** 丸で囲んだ「i」。使い方の中の説明の囲みに使う。 */
 export function IconInfo(props: IconProps) {
   return (
     <Svg {...props}>
