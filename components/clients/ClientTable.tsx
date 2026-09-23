@@ -20,6 +20,11 @@ import { useClients } from "./ClientsContext";
  *     何を選んでいるかは components/clients/ClientsLayout.tsx が URL から決めて selectedId で渡す（勝手に選ばない）。
  *   - 一覧を読めなかったときは「まだ利用者がいません」を出さない（失敗を空の一覧に見せない ── 計画 U0）。
  *   - 実名は出さない: 一覧の1件（ClientRecord）は氏名を持たず、ここは記号・属性・登録日だけを描く。
+ *   - 表の上に見える1行「利用者ごとに書類が貯まります（氏名は記号で表示）」を置く（以前の一覧の見出しの説明文 ──
+ *     氏名を記号で出す約束）。まだいないときの文と登録の欄の添え書きにしか無いと、利用者がいる一覧を使っている
+ *     職員の目に入らない（A5 の検証）。アートボードには無い1行なので、残すか消すかは吉本さんが決める
+ *     （docs/REDESIGN-A-SIGNOFF.md の 10）。表は区画（Pane）の直下のまま置く ── app/globals.css の
+ *     `.pane:has(> .client-table)` が、貼りついた見出しの行の裏にフォーカスが隠れないよう区画の止まる位置を下げる。
  *
  * 一覧・探す言葉は components/clients/ClientsContext.tsx の useClients から読む。
  * テスト: components/clients/ClientTable.test.tsx。
@@ -71,43 +76,47 @@ export default function ClientTable({ selectedId }: { selectedId: string | null 
   }
 
   return (
-    <table className="client-table">
-      <caption className="sr-only">利用者の一覧</caption>
-      <thead>
-        <tr>
-          <th scope="col">記号</th>
-          <th scope="col">属性</th>
-          <th scope="col" className="client-cell-end">
-            登録日
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((client) => {
-          const selected = client.id === selectedId;
-          const attrs = clientAttrLine(client);
-          return (
-            <tr key={client.id} data-selected={selected ? "true" : undefined}>
-              <th scope="row">
-                <Link
-                  href={`/clients/${client.id}`}
-                  className="client-code-link"
-                  aria-current={selected ? "page" : undefined}
-                >
-                  {client.code}様
-                </Link>
-              </th>
-              <td className={attrs ? "client-attr" : "client-attr-empty"}>
-                {attrs || "（属性未設定）"}
-              </td>
-              <td className="client-cell-end client-date">
-                {formatRegisteredDate(client.createdAt)}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <>
+      {/* 氏名を記号で出す約束（理由は上の説明）。表を包む箱を足さない ── 表は区画の直下に置く決まり */}
+      <p className="client-table-lead">利用者ごとに書類が貯まります（氏名は記号で表示）</p>
+      <table className="client-table">
+        <caption className="sr-only">利用者の一覧</caption>
+        <thead>
+          <tr>
+            <th scope="col">記号</th>
+            <th scope="col">属性</th>
+            <th scope="col" className="client-cell-end">
+              登録日
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((client) => {
+            const selected = client.id === selectedId;
+            const attrs = clientAttrLine(client);
+            return (
+              <tr key={client.id} data-selected={selected ? "true" : undefined}>
+                <th scope="row">
+                  <Link
+                    href={`/clients/${client.id}`}
+                    className="client-code-link"
+                    aria-current={selected ? "page" : undefined}
+                  >
+                    {client.code}様
+                  </Link>
+                </th>
+                <td className={attrs ? "client-attr" : "client-attr-empty"}>
+                  {attrs || "（属性未設定）"}
+                </td>
+                <td className="client-cell-end client-date">
+                  {formatRegisteredDate(client.createdAt)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
   );
 }
 

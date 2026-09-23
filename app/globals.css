@@ -788,6 +788,8 @@
      * 区画が自分の中で縦に動く。--sticky-top は「区画の上端に重なっている物の高さ」で、
      * 区画の中で貼りつく物（.presend-nav）と、フォーカス・飛び先を止める位置（scroll-padding-top）が読む。
      * 頭の帯を持つ区画では、その高さぶん下げる（帯の裏に隠さない ── WCAG 2.2 AA 2.4.11・2026-09-23 A3 の教訓）。
+     * 区画の上に貼りつく物を足したら、同じように --sticky-top を書く（利用者の一覧の表の見出しの行は
+     * 下の `.pane:has(> .client-table)`）。
      */
     .pane {
       --sticky-top: 0px;
@@ -885,8 +887,22 @@
   }
 
   /*
+   * 表の上の1行「利用者ごとに書類が貯まります（氏名は記号で表示）」。氏名を記号で出す約束を、
+   * 利用者がいるときも画面に残す（以前の一覧の見出しの説明文。アートボードには無い1行 ── 残すか消すかは
+   * 吉本さんが決める: docs/REDESIGN-A-SIGNOFF.md の 10）。表と一緒に動き、上に貼りつかない。
+   */
+  .client-table-lead {
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--line-inner);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+
+  /*
    * 見出しの行。表を動かしても区画の上に貼りつく（区画 .pane が自分の中で動くので top は 0）。
    * 下の線は border でなく影で引く（行をまとめて線にする表の組み方では、貼りついた見出しの border が消えるため）。
+   * 高さを変えたら、下の `.pane:has(> .client-table)` の --sticky-top も同じ値にする（テストが両方を比べる）。
    */
   .client-table thead th {
     position: sticky;
@@ -901,6 +917,20 @@
     color: var(--muted);
     text-align: left;
     white-space: nowrap;
+  }
+
+  @media (min-width: 768px) {
+    /*
+     * 表を直下に持つ区画は、貼りついた見出しの行（40px）の高さぶんフォーカスの止まる位置を下げる
+     * （区画の scroll-padding-top と「前へ／次へ」が読む --sticky-top ── 上の区画の決まり）。
+     * なぜ: 区画に頭の帯（.pane-header）が無いと --sticky-top は 0 のままで、キーボードで表を上へ戻ると
+     * （Shift+Tab）、移った先の記号のリンクが区画の上端から 8px の所に止まり、0〜40px を覆う見出しの行の
+     * 裏に隠れた（A5 の検証 ── WCAG 2.2 AA 2.4.11。頭の帯で起きた 2026-09-23 A3 と同じ種類）。
+     * スマホは文書が動き、見出しの行は上の帯（.shell-head・52px 以上）の裏に入るので、ここは 768px 以上だけ。
+     */
+    .pane:has(> .client-table) {
+      --sticky-top: 40px;
+    }
   }
 
   .client-table tbody tr {

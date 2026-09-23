@@ -202,6 +202,18 @@ describe("一覧の表（読めたとき）", () => {
     }
   });
 
+  it("表の上に、氏名を記号で表示する約束の1行を見える形で出す（利用者がいるときも消さない）", async () => {
+    // 以前の一覧の見出しの説明文（redesign-maps の safetyCopy）。A5 で上の帯へ移したときに黙って消えていた
+    // （検証の指摘）。まだいないときの文と登録の欄の添え書きだけでは、一覧を使っている職員の目に入らない
+    await render();
+    const lead = container.querySelector(".client-table-lead");
+    expect(lead?.textContent).toBe("利用者ごとに書類が貯まります（氏名は記号で表示）");
+    // 読み上げ用に隠した物ではない（見える1行）
+    expect(lead?.closest(".sr-only, [hidden], [aria-hidden='true']")).toBeNull();
+    // 表の直前に置き、表を箱で包まない（表は区画の直下 ── globals.css の `.pane:has(> .client-table)` が効く形）
+    expect(lead?.nextElementSibling?.tagName).toBe("TABLE");
+  });
+
   it("一覧を開いただけでは、どの行も選ばない", async () => {
     await render(null);
     expect(container.querySelectorAll("tr[data-selected]")).toHaveLength(0);
@@ -339,10 +351,18 @@ describe("表の見た目の決まり（app/globals.css）", () => {
     return out;
   }
 
-  /** 選択子がちょうど selector の規則の property の値（部品に足す Tailwind の指定が勝てるよう、層の中にあること） */
-  function cssValuesOf(selector: string, property: string): string[] {
+  /**
+   * 選択子がちょうど selector の規則の property の値（部品に足す Tailwind の指定が勝てるよう、層の中にあること）。
+   * within を渡すと、その @ 規則（@media など）の中の規則だけを見る。
+   */
+  function cssValuesOf(selector: string, property: string, within?: RegExp): string[] {
     return allRules()
-      .filter((r) => r.selector === selector && r.context.includes("@layer components"))
+      .filter(
+        (r) =>
+          r.selector === selector &&
+          r.context.includes("@layer components") &&
+          (!within || r.context.some((c) => within.test(c))),
+      )
       .flatMap((r) =>
         [...r.declarations.matchAll(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, "g"))].map(
           (m) => m[1].trim(),
@@ -363,6 +383,28 @@ describe("表の見た目の決まり（app/globals.css）", () => {
     expect(cssValuesOf(".client-table tbody tr", "border-bottom")).toEqual([
       "1px solid var(--line-inner)",
     ]);
+  });
+
+  it("768px 以上で表を直下に持つ区画は、貼りついた見出しの行の高さぶんフォーカスの止まる位置を下げる", () => {
+    // A5 の検証: 区画に頭の帯が無いので --sticky-top が 0 のままだった。Shift+Tab で表を上へ戻ると、移った先の
+    // 記号のリンクが区画の上端から 8〜52px に止まり、0〜40px を覆う見出しの行の裏に隠れた（WCAG 2.2 AA 2.4.11）。
+    // 区画の scroll-padding-top が calc(var(--sticky-top) + 8px) であることは components/ui/primitives.test.tsx が見る。
+    // レイアウトは jsdom では測れないので、ここは規則を見る（実際の位置の計測は docs/REDESIGN-A-SIGNOFF.md）
+    const WIDE = /^@media\s*\(min-width:\s*768px\)/;
+    const headHeight = cssValuesOf(".client-table thead th", "height");
+    expect(cssValuesOf(".client-table thead th", "position")).toEqual(["sticky"]);
+    expect(cssValuesOf(".client-table thead th", "top")).toEqual(["0"]);
+    // 見出しの行の高さを変えたら、逃がす幅も一緒に変わっていないと赤にする（片方だけ直すずれを止める）
+    expect(cssValuesOf(".pane:has(> .client-table)", "--sticky-top", WIDE)).toEqual(headHeight);
+    expect(headHeight).toEqual(["40px"]);
+    // 768px 以上の中だけに置く（スマホは文書が動き、見出しの行は上の帯の裏に入る）
+    const all = allRules().filter((r) => r.selector === ".pane:has(> .client-table)");
+    expect(all.length).toBeGreaterThan(0);
+    for (const rule of all) expect(rule.context.some((c) => WIDE.test(c))).toBe(true);
+  });
+
+  it("表の上の約束の1行は、地（--paper）の上で読める文字色（--muted ── 4.5:1 は app/globals.test.ts）", () => {
+    expect(cssValuesOf(".client-table-lead", "color")).toEqual(["var(--muted)"]);
   });
 
   it("記号と登録日は等幅の書体（氏名ではなく符号・日付であることを書体で示す）", () => {

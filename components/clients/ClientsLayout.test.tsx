@@ -185,6 +185,16 @@ describe("一覧を開いたとき（/clients）", () => {
     expect(q("main h1")).toBeNull();
   });
 
+  it("表は一覧の区画の直下に置く（包む箱を足すと、見出しの行の裏にフォーカスが隠れる）", async () => {
+    // app/globals.css の `.pane:has(> .client-table)` は「区画の直下の表」だけに効く。表を div などで包むと
+    // 規則が黙って外れ、Shift+Tab で上へ戻った記号のリンクが貼りついた見出しの行の裏に隠れる（A5 の検証）
+    await render(await listPage());
+    const table = q("main table.client-table");
+    expect(table?.parentElement?.matches('section.pane[aria-label="利用者の一覧"]')).toBe(true);
+    // 約束の1行も同じ区画の直下（表の直前）
+    expect(table?.previousElementSibling?.matches(".client-table-lead")).toBe(true);
+  });
+
   it("一覧を読めないあいだは人数を出さない（0人と見せない）", async () => {
     listResponse = () => json({ error: "ログインが必要です。" }, 401);
     await render(await listPage());
