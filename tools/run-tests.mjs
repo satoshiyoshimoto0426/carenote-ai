@@ -18,14 +18,22 @@
  *   ③ 数が合わない／`Errors` が出ている／vitest 自体が失敗した場合は、非ゼロで終わる
  *   ④ 集計行（Test Files / Tests）に skipped・todo・expected fail が1件でもあれば非ゼロで終わる
  *      （2026-09-23 追加。安全テストを消しても飛ばしても緑のままだった穴 ── 吉本さん決定）
+ *   ②と④で落ちたときは、vitest の JSON レポートから「走らなかったファイル」「飛ばされたテスト」を
+ *   ファイル名とテスト名で挙げる（集計行は件数しか言わない ── 検収の指摘 2026-09-23）
  *
  * 使い方: npm test（package.json の test スクリプトがこれを呼ぶ）。引数はそのまま vitest へ渡す。
  */
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkAllPassed, checkManifest } from "./testManifest.mjs";
+import {
+  checkAllPassed,
+  checkManifest,
+  diffTestFiles,
+  formatNotPassed,
+  readReportDetails,
+} from "./testManifest.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKIP_DIRS = new Set(["node_modules", ".next", ".git", "dist", "build", "coverage"]);
@@ -77,7 +85,27 @@ if (manifestErrors.length > 0) {
   process.exit(1);
 }
 
-const run = spawnSync("npx", ["vitest", "run", ...args], {
+// 引数なし（npm test・CI）のときだけ、JSON レポートも書かせる。④や件数の突き合わせで落ちたとき、
+// 「どのファイルの・どのテストか」を名前で挙げるため（集計行は件数しか言わない ── 検収の指摘 2026-09-23）。
+// 置き場所はリポジトリ直下からの相対パス: Windows の shell 経由では引数を引用符で囲まないので、
+// 空白を含むかもしれない一時フォルダの絶対パスは渡さない（vitest は相対パスを root から解決する）。
+// --reporter を1つでも指定すると vitest は既定の表示（default、GitHub では github-actions の注釈も）を
+// 自動で付けなくなるので、同じものを明示して、画面の表示と CI の注釈を今までどおりに保つ。
+// 例外: AI エージェントの中で走らせると、vitest は本来 agent（合格したテストのログを出さない）を選ぶが、
+// ここでは default になり、合格したテストの console 出力まで出る（合否は同じ）。
+// 判定に使う std-env は vitest 専用の版（v4）が入れ子で入っており、直下の版（v3）とは別物なので真似しない。
+const fullRun = args.length === 0;
+const REPORT = `node_modules/.cache/run-tests-report-${process.pid}.json`;
+const reporterArgs = fullRun
+  ? [
+      "--reporter=default",
+      ...(process.env.GITHUB_ACTIONS === "true" ? ["--reporter=github-actions"] : []),
+      "--reporter=json",
+      `--outputFile.json=${REPORT}`,
+    ]
+  : [];
+
+const run = spawnSync("npx", ["vitest", "run", ...args, ...reporterArgs], {
   cwd: ROOT,
   encoding: "utf8",
   shell: process.platform === "win32",
@@ -87,6 +115,23 @@ const run = spawnSync("npx", ["vitest", "run", ...args], {
 });
 const raw = `${run.stdout ?? ""}${run.stderr ?? ""}`;
 process.stdout.write(raw);
+
+// JSON レポートは名指しのための補助。合否は集計行で決めるので、読めなくても合格にはしない
+// （読めなかった理由は、落ちたときの表示に出す）。一時ファイルは読んだらすぐ消す。
+let details = null;
+let detailsProblem = "引数つきの実行なので JSON レポートを書かせていません";
+if (fullRun) {
+  const reportPath = join(ROOT, REPORT);
+  try {
+    details = readReportDetails(JSON.parse(readFileSync(reportPath, "utf8")), (abs) =>
+      relative(ROOT, abs).replace(/\\/g, "/"),
+    );
+    detailsProblem = details ? "" : "JSON レポートの形が想定と違います";
+  } catch (e) {
+    detailsProblem = `JSON レポートを読めませんでした（${e instanceof Error ? e.message : String(e)}）`;
+  }
+  rmSync(reportPath, { force: true });
+}
 
 // NO_COLOR を渡しても、別経路で色が付く可能性に備えて照合前に ESC 列を落とす（二重の備え）。
 // 正規表現リテラルに制御文字を直接書かないよう、ESC は文字コードから組み立てる。
@@ -118,17 +163,35 @@ const fileSummary = checkAllPassed(output, "Test Files");
 const testSummary = checkAllPassed(output, "Tests");
 const summaryErrors = [...fileSummary.errors, ...testSummary.errors];
 if (summaryErrors.length > 0) {
+  const named = details ? formatNotPassed(details.notPassed) : [];
+  const where =
+    named.length > 0
+      ? `\n該当のテスト（ファイルごと）:\n${named.map((l) => `  ${l}`).join("\n")}`
+      : `\nどのテストかを名前で特定できませんでした（${detailsProblem || "JSON レポートに合格以外のテストが無い ── 「失敗して合格」（.fails）は JSON に出ません"}）。`;
   console.error(
     `\n[run-tests] 飛ばされた・読めないテストがあります:\n${summaryErrors.map((e) => `  - ${e}`).join("\n")}` +
+      where +
       "\n飛ばしたテストは何も確かめていないのに緑に見えるので、1件でも失敗にします。",
   );
   process.exit(1);
 }
 const ran = fileSummary.total;
 if (ran !== onDisk.length) {
+  const diff = details ? diffTestFiles(onDisk, details.ranFiles) : null;
+  const named = diff
+    ? [
+        ...diff.notRun.map((f) => `  - 走らなかった: ${f}`),
+        ...diff.notOnDisk.map((f) => `  - ディスクの数え方の外で走った: ${f}`),
+      ]
+    : [];
+  const where =
+    named.length > 0
+      ? named.join("\n")
+      : `  （どのファイルかを名前で特定できませんでした: ${detailsProblem || "JSON レポートの一覧では、ずれが見つかりません"}）`;
   console.error(
-    `\n[run-tests] 走ったテストファイルは ${ran} 件ですが、ディスクには ${onDisk.length} 件あります。` +
-      "\n走らなかったファイルがある＝その範囲は無検査のまま緑になっています。",
+    `\n[run-tests] 走ったテストファイルは ${ran} 件ですが、ディスクには ${onDisk.length} 件あります。\n${where}` +
+      "\n走らなかったファイルがある＝その範囲は無検査のまま緑になっています" +
+      "（数え方の外で走ったものは、tools/run-tests.mjs の数え方と vitest.config.ts の include を揃えてください）。",
   );
   process.exit(1);
 }

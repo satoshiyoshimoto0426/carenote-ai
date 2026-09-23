@@ -20,6 +20,8 @@
  * @typedef {{ protectedDirs: ProtectedDir[], files: SafetyFile[] }} SafetyManifest
  * @typedef {{ marker: string, line: number }} SkipMarker
  * @typedef {{ total: number, counts: Record<string, number>, unknown: string[] }} SummaryLine
+ * @typedef {{ file: string, name: string, status: string }} NotPassedTest
+ * @typedef {{ ranFiles: string[], notPassed: NotPassedTest[] }} ReportDetails
  */
 
 /** vitest.config.ts の include（*.test.ts / *.test.tsx）と同じ条件。ずれると一覧に載せても走らない。 */
@@ -29,11 +31,17 @@ const TEST_FILE_RE = /\.test\.tsx?$/;
  * テストを「飛ばす・絞る・未実装で置く・失敗を期待する形に反転する」書き方。
  * `.skip(` `.only(` `.todo(` と、条件つきで飛ばす `skipIf` `runIf`、反転の `fails`、
  * 別名の `xit` `xtest` `xdescribe`。`it.skip.each` のような続け書きと、`it["skip"]` の書き方も拾う。
+ * 4つ目は、かっこを付けずに別の名前へ入れる書き方（`const s = it.skip;` ── あとで `s("x", …)` と呼ぶ）。
+ * 集計行の検査は引数なしの実行でしか走らないので、`npm test -- <ファイル>` ではここが唯一の見張りになる
+ * （検収の指摘 2026-09-23）。1つ目と二重に数えないよう、後ろに `(` か `.` が続くものは1つ目に任せる。
+ * 対象を it / test / describe / suite（describe の別名）から始まる並びに限るのは、
+ * `result.todo` のような普通のプロパティを誤って拾わないため。
  */
 const MARKER_RES = [
   /\.\s*(?:skip|only|todo|skipIf|runIf|fails)\s*[(.]/g,
   /\[\s*["'`](?:skip|only|todo|skipIf|runIf|fails)["'`]\s*\]/g,
   /\b(?:xit|xtest|xdescribe)\s*\(/g,
+  /\b(?:it|test|describe|suite)(?:\s*\.\s*[A-Za-z_$][\w$]*)*?\s*\.\s*(?:skip|only|todo|skipIf|runIf|fails)\b(?!\s*[(.])/g,
 ];
 
 /** vitest 4 の集計行に出る項目（node_modules/vitest の getStateString で確認・2026-09-23）。 */
@@ -221,4 +229,88 @@ export function checkAllPassed(output, title) {
     );
   }
   return { total: summary.total, errors };
+}
+
+/** JSON レポートの状態を、職員にも伝わる言い方に。ここに無い状態も「合格以外」として名前を挙げる。 */
+const JSON_STATUS_LABEL = {
+  skipped: "飛ばされています",
+  todo: "中身の無い予定のまま",
+  pending: "走っていません",
+  failed: "失敗しています",
+};
+
+/**
+ * vitest の JSON レポート（`--reporter=json`）から、走ったファイルと「合格以外」のテストを名前つきで取り出す。
+ *
+ * なぜ: 集計行は「Tests: 1 件が飛ばされています」としか言わず、どのファイルのどのテストかが分からない。
+ * 55 ファイルを手で探すことになる（検収の指摘 2026-09-23 ── 別名 `const s = it.skip` で再現）。
+ * 合否の判定は集計行（checkAllPassed）のまま。ここは「どれか」を名指しするための補助で、
+ * 読めなければ null を返し、呼ぶ側（tools/run-tests.mjs）は「特定できなかった」と書いたうえで失敗のまま終える。
+ * 注意: `it.fails`（失敗して合格）は JSON では passed と出るので、ここでは挙がらない。
+ *
+ * @param {unknown} report JSON.parse した vitest の JSON レポート
+ * @param {(absolutePath: string) => string} toRelative 絶対パスをリポジトリ直下からの / 区切りに直す関数
+ * @returns {ReportDetails | null} 形が読めなければ null
+ */
+export function readReportDetails(report, toRelative) {
+  const results = /** @type {{ testResults?: unknown } | null | undefined} */ (report)?.testResults;
+  if (!Array.isArray(results)) return null;
+  const ranFiles = [];
+  const notPassed = [];
+  for (const result of results) {
+    const { name, assertionResults } = result ?? {};
+    if (typeof name !== "string" || !Array.isArray(assertionResults)) return null;
+    const file = toRelative(name);
+    ranFiles.push(file);
+    for (const a of assertionResults) {
+      if (a?.status === "passed") continue;
+      const titles = [...(Array.isArray(a?.ancestorTitles) ? a.ancestorTitles : []), a?.title];
+      notPassed.push({
+        file,
+        name: titles.filter((t) => typeof t === "string" && t !== "").join(" > "),
+        status: typeof a?.status === "string" ? a.status : "不明",
+      });
+    }
+  }
+  return { ranFiles: ranFiles.sort(), notPassed };
+}
+
+/**
+ * 合格以外のテストを、ファイルごとにまとめた表示の行にする（1ファイルにつき最大 perFile 件＋残りの件数）。
+ * なぜ: `describe` ごと飛ばすと数百行になり、肝心のファイル名が流れて見えなくなるため。
+ *
+ * @param {readonly NotPassedTest[]} notPassed readReportDetails の notPassed
+ * @param {number} [perFile] 1ファイルあたりに名前を出す件数
+ * @returns {string[]} 表示する行（ファイル名の行と、その下のテスト名の行）
+ */
+export function formatNotPassed(notPassed, perFile = 10) {
+  /** @type {Map<string, NotPassedTest[]>} */
+  const byFile = new Map();
+  for (const t of notPassed) byFile.set(t.file, [...(byFile.get(t.file) ?? []), t]);
+  const lines = [];
+  for (const [file, tests] of [...byFile].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    lines.push(`${file}（${tests.length} 件）`);
+    for (const t of tests.slice(0, perFile)) {
+      lines.push(`    ${t.name || "（名前なし）"} ── ${JSON_STATUS_LABEL[t.status] ?? t.status}`);
+    }
+    if (tests.length > perFile) lines.push(`    ほか ${tests.length - perFile} 件`);
+  }
+  return lines;
+}
+
+/**
+ * ディスク上のテストファイルと、vitest が実際に走らせたファイルを突き合わせ、ずれを名前で返す。
+ * なぜ: 「走ったのは 54 件、ディスクには 55 件」だけでは、走らなかった1件を手で探すことになるため。
+ *
+ * @param {readonly string[]} onDisk ディスク上のテストファイル（/ 区切り）
+ * @param {readonly string[]} ranFiles 走ったファイル（readReportDetails の ranFiles）
+ * @returns {{ notRun: string[], notOnDisk: string[] }} 走らなかったもの／ディスクの数え方の外で走ったもの
+ */
+export function diffTestFiles(onDisk, ranFiles) {
+  const ran = new Set(ranFiles);
+  const disk = new Set(onDisk);
+  return {
+    notRun: onDisk.filter((f) => !ran.has(f)).sort(),
+    notOnDisk: ranFiles.filter((f) => !disk.has(f)).sort(),
+  };
 }

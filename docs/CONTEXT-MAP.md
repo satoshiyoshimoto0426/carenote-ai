@@ -211,9 +211,12 @@ npm test ─> tools/run-tests.mjs
    │     ・名指しのファイル（理由つき）がディスクにある／守るフォルダが最低件数を下回っていない
    │       （lib/privacy・tests/api・lib/recording・lib/transcribe・lib/rescue）
    │     ・守るファイルに .skip( .only( .todo( skipIf runIf fails xit などの書き方が無い
-   ├─ ① vitest run（NO_COLOR）
+   │       （`const s = it.skip` のように括弧なしで別名へ入れる形も ── 引数つきの実行ではここが唯一の見張り）
+   ├─ ① vitest run（NO_COLOR）。引数なしのときは JSON レポートも一時ファイルへ書かせる（落ちたときの名指し用・読んだら消す）
    ├─ ②③ ディスク上のテストファイル数＝走った数・`Errors` 行が無い・vitest の終了コード 0（2026-09-13 から）
    └─ ④ 集計行 Test Files / Tests に skipped・todo・expected fail が1件でもあれば失敗
+        ②④で落ちたときは、走らなかったファイル・飛ばされたテストをファイル名とテスト名で挙げる
+        （合否は集計行で決める。JSON が読めなくても合格にはしない）
 ```
 なぜ: ②だけでは、安全テストを1つ消すと両方の数が減って緑のまま、`it.skip` を入れても緑のままだった（吉本さん決定「安全テストが消えない・飛ばされない見張り」）。
 見張りの検査は `tools/testManifest.test.ts`（わざと壊した状態を作って止まることを確かめる）。CI（`quality-gates.yml`）は `npm run test` 経由で同じ見張りを通る（`package.json` の test が `node tools/run-tests.mjs` のままか・CI の行が `npm run test` のままか・`quality-gates.yml` に落ちても緑にする `continue-on-error` や段を飛ばす `if:` が無いかも、同じ検査が確かめる ── 入口を書き換えて見張りごと飛ばす抜け道を塞ぐ）。
@@ -230,7 +233,7 @@ npm test ─> tools/run-tests.mjs
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-23 / テストの見張り（安全テストの一覧 `tools/safety-tests.json`・判定 `tools/testManifest.mjs`）を反映*
+*最終更新: 2026-09-23 / テストの見張り（安全テストの一覧 `tools/safety-tests.json`・判定 `tools/testManifest.mjs`・落ちたときの名指し）を反映*
 *2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

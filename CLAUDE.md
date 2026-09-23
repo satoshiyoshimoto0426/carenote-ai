@@ -30,8 +30,9 @@
 - `vitest` 導入済（`npm run test`）。純粋ロジックからテスト追加（例: `lib/parseEvaluationJson.test.ts`）
 - **安全テストの一覧 `tools/safety-tests.json`**（2026-09-23 吉本さん決定）: `npm test`（`tools/run-tests.mjs`）が毎回照らし合わせ、
   名指しのファイルが消えた・名前が変わった／守るフォルダ（`lib/privacy` `tests/api` `lib/recording` `lib/transcribe` `lib/rescue`）が
-  最低件数を下回った／守るファイルに `.skip(` `.only(` `.todo(` など飛ばす書き方がある／集計に skipped・todo が1件でもある、のどれかで失敗する
+  最低件数を下回った／守るファイルに `.skip(` `.only(` `.todo(` など飛ばす書き方がある（`const s = it.skip` のように括弧なしで別名へ入れる形も）／集計に skipped・todo が1件でもある、のどれかで失敗する
   （判定は `tools/testManifest.mjs`、その検査は `tools/testManifest.test.ts`）。
+  落ちたときは vitest の JSON レポートから、飛ばされたテスト・走らなかったファイルを**ファイル名とテスト名で**挙げる。
   入口を書き換えて見張りごと飛ばす変更（`package.json` の test を `vitest run` にする・CI の `npm run test` を変える・
   `quality-gates.yml` に `continue-on-error` や `if:` を足す）も、同じ検査が落とす。
   安全テストを足したら一覧にも足す。消す・弱めるときは吉本さんの承認（横断規約 §2.7-C）のうえで、一覧も同じコミットで直す

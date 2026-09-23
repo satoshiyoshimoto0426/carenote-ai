@@ -16,8 +16,11 @@ import realManifest from "./safety-tests.json";
 import {
   checkAllPassed,
   checkManifest,
+  diffTestFiles,
   findSkipMarkers,
+  formatNotPassed,
   parseSummaryLine,
+  readReportDetails,
   validateManifest,
 } from "./testManifest.mjs";
 
@@ -26,6 +29,8 @@ import {
  * なぜ: このファイル自身も safety-tests.json に載っているので、字面で書くと見張りが自分を捕まえる。
  */
 const call = (target: string, method: string) => `${target}.${method}(`;
+/** かっこを付けない参照（`it` の `skip` をそのまま別名へ入れる形）。字面に書かない理由は call と同じ。 */
+const prop = (...path: string[]) => path.join(".");
 
 const MANIFEST = {
   protectedDirs: [{ dir: "lib/privacy", minFiles: 2 }],
@@ -96,6 +101,16 @@ describe("checkManifest: 安全テストを飛ばす・絞る書き方", () => {
     ["続け書き（skip のあとに each）", `${["it", "skip", "each"].join(".")}([1])(`],
     ["空白や改行を挟んだ書き方", call("it\n  ", " skip ")],
     ["角かっこの書き方", `it[${JSON.stringify("skip")}](`],
+    // かっこを付けずに別名へ入れてから呼ぶ形（検収の指摘 2026-09-23: 引数つきの実行では集計の検査が走らない）
+    ["別名へ入れた it の skip", `const s = ${prop("it", "skip")};\ns(`],
+    ["別名へ入れた describe の skip", `const d = ${prop("describe", "skip")}\nd(`],
+    ["別名へ入れた test の only", `const o = ${prop("test", "only")};\no(`],
+    ["別名へ入れた suite の todo", `const t = ${prop("suite", "todo")};\nt(`],
+    [
+      "別名へ入れた続け書き（concurrent のあとに skip）",
+      `const c = ${prop("describe", "concurrent", "skip")};\nc(`,
+    ],
+    ["別名へ入れた、空白や改行を挟んだ書き方", `const s = ${prop("it ", "\n  skip")};\ns(`],
   ])("名指しのファイルに %s があれば、ファイル名を挙げて止める", (_label, snippet) => {
     const reader = readerWith({
       "lib/privacy/maskPii.test.ts": `${CLEAN}${snippet}"x", () => {});\n`,
@@ -134,8 +149,93 @@ describe("checkManifest: 安全テストを飛ばす・絞る書き方", () => {
       "const readonly = true;",
       'it.each([1])("n", () => {});',
       "const onlyOnce = options.onlyFirst;",
+      // 別名の形を拾うようにしても、it / test / describe / suite 以外の普通のプロパティは拾わない
+      "const t = result.todo;",
+      "const s = testing.skip;",
+      "const k = suiteName.only;",
+      "const v = split.skipped;",
     ].join("\n");
     expect(findSkipMarkers(source)).toEqual([]);
+  });
+
+  it("かっこ付きの形を、別名の形と二重に数えない（1か所は1件）", () => {
+    const source = `${call("it", "skip")}"a", () => {});\n${prop("describe", "only", "each")}([1])("b", () => {});\nconst s = ${prop("test", "todo")};`;
+    expect(findSkipMarkers(source)).toEqual([
+      { marker: call("", "skip"), line: 1 },
+      { marker: `${call("", "only").slice(0, -1)}.`, line: 2 },
+      { marker: prop("test", "todo"), line: 3 },
+    ]);
+  });
+});
+
+describe("readReportDetails・formatNotPassed・diffTestFiles: 落ちたときに名前で挙げる", () => {
+  // vitest の JSON レポート（--reporter=json）と同じ形。name は絶対パス（vitest は / 区切りで出す）
+  const ROOT = "/repo";
+  const toRelative = (abs: string) => abs.replace(`${ROOT}/`, "");
+  const report = {
+    testResults: [
+      {
+        name: `${ROOT}/lib/privacy/vault.test.ts`,
+        assertionResults: [
+          { ancestorTitles: ["札入れ"], title: "戻す", status: "passed" },
+          { ancestorTitles: ["札入れ", "別名"], title: "飛ばした", status: "skipped" },
+        ],
+      },
+      {
+        name: `${ROOT}/lib/draftText.test.ts`,
+        assertionResults: [{ ancestorTitles: [], title: "予定だけ", status: "todo" }],
+      },
+    ],
+  };
+
+  it("走ったファイルと、合格以外のテストをファイル名・describe・テスト名つきで返す", () => {
+    expect(readReportDetails(report, toRelative)).toEqual({
+      ranFiles: ["lib/draftText.test.ts", "lib/privacy/vault.test.ts"],
+      notPassed: [
+        { file: "lib/privacy/vault.test.ts", name: "札入れ > 別名 > 飛ばした", status: "skipped" },
+        { file: "lib/draftText.test.ts", name: "予定だけ", status: "todo" },
+      ],
+    });
+  });
+
+  it.each([
+    ["null", null],
+    ["testResults が無い", {}],
+    ["ファイル名が無い", { testResults: [{ assertionResults: [] }] }],
+    ["テストの一覧が無い", { testResults: [{ name: "/repo/a.test.ts" }] }],
+  ])("形が読めないとき（%s）は null（合格扱いにはしない ── 呼ぶ側が「特定できなかった」と書く）", (_label, value) => {
+    expect(readReportDetails(value, toRelative)).toBeNull();
+  });
+
+  it("ファイルごとにまとめ、ファイル名・件数・テスト名・状態を出す", () => {
+    const details = readReportDetails(report, toRelative);
+    expect(formatNotPassed(details?.notPassed ?? [])).toEqual([
+      "lib/draftText.test.ts（1 件）",
+      "    予定だけ ── 中身の無い予定のまま",
+      "lib/privacy/vault.test.ts（1 件）",
+      "    札入れ > 別名 > 飛ばした ── 飛ばされています",
+    ]);
+  });
+
+  it("1ファイルで多いときは、決めた件数まで名前を出し、残りは件数だけにする", () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      file: "lib/privacy/vault.test.ts",
+      name: `t${i}`,
+      status: "skipped",
+    }));
+    const lines = formatNotPassed(many, 10);
+    expect(lines[0]).toBe("lib/privacy/vault.test.ts（12 件）");
+    expect(lines).toHaveLength(12);
+    expect(lines.at(-1)).toBe("    ほか 2 件");
+  });
+
+  it("走らなかったファイルと、ディスクの数え方の外で走ったファイルを名前で返す", () => {
+    expect(
+      diffTestFiles(
+        ["lib/a.test.ts", "lib/privacy/vault.test.ts", "tools/x.test.ts"],
+        ["lib/a.test.ts", "tools/x.test.ts", "other/y.test.ts"],
+      ),
+    ).toEqual({ notRun: ["lib/privacy/vault.test.ts"], notOnDisk: ["other/y.test.ts"] });
   });
 });
 
