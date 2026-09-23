@@ -43,6 +43,7 @@
   （class の `disabled:` や title のふきだしで満たされ、壊れても緑になる ── 2026-09-23 steering-log）。新しい検査は部品をわざと壊して赤になるのを確かめる。
   `textOf` は属性の中身と、隠す印（`hidden` 属性・`aria-hidden="true"`・class の `hidden`/`invisible`/`sr-only`・style の `display:none`/`visibility:hidden`）の
   ある要素の文字を数えない。CSS ファイル側の見え方（色・overflow・`md:hidden` など）は判定しない。「出していない」は `textOf` でなく HTML 全体で見る。
+  `elementsOf` は隠した要素も返すので、**部品が出ていること**（切り替え・チェックの印・赤い印）を数えるときは `isReachable` でも絞る（2026-09-24 steering-log）。
   **検査の名前は、検査した場合だけを言う**（畳んだ欄だけを見て「なぜ赤いかが文字で読める」と名付けたため、開いた欄では
   ふきだしにしか理由が無い穴が隠れていた ── 2026-09-23 steering-log）。画面が場合分けしているなら、場合ごとに検査を置く
 - E2E: `Playwright` 導入予定（P2 のブラウザ拡張フローで）

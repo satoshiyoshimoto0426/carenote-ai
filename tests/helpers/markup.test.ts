@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attrOf, elementsOf, hasClass, textOf } from "./markup";
+import { attrOf, elementsOf, hasClass, isReachable, textOf } from "./markup";
 
 /**
  * 画面のテストが使う「HTML を木として読む」小道具そのものの検査。
@@ -9,6 +9,8 @@ import { attrOf, elementsOf, hasClass, textOf } from "./markup";
  * ここでは、その3件と同じ形の HTML で、区別できていることを確かめる。
  * あわせて、隠した要素（hidden 属性・sr-only など）の文字を「届く文字」に数えないこと、
  * 隠す印に似ただけの書き方（overflow-hidden など）で文字を落とさないことも確かめる（同日の検収の指摘）。
+ * さらに、文字でなく部品そのもの（切り替え・チェックの印・赤い印）が出ているかを見る isReachable が、
+ * 自分や祖先の隠す印で「届かない」になることも確かめる（2026-09-24 検収の指摘）。
  */
 
 describe("HTML を木として読む", () => {
@@ -67,6 +69,42 @@ describe("HTML を木として読む", () => {
       '<div class="overflow-hidden md:hidden sr-only-x" aria-hidden="false" style="display:flex">見える</div>',
     );
     expect(textOf(div)).toBe("見える");
+  });
+
+  // 2026-09-24 検収: 共有状態の切り替えを包む div を class="hidden"／aria-hidden="true" にしても、
+  // 切り替えを数える検査が緑だった（elementsOf は隠した要素も返す）。部品そのものが出ているかを見る
+  it.each([
+    ["包む要素の class の hidden", '<div class="mt-2 hidden"><div data-testid="sw"></div></div>'],
+    [
+      '包む要素の aria-hidden="true"',
+      '<div class="mt-2" aria-hidden="true"><div data-testid="sw"></div></div>',
+    ],
+    [
+      "遠い祖先の hidden 属性",
+      '<section hidden=""><div><div data-testid="sw"></div></div></section>',
+    ],
+    ["自分の class の sr-only", '<div><div class="w-full sr-only" data-testid="sw"></div></div>'],
+    [
+      "自分の style の display:none",
+      '<div><div style="display: none" data-testid="sw"></div></div>',
+    ],
+  ])("隠す印（%s）があれば、部品そのものも届かない扱い", (_label, html) => {
+    const found = elementsOf(html).filter((e) => attrOf(e, "data-testid") === "sw");
+    // elementsOf は隠した部品も返す（だから数える前に isReachable で絞る）
+    expect(found).toHaveLength(1);
+    expect(isReachable(found[0])).toBe(false);
+  });
+
+  it("隠す印が無ければ部品は届く。印に似た書き方と、入れ子の奥の印では部品そのものを隠さない", () => {
+    const els = elementsOf(
+      '<div class="overflow-hidden md:hidden" aria-hidden="false">' +
+        '<div data-testid="sw"><span class="sr-only">説明</span></div></div>',
+    );
+    const sw = els.find((e) => attrOf(e, "data-testid") === "sw");
+    expect(sw && isReachable(sw)).toBe(true);
+    // 入れ子の奥の sr-only は、その要素だけを隠す
+    const span = els.find((e) => e.tagName === "span");
+    expect(span && isReachable(span)).toBe(false);
   });
 
   it("入れ子の中の文字もつなげて読み、書き換えた記号は元の文字に戻す", () => {

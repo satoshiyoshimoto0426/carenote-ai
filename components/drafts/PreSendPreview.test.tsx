@@ -2,7 +2,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { findNameCandidates } from "@/lib/privacy/candidates";
 import { COLLAPSE_CHARS } from "@/lib/privacy/previewNav";
-import { elementsOf, hasClass, type MarkupElement, textOf, within } from "@/tests/helpers/markup";
+import {
+  elementsOf,
+  hasClass,
+  isReachable,
+  type MarkupElement,
+  textOf,
+  within,
+} from "@/tests/helpers/markup";
 import PreSendPreview, { type PreviewData } from "./PreSendPreview";
 
 /**
@@ -41,8 +48,7 @@ const FILLER = "利用者の状態は落ち着いている。".repeat(250); // 3
 describe("送る前に見る画面の既定表示", () => {
   it("短い欄は本文がそのまま出て、赤い言葉に印が付く", () => {
     const html = view({ meetingNotes: "長女の佐藤さんより電話。" });
-    expect(html).toContain("<mark");
-    expect(html).toContain("佐藤");
+    expect(marksOf(html)).toEqual(["佐藤"]);
     expect(html).not.toContain("全文を表示する");
   });
 
@@ -51,10 +57,8 @@ describe("送る前に見る画面の既定表示", () => {
     expect(text.length).toBeGreaterThan(COLLAPSE_CHARS);
     const html = view({ meetingNotes: text });
     expect(html).toContain("全文を表示する");
-    // 2か所とも印が付いている
-    expect(html.match(/<mark/g)?.length).toBe(2);
-    expect(html).toContain("佐藤");
-    expect(html).toContain("宮本");
+    // 2か所とも、隠されずに印が付いている
+    expect(marksOf(html)).toEqual(["佐藤", "宮本"]);
   });
 
   it("長い欄に赤い言葉が無ければ、先頭だけ出して畳む（読み飛ばしてよい地の文）", () => {
@@ -65,8 +69,8 @@ describe("送る前に見る画面の既定表示", () => {
 
   it("赤い言葉の数は「出てくる回数」で数える（種類で数えると残りを見落とす）", () => {
     const html = view({ meetingNotes: "佐藤さんと佐藤さん、それに佐藤さん。" });
-    expect(html).toContain("3</span>か所");
-    expect(html.match(/<mark/g)?.length).toBe(3);
+    expect(textOf(navOf(html))).toContain("（3か所）");
+    expect(marksOf(html)).toEqual(["佐藤", "佐藤", "佐藤"]);
   });
 
   it("赤い言葉が1つも無ければ、前へ/次への帯は出さない", () => {
@@ -142,9 +146,20 @@ describe("送る前に見る画面の既定表示", () => {
     );
     expect(bodies).toHaveLength(1);
     expect(textOf(bodies[0])).toBe(text);
-    expect(within(section, (el) => el.tagName === "mark")).toHaveLength(3);
+    expect(within(section, (el) => el.tagName === "mark" && isReachable(el))).toHaveLength(3);
   });
 });
+
+/**
+ * 隠されずに出ている赤い印（<mark>）の言葉を、出てくる順に返す。
+ * 以前は html 全体の文字（`<mark` の数・言葉があるか）で見ていたため、印に class="hidden" を
+ * 付けて隠しても緑だった（2026-09-24 検収の横展開）。印が出ていることは isReachable で、言葉は textOf で見る。
+ */
+function marksOf(html: string): string[] {
+  return elementsOf(html)
+    .filter((el) => el.tagName === "mark" && isReachable(el))
+    .map(textOf);
+}
 
 /** 前へ/次への帯（presend-nav）を1つだけ取り出す。無い・2つ以上あるなら落とす。 */
 function navOf(html: string): MarkupElement {

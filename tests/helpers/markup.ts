@@ -12,6 +12,8 @@ import { type DefaultTreeAdapterTypes, parseFragment } from "parse5";
  *   属性・文字・入れ子を分けて読めば、この3つの空振りは起きない。
  *   さらに同日の検収で、文字を数えるときに**隠した要素**（hidden 属性・sr-only など）の中身まで
  *   数えていたため、理由を隠しても「文字で読める」検査が緑のままだと分かった。textOf はそれも数えない。
+ *   翌日の検収で、同じ穴が**要素の数え方**にも残っていた（切り替えの部品を隠しても「出ている」と数えた）。
+ *   部品そのものが出ているかは isReachable で見る。
  *
  * なぜ parse5 か:
  *   jsdom が中で使っている HTML の読み取り部品そのもの（仕様どおりの読み方）。jsdom を丸ごと
@@ -42,7 +44,7 @@ function childrenOf(node: MarkupNode): DefaultTreeAdapterTypes.ChildNode[] {
 const HIDING_CLASSES = ["hidden", "invisible", "sr-only"];
 
 /**
- * その要素自身が「見る人か読み上げのどちらかに届かない」印を持っているか。textOf の下請け。
+ * その要素自身が「見る人か読み上げのどちらかに届かない」印を持っているか。isReachable と textOf の下請け。
  * 見る印: hidden 属性（値は問わない）・aria-hidden="true"・class の1語（HIDING_CLASSES）・
  * style 属性の display:none / visibility:hidden。
  */
@@ -57,6 +59,7 @@ function hidesItself(el: MarkupElement): boolean {
 /**
  * HTML を読み、**すべての要素を出てくる順に**返す（入れ子の中も含む。隠した要素も返す）。
  * 絞り込みは呼ぶ側で filter する（例: tagName が button で文字が「録音を始める」のもの）。
+ * 部品が「出ている」ことを数えるときは isReachable でも絞る（隠した部品を出ていると数えないため）。
  */
 export function elementsOf(html: string): MarkupElement[] {
   const found: MarkupElement[] = [];
@@ -89,12 +92,29 @@ export function elementsOf(html: string): MarkupElement[] {
  * `&amp;` などの書き換えは元の文字に戻る。
  */
 export function textOf(node: MarkupNode): string {
+  return isReachable(node) ? reachableText(node) : "";
+}
+
+/**
+ * その要素（または文字）そのものが、**見る人にも読み上げにも届くか**。
+ * その要素自身か祖先のどれかに隠す印があれば false（印は textOf と同じ hidesItself で見る）。
+ *
+ * なぜ必要か（2026-09-24 検収）:
+ *   elementsOf は隠した要素も返す。共有状態の検査は切り替えの部品を elementsOf で数えていたため、
+ *   包む div に class="hidden" や aria-hidden="true" を付けて隠しても「切り替えが出ている」が緑だった。
+ *   textOf が文字について塞いだ穴（隠した要素の文字を数えない）が、要素の数え方には残っていた。
+ *   文字ではなく**部品が出ていること**（切り替え・チェックの印・赤い印）を数えるときは、先にこれで絞る。
+ *
+ * 入れ子の奥の印は見ない（中の一部が隠れていても、その要素そのものは出ている）。
+ * 判定しないもの（CSS ファイル側の見え方・`md:hidden` のような画面幅つきの隠し方・閉じた <details>）は textOf と同じ。
+ */
+export function isReachable(node: MarkupNode): boolean {
   let at: MarkupNode | null = node;
   while (at !== null) {
-    if (isElement(at) && hidesItself(at)) return "";
+    if (isElement(at) && hidesItself(at)) return false;
     at = "parentNode" in at ? at.parentNode : null;
   }
-  return reachableText(node);
+  return true;
 }
 
 /** textOf の下請け: 入れ子へ降りながら、隠す印のある要素を飛ばして文字をつなぐ。 */

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { attrOf, elementsOf, textOf } from "@/tests/helpers/markup";
+import { attrOf, elementsOf, isReachable, textOf } from "@/tests/helpers/markup";
 import SharingStatus from "./SharingStatus";
 
 /**
@@ -13,6 +13,7 @@ import SharingStatus from "./SharingStatus";
  *   同僚が登録した実名がそのまま AI へ出る。その唯一の知らせがこの表示で、
  *   これまで検査が1つも無かった。作業台（A案）で上の帯へ移す前に、3つの状態と
  *   「効いていないときの注意書き」「その場で切り替えられること」を縛っておく。
+ *   切り替えは、部品が隠されずに出ていることまで見る（包む要素を hidden や aria-hidden にしたら落ちる）。
  *
  * Clerk そのものは動かさない。useOrganization が返す値と、切り替えの部品を偽物にする。
  */
@@ -54,7 +55,9 @@ function view(variant: "full" | "compact", org: typeof clerk.org) {
     label: label ? textOf(label) : "",
     dotStyle: dot ? (attrOf(dot, "style") ?? "") : "",
     warning: els.filter((el) => el.tagName === "p" && textOf(el).includes("置き換わりません")),
-    switchers: els.filter((el) => attrOf(el, "data-testid") === "org-switcher"),
+    // 切り替えは「隠されずに出ている」ものだけ数える。elementsOf は隠した要素も返すので、
+    // 以前は包む div を class="hidden"／aria-hidden="true" にしても緑だった（2026-09-24 検収）
+    switchers: els.filter((el) => attrOf(el, "data-testid") === "org-switcher" && isReachable(el)),
   };
 }
 
