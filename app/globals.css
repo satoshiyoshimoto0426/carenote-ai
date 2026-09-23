@@ -1,3 +1,18 @@
+/*
+ * 層（@layer）の順番。**この文は必ずファイルの先頭（@import より前）に置く**。
+ *
+ * なぜ（2026-09-23 に /sign-in の実画面で計測した不具合）:
+ *   Clerk（ログイン画面・組織切替）は自分のスタイルを実行時に差し込む。層に入っていないスタイルは
+ *   層に入った Tailwind のクラスに詳細度と関係なく勝つので、lib/clerkAppearance.ts の elements に
+ *   書いた Tailwind のクラス（枠線・影なしなど）が画面に効いていなかった（枠線 0px・Clerk 既定の影）。
+ *   そこで app/layout.tsx の ClerkProvider に cssLayerName（= CLERK_CSS_LAYER = "clerk"）を渡して
+ *   Clerk のスタイルを clerk 層に入れ、ここで base（Tailwind の初期化と下の要素リセット）より後、
+ *   components / utilities より前に並べる（Clerk 公式の Tailwind v4 向けの手順と同じ並び）。
+ *   層の順番は「名前が初めて出てきた順」で決まるので、Tailwind の読み込みより後に書くと
+ *   clerk が utilities の後ろに付き、また効かなくなる。検査: lib/clerkAppearance.test.ts。
+ */
+@layer theme, base, clerk, components, utilities;
+
 @import "tailwindcss";
 
 /*

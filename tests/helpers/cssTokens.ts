@@ -14,6 +14,39 @@
  * `{` `}` `;` は数えないが、エスケープされた引用符や入れ子の書き方（CSS Nesting）の解釈はしない。
  */
 
+/**
+ * CSS のコメント（スラッシュとアスタリスクで囲んだ部分）を消す。
+ * なぜ: globals.css の説明コメントには `@layer base` のような文字列そのものが書かれている。
+ * 消さずに探すと、説明文を本物の宣言と取り違える（parseCss と層の順番の検査が共通で使う）。
+ */
+export function stripCssComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+/**
+ * 層の順番を決める文（`@layer theme, base, clerk;` のように、中身を持たず名前を並べるだけの文）を、
+ * ファイルの中で最初に書かれたものについて返す。無ければ null。
+ *
+ * なぜ「最初の1つ」か: CSS の層の順番は、**その層の名前が初めて出てきた順**で決まる
+ * （後から同じ名前を並べ直しても順番は変わらない）。だから効くのは最初の宣言だけ。
+ * 使い道: lib/clerkAppearance.test.ts が「Clerk の層が base の後・utilities の前にあるか」を確かめる。
+ *
+ * @returns names=並んだ層の名前、index=コメントを消した文字列の中での位置、
+ *   firstLayerIndex=`@layer` という語が最初に出てくる位置（この文より前に別の層の宣言が無いかを見るため）
+ */
+export function layerOrderStatement(
+  css: string,
+): { names: string[]; index: number; firstLayerIndex: number } | null {
+  const text = stripCssComments(css);
+  const m = /@layer\s+([\w-]+(?:\s*,\s*[\w-]+)*)\s*;/.exec(text);
+  if (!m) return null;
+  return {
+    names: m[1].split(",").map((s) => s.trim()),
+    index: m.index,
+    firstLayerIndex: text.search(/@layer\b/),
+  };
+}
+
 /** 波かっこ1組ぶんのまとまり（規則・@media・@layer など）。 */
 export interface CssNode {
   /** `{` の前に書かれたもの（選択子、または `@media (…)` などの前置き） */
@@ -32,7 +65,7 @@ export interface CssNode {
  * 直後にある層の外の規則を「層の中」と見誤っていた（2026-09-23 に塞いだ穴）。
  */
 export function parseCss(css: string): CssNode[] {
-  const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const text = stripCssComments(css);
   const root: CssNode = { prelude: "", declarations: "", children: [] };
   const stack: CssNode[] = [root];
   let buf = "";

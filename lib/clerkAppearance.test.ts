@@ -1,8 +1,24 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { clerkAppearance } from "@/lib/clerkAppearance";
-import { normalizeHex, resolveColor, rootTokens } from "@/tests/helpers/cssTokens";
+import type { ReactElement } from "react";
+import { describe, expect, it, vi } from "vitest";
+import RootLayout from "@/app/layout";
+import { CLERK_CSS_LAYER, clerkAppearance } from "@/lib/clerkAppearance";
+import {
+  layerOrderStatement,
+  normalizeHex,
+  resolveColor,
+  rootTokens,
+  stripCssComments,
+} from "@/tests/helpers/cssTokens";
+
+// RootLayout を呼んで返ってくる要素の props だけを見る（描かない）。本物の ClerkProvider は
+// サーバー側の仕組みを読み込むので、名前だけの代役に差し替える。
+vi.mock("@clerk/nextjs", () => ({
+  ClerkProvider: function ClerkProviderStub() {
+    return null;
+  },
+}));
 
 /**
  * Clerk の見た目（lib/clerkAppearance.ts）が app/globals.css のトークンとずれていないかを見張る。
@@ -14,7 +30,8 @@ import { normalizeHex, resolveColor, rootTokens } from "@/tests/helpers/cssToken
  *   A案（2026-09-23）でトークンの値をほぼ全部替えるので、ここで機械的に突き合わせる。
  */
 
-const TOKENS = rootTokens(readFileSync(join(process.cwd(), "app", "globals.css"), "utf8"));
+const CSS = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
+const TOKENS = rootTokens(CSS);
 
 /** Clerk の色の変数と、写し元のトークン。新しい色の変数を足したらここにも足す（足さないと落ちる）。 */
 const VARIABLE_TOKEN: Record<string, string> = {
@@ -72,5 +89,84 @@ describe("Clerk の見た目が globals.css のトークンとずれない", () 
     expect(used.length).toBeGreaterThan(0);
     const stray = used.filter((hex) => !tokenColors.has(normalizeHex(hex) ?? hex));
     expect(stray).toEqual([]);
+  });
+});
+
+/**
+ * globals.css の層の宣言について、Clerk のクラスが画面に効かなくなる誤りを文章で返す（無ければ空）。
+ * 本物の globals.css と、下の自己テストの悪い例の両方を**同じ関数**で見る（検査の空振りを防ぐため）。
+ */
+function clerkLayerProblems(css: string): string[] {
+  const statement = layerOrderStatement(css);
+  if (!statement) return ["`@layer a, b, …;` の文がありません"];
+  const at = (name: string) => statement.names.indexOf(name);
+  const missing = ["base", CLERK_CSS_LAYER, "components", "utilities"].filter((n) => at(n) < 0);
+  if (missing.length > 0) return missing.map((n) => `${n} が層の宣言にありません`);
+
+  const problems: string[] = [];
+  if (at(CLERK_CSS_LAYER) < at("base")) problems.push(`${CLERK_CSS_LAYER} が base より前`);
+  if (at(CLERK_CSS_LAYER) > at("components") || at(CLERK_CSS_LAYER) > at("utilities")) {
+    problems.push(`${CLERK_CSS_LAYER} が components / utilities より後`);
+  }
+  // 層の順番は名前が初めて出てきた順で決まる。先に別の @layer があると、この宣言は順番を決めない
+  if (statement.index !== statement.firstLayerIndex) problems.push("最初の層の宣言ではない");
+  // Tailwind の読み込みは中で theme, base, components, utilities を宣言する。それより後に書くと
+  // clerk は utilities の後ろに付く
+  const tailwind = stripCssComments(css).indexOf('@import "tailwindcss"');
+  if (tailwind < 0) problems.push("Tailwind の読み込みがありません");
+  else if (statement.index > tailwind) problems.push("Tailwind の読み込みより後");
+  return problems;
+}
+
+/**
+ * Clerk のスタイルが層（@layer）に入り、elements の Tailwind クラスが画面に効く並びになっているかを見張る。
+ *
+ * なぜ必要か（2026-09-23 に /sign-in の実画面で計測）:
+ *   層の外にあるスタイルは、層に入った Tailwind のクラスに詳細度と関係なく勝つ。Clerk のスタイルが
+ *   層の外にあったため、elements に書いたクラス（枠線・影なし・組織切替の w-full など）は生成されているのに
+ *   画面に効いていなかった。テストは値を見るだけなので緑のまま ── 同じ日に globals.css の `*` リセットで
+ *   起きたのと同じ仕組みの見落とし（2回目）。3か所（layout.tsx・globals.css・この名前）が1組なので、
+ *   どれか1つが外れたらここで落とす。
+ */
+describe("Clerk のスタイルが Tailwind のクラスに負けない層に入っている", () => {
+  it("globals.css の先頭で、Clerk の層を base の後・components / utilities の前に並べている", () => {
+    expect(clerkLayerProblems(CSS)).toEqual([]);
+  });
+
+  it("app/layout.tsx の ClerkProvider に同じ層の名前（cssLayerName）を渡している", () => {
+    const el = RootLayout({ children: null }) as ReactElement<{
+      appearance?: { cssLayerName?: string };
+    }>;
+    expect(el.props.appearance?.cssLayerName).toBe(CLERK_CSS_LAYER);
+  });
+
+  it("検査そのものが壊れていない（並びの誤りと置き場所の誤りを見つけられる）", () => {
+    const tw = '\n@import "tailwindcss";';
+    expect(clerkLayerProblems(`@layer theme, base, clerk, components, utilities;${tw}`)).toEqual(
+      [],
+    );
+    expect(clerkLayerProblems(`@layer theme, base, components, utilities, clerk;${tw}`)).toEqual([
+      "clerk が components / utilities より後",
+    ]);
+    expect(clerkLayerProblems(`@layer theme, clerk, base, components, utilities;${tw}`)).toEqual([
+      "clerk が base より前",
+    ]);
+    expect(
+      clerkLayerProblems(
+        '@import "tailwindcss";\n@layer theme, base, clerk, components, utilities;',
+      ),
+    ).toEqual(["Tailwind の読み込みより後"]);
+    expect(
+      clerkLayerProblems(
+        `@layer base { * { margin: 0 } }\n@layer theme, base, clerk, components, utilities;${tw}`,
+      ),
+    ).toEqual(["最初の層の宣言ではない"]);
+    expect(clerkLayerProblems(`@layer theme, base, components, utilities;${tw}`)).toEqual([
+      "clerk が層の宣言にありません",
+    ]);
+    // コメントの中の `@layer a, b;` は宣言として数えない
+    expect(
+      clerkLayerProblems(`/* @layer theme, base, clerk, components, utilities; */${tw}`),
+    ).toEqual(["`@layer a, b, …;` の文がありません"]);
   });
 });

@@ -1,5 +1,6 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
+import { CLERK_CSS_LAYER } from "@/lib/clerkAppearance";
 import "./globals.css";
 
 /**
@@ -29,10 +30,15 @@ const FONTS_HREF =
  * 書体を取りに行くので、ビルド（CI を含む）が外部との通信に左右される。<link> ならブラウザが表示時に読む。
  * 読み込む書体（IBM Plex Sans JP 400/500/700・IBM Plex Mono 400/500）は globals.css の
  * --sans / --mono の先頭と一致させる ── ずれは app/globals.test.ts が止める。
+ *
+ * ClerkProvider に cssLayerName を渡す理由: Clerk のスタイルを CLERK_CSS_LAYER の層に入れ、
+ * app/globals.css 冒頭の層の順番（base の後・utilities の前）に並べるため。渡さないと Clerk の
+ * スタイルが層の外に出て、lib/clerkAppearance.ts の Tailwind クラスが画面に効かない
+ * （2026-09-23 に /sign-in で計測）。ずれは lib/clerkAppearance.test.ts が止める。
  */
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider appearance={{ cssLayerName: CLERK_CSS_LAYER }}>
       <html lang="ja">
         <head>
           <link rel="preconnect" href="https://fonts.googleapis.com" />
