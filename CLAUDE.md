@@ -38,7 +38,9 @@
   安全テストを足したら一覧にも足す。消す・弱めるときは吉本さんの承認（横断規約 §2.7-C）のうえで、一覧も同じコミットで直す
 - React コンポーネントテスト: `@testing-library/react` は必要時に追加。`renderToStaticMarkup` で描いた HTML は
   `tests/helpers/markup.ts`（parse5）で**木として読む**。文字列の正規表現・`toContain` で属性や押せる/押せないを見ない
-  （class の `disabled:` や title のふきだしで満たされ、壊れても緑になる ── 2026-09-23 steering-log）。新しい検査は部品をわざと壊して赤になるのを確かめる
+  （class の `disabled:` や title のふきだしで満たされ、壊れても緑になる ── 2026-09-23 steering-log）。新しい検査は部品をわざと壊して赤になるのを確かめる。
+  `textOf` は属性の中身と、隠す印（`hidden` 属性・`aria-hidden="true"`・class の `hidden`/`invisible`/`sr-only`・style の `display:none`/`visibility:hidden`）の
+  ある要素の文字を数えない。CSS ファイル側の見え方（色・overflow・`md:hidden` など）は判定しない。「出していない」は `textOf` でなく HTML 全体で見る
 - E2E: `Playwright` 導入予定（P2 のブラウザ拡張フローで）
 - カバレッジ目標: 80%
 

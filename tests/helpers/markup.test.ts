@@ -7,6 +7,8 @@ import { attrOf, elementsOf, hasClass, textOf } from "./markup";
  * なぜ必要か: この小道具が甘いと、送る前の画面・録音・共有状態の検査が**黙って空振りする**
  * （2026-09-23 に見つかった空振り3件は、どれも文字列の照合が属性と文字を区別しなかったせい）。
  * ここでは、その3件と同じ形の HTML で、区別できていることを確かめる。
+ * あわせて、隠した要素（hidden 属性・sr-only など）の文字を「届く文字」に数えないこと、
+ * 隠す印に似ただけの書き方（overflow-hidden など）で文字を落とさないことも確かめる（同日の検収の指摘）。
  */
 
 describe("HTML を木として読む", () => {
@@ -24,6 +26,47 @@ describe("HTML を木として読む", () => {
     expect(textOf(elementsOf(html)[0])).toBe("佐藤さん");
     const reason = elementsOf(`${html}<span>（敬称の前）</span>`).find((e) => e.tagName === "span");
     expect(reason && textOf(reason)).toBe("（敬称の前）");
+  });
+
+  // 2026-09-23 検収: 理由の span に hidden 属性や sr-only を付けても「文字で読める」検査が緑だった
+  it.each([
+    ["hidden 属性", '<span hidden="">（敬称の前）</span>'],
+    ['aria-hidden="true"', '<span aria-hidden="true">（敬称の前）</span>'],
+    ["class の sr-only", '<span class="ml-2 sr-only">（敬称の前）</span>'],
+    [
+      "class の hidden（広い画面だけ出す形も）",
+      '<span class="hidden md:inline">（敬称の前）</span>',
+    ],
+    ["class の invisible", '<span class="text-xs invisible">（敬称の前）</span>'],
+    ["style の display:none", '<span style="display:none">（敬称の前）</span>'],
+    [
+      "style の visibility:hidden",
+      '<span style="color:red; visibility: hidden">（敬称の前）</span>',
+    ],
+  ])("隠す印（%s）のある要素の中の文字は、届く文字に入らない", (_label, reason) => {
+    const els = elementsOf(`<li><mark>佐藤</mark>さん${reason}</li>`);
+    expect(textOf(els[0])).toBe("佐藤さん");
+    // 隠した要素そのものを渡しても空
+    const span = els.find((e) => e.tagName === "span");
+    expect(span && textOf(span)).toBe("");
+  });
+
+  it("祖先に隠す印があれば、奥の要素を直接渡しても空。入れ子の奥の印も効く", () => {
+    const deep = elementsOf('<div hidden=""><p><span>理由</span></p></div>').find(
+      (e) => e.tagName === "span",
+    );
+    expect(deep && textOf(deep)).toBe("");
+    const [p] = elementsOf(
+      '<p>見える<b>字</b><span class="sr-only">読み上げだけ<b>奥</b></span></p>',
+    );
+    expect(textOf(p)).toBe("見える字");
+  });
+
+  it("隠す印に似た書き方（overflow-hidden・md:hidden・aria-hidden=false など）は隠す扱いにしない", () => {
+    const [div] = elementsOf(
+      '<div class="overflow-hidden md:hidden sr-only-x" aria-hidden="false" style="display:flex">見える</div>',
+    );
+    expect(textOf(div)).toBe("見える");
   });
 
   it("入れ子の中の文字もつなげて読み、書き換えた記号は元の文字に戻す", () => {

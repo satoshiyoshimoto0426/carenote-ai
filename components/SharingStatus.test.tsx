@@ -47,6 +47,9 @@ function view(variant: "full" | "compact", org: typeof clerk.org) {
   const dot = spans.find((el) => attrOf(el, "aria-hidden") === "true");
   const label = spans.find((el) => attrOf(el, "aria-hidden") !== "true");
   return {
+    // 「出していない」の確かめ用。textOf は隠した要素の文字を数えないので、隠して出した文字も拾える
+    // 描いた HTML 全体で見る（2026-09-23 検収）
+    html,
     text: els.length > 0 ? textOf(els[0]) : "",
     label: label ? textOf(label) : "",
     dotStyle: dot ? (attrOf(dot, "style") ?? "") : "",
@@ -61,7 +64,9 @@ describe.each(["full", "compact"] as const)("名簿の共有状態（%s）", (va
     expect(v.label).toBe("共有状態を確認中");
     expect(v.dotStyle).toContain("background:var(--faint)");
     expect(v.warning).toHaveLength(0);
-    expect(v.text).not.toContain(ORG_NAME);
+    // 隠した要素や属性に入れて出しても落ちるよう、画面の文字ではなく HTML 全体で見る
+    expect(v.html).not.toContain(ORG_NAME);
+    expect(v.html).not.toContain("置き換わりません");
   });
 
   it("事業所を選んでいれば「事業所で共有中」（緑）と事業所名。注意書きは出さない", () => {
@@ -70,6 +75,7 @@ describe.each(["full", "compact"] as const)("名簿の共有状態（%s）", (va
     expect(v.dotStyle).toContain("background:var(--green)");
     expect(v.text).toContain(ORG_NAME);
     expect(v.warning).toHaveLength(0);
+    expect(v.html).not.toContain("置き換わりません");
     expect(v.switchers).toHaveLength(1);
   });
 

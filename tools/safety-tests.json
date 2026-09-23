@@ -136,7 +136,7 @@
     },
     {
       "path": "tests/helpers/markup.test.ts",
-      "why": "画面の検査が使う HTML の読み取り道具（属性と画面の文字を分けて読めないと、上の画面の検査が黙って空振りする）"
+      "why": "画面の検査が使う HTML の読み取り道具（属性の中身や隠した要素の文字を「読める文字」に数えると、上の画面の検査が黙って空振りする）"
     },
     {
       "path": "components/recording/RecordingPanel.live.test.tsx",
