@@ -399,3 +399,47 @@
   (b) Clerk の elements の `__○○` は「その場所だけの名前」とは限らない。**隠す・消す指定を書く前に、その名前を Clerk のソースで
       どこが使っているかを確かめる**（`@clerk/shared` の型 `UserPreviewId` / `OrganizationPreviewId` に候補が並ぶ）。一つの部品だけに効かせたいときは、
       その部品の要素（例: `organizationSwitcherTrigger`）に子孫の選択子で書く。Tailwind の角かっこの中では `_` が空白になるので、`__` 付きのクラス名は狙えない。
+
+### 2026-09-23: git が書き出したファイルが CRLF になり、biome check がコードの誤りなしに赤くなる（3回目）
+- **発生回数**: 3回目 ── ①2026-09-09（コミット 4417117 の本文「npm run check はリポ既存の config CRLF と a11y 警告で赤」）
+  ②2026-09-12（上の graph-doubt の記録の学び (d)「`git stash` / `pop` のあとは `sed -i 's/\r$//'` で戻す」）
+  ③2026-09-23（枝 `redesign/a-backend` の作業用ワークツリーで `biome check .` が CRLF で赤 ── コミット 96137ec の本文。
+  あわせて A1 の検証で「2回目の対策〔steering-log に sed の手順を書いた〕では再発を止められていない」と指摘された）
+- **問題（仕組み）**: この PC は Git for Windows のシステム設定（`C:/Program Files/Git/etc/gitconfig`）が `core.autocrlf=true` で、
+  carenote-ai には `.gitattributes` が無い（main・redesign/a・redesign/a-backend のどれにも無い ── 2026-09-23 に `git ls-tree` で確認）。
+  このため git が作業ツリーへ**書き出したファイル**（`git stash`・`stash pop`・checkout・新しい worktree）は CRLF になる。
+  repo の中（index）は LF のままなので **`git status` は綺麗に見える**のに、Biome（2.4.10・biome.json に改行の指定なし＝LF）は
+  format 違反として赤にする（CRLF の2行を `biome format` に通すと LF で返ってくることを確認）。コードに誤りが無いのにゲートが赤くなり、原因探しで時間を失う。
+  再現（使い捨ての repo・同じ PC・2026-09-23）: LF でコミット → 1行足して `git stash` → `w/crlf`・`git status` は空。新しい `git worktree add` も `w/crlf`。
+  `.gitattributes` に `* text=auto eol=lf` を入れてコミットすると、どちらも `w/lf`。
+  2回目の対策は「steering-log の学びに sed の手順を書く」だけで、作業の最中に目に入る場所に無かったので、3回目を止められなかった。
+  **見落としやすい形（この直しの最中に見つけた）**: 作業場所（redesign/a）の `.claude/steering-log.md`・`.gitignore`・
+  `docs/DATA-HANDLING-EXPLANATION.md` の3つが `w/mixed` だった ── git が CRLF で書き出した後に、エージェントが LF で書き足した形
+  （steering-log は 379 行が CRLF）。`w/crlf` だけを数えると0件に見える（A1 の検証の「0 w/crlf」もこれを数えていない）。
+  Biome は .md と .gitignore を見ないのでゲートは赤くならず、コミットのときに LF に直るので repo の中（index）は LF のまま。
+  3つとも下の戻し方で LF にした（中身の差は0バイト）。
+- **根本の直し（このコミットでは入れていない・理由つき）**: repo の根に `.gitattributes`（`* text=auto eol=lf`）を置く。
+  repo に入る設定なので、PC ごとの core.autocrlf より優先される（誰が clone しても同じになる）。
+  これは repo 全体の設定の変更（ハーネス自体の変更 ── §2.7-F の二段ゲート）で、main と redesign の枝にそろえて入れる必要がある。
+  2026-09-23 のこの記録を書いた時点で、**同じ直しがハーネスの作業（枝 `harness/stop-gates`）で進行中**だった ──
+  その作業ツリーに `.gitattributes`（`* text=auto eol=lf`・repo にあるバイナリ ico / mp4 / pdf は binary）が置かれ、同じ枝の steering-log の
+  書き換え（2026-09-23「CI が6日間…赤いまま」の記録）に「独立審査の指摘で追加」と書かれている。入口の承認は `~/.claude/decisions-log.md`
+  2026-09-23「ハーネス: 品質ゲートの結果が Claude に届かない穴を塞ぐ」とその追記（独立審査のあと「ハーネスの修正作業を続けてよい」）。
+  どれもこの時点ではコミット前で、出口（PR＋独立審査・マージの前に吉本さんへ見せる）もまだ。
+  redesign/a に同じファイルを先に入れないのは、①その出口のゲートを飛ばすことになる ②審査で中身が変わると、2つの版がぶつかる、ため。
+  なお `.bat` / `.cmd` は carenote-ai に1つも無い（`git ls-files` で確認）ので、「それだけは CRLF」の規則は要らない。
+- **未了（追跡 ── 動くのはまとめ役〔lead〕、決めるのは吉本さん）**:
+  ① `harness/stop-gates` の PR に `.gitattributes` が入っているかを確かめる。入っていなければ、この直し（または手元だけ
+     `git config core.autocrlf input` にする案）を吉本さんに出し、決まったことを decisions-log に記帳する。
+  ② その PR が main に入ったら、main を `redesign/a` と `redesign/a-backend` に取り込む（repo の中はもともと LF ──
+     2026-09-23 に `git ls-files --eol` で `i/crlf` 0件を確認済み。`git add --renormalize .` で変わるファイルは0件のはず）。
+  ③ 取り込んだら、`CLAUDE.md` の「既知の落とし穴（この PC）」の改行の項目を消し、この記録に「済」と書く。
+- **対策（それまでの間のガイド）**: `CLAUDE.md` に「既知の落とし穴（この PC）」を新設し、確かめ方と戻し方を書いた
+  （steering-log は作業の最中に読まれないが、CLAUDE.md は作業を始めるときに読まれる）。消す条件も同じ項目に書いた。
+  戻し方は使い捨ての repo で確かめた: CR を消すと中身は同じに戻るが、`git status` に**中身の差が無い M** が残る
+  （git がファイルの大きさの変化だけで「変更あり」とみなす）。`git diff` が空なのを確かめて `git add` すると消える。
+  かっこを含むパス（`app/(dashboard)/…`）でも動き、CRLF のファイルが無いときに流しても何もせず終わる（終了コード 0）。
+  探す条件は `w/crlf` と `w/mixed` の両方（上の見落としやすい形）。
+- **ファイル**: `CLAUDE.md`, `.claude/steering-log.md`
+- **教訓**: 「手順を steering-log に書いた」だけでは再発は止まらない。**原因が設定なら、設定を直す**（ここでは `.gitattributes`）。
+  直せるまでの間の手順は、作業の最中に目に入る場所（CLAUDE.md）に置き、**消す条件も一緒に書く**。

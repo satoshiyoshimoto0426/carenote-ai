@@ -47,6 +47,18 @@
 - ❌ `next.config.ts` で型チェック無効化禁止（`typescript.ignoreBuildErrors = true` 禁止）
 - ❌ React 19 → 18 へのダウングレード禁止
 
+## 既知の落とし穴（この PC）
+- **自分が触っていないファイルで `biome check` が format 違反を出したら、まず改行コード（CRLF）を疑う**。
+  この PC は Git のシステム設定（`C:/Program Files/Git/etc/gitconfig`）が `core.autocrlf=true` で、git が書き出したファイル
+  （`git stash`・`stash pop`・checkout・新しい worktree）が CRLF になる。repo の中は LF のままなので `git status` は綺麗に見える。
+  - 確かめる（Bash）: `git ls-files --eol | grep -E 'w/(crlf|mixed)'` ── 1行でも出たら、それが原因。
+    `w/crlf` だけを探さない: git が CRLF で書き出したファイルに LF で書き足すと `w/mixed` になる（.md は Biome が見ないので赤にならず残る）。
+  - 戻す（Bash）: `git ls-files --eol | grep -E 'w/(crlf|mixed)' | cut -f2 | xargs -r sed -i 's/\r$//'`（行末の CR を消すだけ・中身は変えない）。
+    このあと `git status` に中身の差が無い `M` が残る（git が大きさの変化だけで「変更あり」とみなす）。
+    `git diff <ファイル>` が空なのを確かめてから `git add <ファイル>` で消す。中身も変えたファイルは、いつもどおり自分の変更として扱う。
+  - 根本の直し（repo の根の `.gitattributes` に `* text=auto eol=lf`）は枝 `harness/stop-gates` で進行中（2026-09-23 時点・コミット前）。
+    main に入り、main をこの枝に取り込んだら、この項目は消す（経緯と未了の追跡= `.claude/steering-log.md` 2026-09-23「git が書き出したファイルが CRLF になり」）。
+
 ## Flywheel 状態（自己評価 2026-05-13 Phase 4 完了時点）
 
 | 要素 | 状態 | 内容 |
