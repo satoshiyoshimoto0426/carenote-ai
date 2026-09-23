@@ -1,12 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
-import {
-  CLIENT_LOOKUP_FAILED_MESSAGE,
-  ClientLookupError,
-  type DataScope,
-  resolveScope,
-  SCOPE_ERROR_MESSAGE,
-} from "@/lib/db/clients";
+import { type DataScope, resolveScope, SCOPE_ERROR_MESSAGE } from "@/lib/db/clients";
+import { DbAccessError } from "@/lib/db/errors";
 import {
   deleteTranscript,
   getTranscriptText,
@@ -25,6 +20,8 @@ import {
  *
  * 親の利用者を DB から読めなかったとき（ClientLookupError）は 503 と CLIENT_LOOKUP_FAILED_MESSAGE。
  * 「見つかりませんでした」と答えると、消せていないのに「もう無い」と伝わる（2026-09-24 検収の指摘）。
+ * 行そのものを読めなかった・消す操作が失敗したときも同じ理由で 503（lib/db/transcripts.ts が DbAccessError を
+ * 投げる。以前は null・false で 404 だった）。どれも DbAccessError として受け、職員には e.publicMessage だけを返す。
  */
 
 function scopeOf(userId: string, orgId: string | null): DataScope | null {
@@ -54,9 +51,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (e instanceof TranscriptTableMissingError) {
       return NextResponse.json({ error: TRANSCRIPT_TABLE_MISSING_MESSAGE }, { status: 503 });
     }
-    if (e instanceof ClientLookupError) {
-      console.error("[transcripts] read: client lookup failed:", e.message);
-      return NextResponse.json({ error: CLIENT_LOOKUP_FAILED_MESSAGE }, { status: 503 });
+    if (e instanceof DbAccessError) {
+      console.error("[transcripts] read: db failed:", e.message);
+      return NextResponse.json({ error: e.publicMessage }, { status: 503 });
     }
     // 復号に失敗した（鍵が違う・中身が壊れている）。本文は出さず、原因だけ残す
     console.error("[transcripts] read error:", e instanceof Error ? e.message : String(e));
@@ -86,9 +83,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     if (e instanceof TranscriptTableMissingError) {
       return NextResponse.json({ error: TRANSCRIPT_TABLE_MISSING_MESSAGE }, { status: 503 });
     }
-    if (e instanceof ClientLookupError) {
-      console.error("[transcripts] delete: client lookup failed:", e.message);
-      return NextResponse.json({ error: CLIENT_LOOKUP_FAILED_MESSAGE }, { status: 503 });
+    if (e instanceof DbAccessError) {
+      console.error("[transcripts] delete: db failed:", e.message);
+      return NextResponse.json({ error: e.publicMessage }, { status: 503 });
     }
     console.error("[transcripts] delete error:", e instanceof Error ? e.message : String(e));
     return NextResponse.json({ error: "消せませんでした。" }, { status: 500 });

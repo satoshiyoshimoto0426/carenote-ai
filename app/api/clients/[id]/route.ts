@@ -8,12 +8,15 @@ import {
   SCOPE_ERROR_MESSAGE,
 } from "@/lib/db/clients";
 import { getDocumentsByClient } from "@/lib/db/documents";
+import { DbAccessError } from "@/lib/db/errors";
 
 /**
  * 利用者1件＋その保存帳票を返す（範囲チェック込み）。呼ぶ画面: app/(dashboard)/clients/[id]/page.tsx。
  * 見えるかどうかは lib/db/clients.ts の getClientById（名簿と同じ範囲）で決め、見えなければ 404。
  * DB を読めなかったとき（ClientLookupError）は 404 にせず 503 と CLIENT_LOOKUP_FAILED_MESSAGE ──
  * 「見つかりません」と出すと、いる利用者を新しく登録し直させてしまう（2026-09-24 検収の指摘）。
+ * 保存帳票の一覧を読めなかったとき（lib/db/documents.ts が DbAccessError を投げる）も 503 と e.publicMessage ──
+ * 以前は [] になり、画面が「保存した書類はありません」と見せていた（同じ日の検収の指摘）。
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { userId, orgId } = await auth();
@@ -35,6 +38,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
   if (!client) return NextResponse.json({ error: "利用者が見つかりません。" }, { status: 404 });
 
-  const documents = await getDocumentsByClient(id, userId);
-  return NextResponse.json({ client, documents });
+  try {
+    const documents = await getDocumentsByClient(id, userId);
+    return NextResponse.json({ client, documents });
+  } catch (e) {
+    if (!(e instanceof DbAccessError)) throw e;
+    return NextResponse.json({ error: e.publicMessage }, { status: 503 });
+  }
 }

@@ -7,6 +7,7 @@ import type {
   CareDocumentType,
 } from "@/types/document";
 import { createServerClient } from "../supabase/server";
+import { dbAccessError, dbFailedMessage, isMalformedIdError } from "./errors";
 
 /**
  * 保存帳票(documents)のデータアクセス。機能仕様 §6。retention_until は created_at + 5年。
@@ -26,7 +27,21 @@ import { createServerClient } from "../supabase/server";
  *
  * 誰が読めるか: 作成した職員本人（created_by）だけ（事業所での共有は未対応）。
  * 保存先の利用者が本人に見えるかは、呼ぶ側の app/api/documents/route.ts が getClientById で確かめる。
+ *
+ * DB の失敗は「0件・見つからない」と分ける（lib/db/errors.ts・2026-09-24 検収の指摘）。一覧・承認・承認の取り消しは
+ * DB を読み書きできなければ DbAccessError を投げ、入口が 503 にする（以前は一覧が [] で「保存した書類はありません」、
+ * 承認は null で 404「書類が見つかりません。」になっていた）。保存（saveDocument）の null は「保存に失敗」だけを表す。
  */
+
+/** 保存した書類の一覧を DB から読めなかったとき、職員に見せる文（GET /api/clients/[id] が 503 で返す）。 */
+export const DOCUMENTS_LOAD_FAILED_MESSAGE = dbFailedMessage(
+  "保存した書類を読み込めませんでした。",
+);
+
+/** 承認・承認の取り消しを DB に書けなかったとき、職員に見せる文（PATCH /api/documents/[id] が 503 で返す）。 */
+export const DOCUMENT_APPROVAL_FAILED_MESSAGE = dbFailedMessage(
+  "承認の記録を変えられませんでした（変わっていません）。",
+);
 
 interface DocRow {
   id: string;
@@ -62,7 +77,10 @@ function toRecord(r: DocRow): CareDocumentRecord {
   };
 }
 
-/** 帳票を保存する（保持期限を自動付与）。status は常に draft（G4: 承認は保存後の人間操作のみ）。 */
+/**
+ * 帳票を保存する（保持期限を自動付与）。status は常に draft（G4: 承認は保存後の人間操作のみ）。
+ * @returns 保存した書類。書けなければ null（「保存に失敗」だけを表す。呼ぶ側は 500「保存に失敗しました。」）。
+ */
 export async function saveDocument(params: {
   userId: string;
   orgId: string | null;
@@ -90,7 +108,10 @@ export async function saveDocument(params: {
   return toRecord(data as DocRow);
 }
 
-/** 指定利用者の保存帳票一覧（所有者チェック込み）。 */
+/**
+ * 指定利用者の保存帳票一覧（所有者チェック込み）。0件なら []。
+ * @throws DbAccessError DB を読めなかったとき（[] にすると「保存した書類はありません」に見える）。
+ */
 export async function getDocumentsByClient(
   clientId: string,
   userId: string,
@@ -102,16 +123,15 @@ export async function getDocumentsByClient(
     .eq("client_id", clientId)
     .eq("created_by", userId)
     .order("created_at", { ascending: false });
-  if (error) {
-    console.error("[db] getDocumentsByClient error:", error.message);
-    return [];
-  }
+  if (error) throw dbAccessError("getDocumentsByClient", error, DOCUMENTS_LOAD_FAILED_MESSAGE);
   return (data as DocRow[]).map(toRecord);
 }
 
 /**
  * 帳票を承認する（G4: 人間操作のみ。PATCH /api/documents/[id] から呼ばれる）。
- * approved_at / approved_by を監査証跡として記録。所有者（created_by）以外は更新できず null。
+ * approved_at / approved_by を監査証跡として記録。所有者（created_by）以外・存在しない id・uuid の形でない id は
+ * 更新できず null（入口は 404）。
+ * @throws DbAccessError DB に書けなかったとき（null にすると「書類が見つかりません。」に見える）。
  */
 export async function approveDocument(
   id: string,
@@ -131,16 +151,18 @@ export async function approveDocument(
     .eq("created_by", userId)
     .select("*")
     .maybeSingle();
-  if (error || !data) {
-    if (error) console.error("[db] approveDocument error:", error.message);
-    return null;
+  if (error) {
+    if (isMalformedIdError(error)) return null;
+    throw dbAccessError("approveDocument", error, DOCUMENT_APPROVAL_FAILED_MESSAGE);
   }
+  if (!data) return null;
   return toRecord(data as DocRow);
 }
 
 /**
  * 承認を取り消して draft に戻す（G4）。approved_at / approved_by も null に戻す。
- * 所有者（created_by）以外は更新できず null。
+ * 所有者（created_by）以外・存在しない id・uuid の形でない id は更新できず null（入口は 404）。
+ * @throws DbAccessError DB に書けなかったとき。
  */
 export async function unapproveDocument(
   id: string,
@@ -159,9 +181,10 @@ export async function unapproveDocument(
     .eq("created_by", userId)
     .select("*")
     .maybeSingle();
-  if (error || !data) {
-    if (error) console.error("[db] unapproveDocument error:", error.message);
-    return null;
+  if (error) {
+    if (isMalformedIdError(error)) return null;
+    throw dbAccessError("unapproveDocument", error, DOCUMENT_APPROVAL_FAILED_MESSAGE);
   }
+  if (!data) return null;
   return toRecord(data as DocRow);
 }

@@ -9,6 +9,7 @@ import {
 } from "@/lib/privacy/pseudonymize";
 import type { ClientAttributes, ClientInput, ClientRecord } from "@/types/client";
 import { createServerClient } from "../supabase/server";
+import { DbAccessError, dbAccessError, dbFailedMessage, isMalformedIdError } from "./errors";
 
 /**
  * 利用者(clients)のデータアクセス。機能仕様 §6/§8。
@@ -265,10 +266,11 @@ export async function getClients(scope: DataScope): Promise<ClientRecord[]> {
  * 受け止める側: getClientById を通る入口すべて（app/api/documents・app/api/clients/[id]・
  * app/api/clients/[id]/related・app/api/transcripts・app/api/transcripts/[id]）が
  * 503 と CLIENT_LOOKUP_FAILED_MESSAGE にする。DB の詳しい理由は message に入れ、画面へは出さない。
+ * lib/db/errors.ts の DbAccessError の子なので、入口は DbAccessError として受ければ publicMessage で同じ文を返せる。
  */
-export class ClientLookupError extends Error {
+export class ClientLookupError extends DbAccessError {
   constructor(detail: string) {
-    super(detail);
+    super(detail, CLIENT_LOOKUP_FAILED_MESSAGE);
     this.name = "ClientLookupError";
   }
 }
@@ -277,15 +279,7 @@ export class ClientLookupError extends Error {
  * 利用者1件を DB から読めなかったとき、入口が 503 で返す職員向けの言葉。
  * 「見つかりません」とは言わない ── 言うと、いる利用者を新しく登録し直してしまう。
  */
-export const CLIENT_LOOKUP_FAILED_MESSAGE =
-  "利用者の情報を読み込めませんでした。少し待ってから、もう一度お試しください。直らない場合は管理者にご連絡ください。";
-
-/**
- * PostgreSQL の invalid_text_representation（SQLSTATE 22P02）。uuid の列に uuid の形でない id を渡すと返る。
- * そういう id はどの行にも当たらないので、DB の失敗ではなく「見えない利用者」として扱う
- * （以前から URL に壊れた id が来たら 404 だった。その答えを変えない）。
- */
-const INVALID_TEXT_REPRESENTATION = "22P02";
+export const CLIENT_LOOKUP_FAILED_MESSAGE = dbFailedMessage("利用者の情報を読み込めませんでした。");
 
 /**
  * 利用者を1件取得する（範囲チェック込み）。書類の保存・利用者ページ・関係者名簿・文字起こしの
@@ -306,7 +300,8 @@ export async function getClientById(id: string, scope: DataScope): Promise<Clien
     .or(scopeExpr(scope))
     .maybeSingle();
   if (error) {
-    if (error.code === INVALID_TEXT_REPRESENTATION) return null;
+    // uuid の形でない id はどの行にも当たらない＝見えない利用者（lib/db/errors.ts）
+    if (isMalformedIdError(error)) return null;
     // 利用者の保存や閲覧が止まる＝業務が止まる。原因を追えるようにサーバのログへ残す（画面へは出さない）
     console.error("[db] getClientById error:", error.code ?? "", error.message);
     throw new ClientLookupError(`getClientById: ${error.code ?? ""} ${error.message}`);
@@ -370,6 +365,13 @@ class PermanentAliasError extends Error {
 /** 職員に見せる文言（関係者名簿の表が無い時） */
 export const RELATED_TABLE_MISSING_MESSAGE =
   "関係者名簿の表が未作成のため送信を中止しました。管理者が supabase/client_related.sql を Supabase で実行してください。";
+
+/**
+ * 職員に見せる文言（関係者名簿の画面で、表が未作成のため一覧を読めない時）。
+ * RELATED_TABLE_MISSING_MESSAGE は AI への送信を止めたときの文なので、画面の一覧には使わない。
+ */
+export const RELATED_TABLE_MISSING_LIST_MESSAGE =
+  "関係者名簿の表が未作成のため、一覧を読めません。管理者が supabase/client_related.sql を Supabase で実行してください。";
 
 /** 職員に見せる文言（待っても直らない・管理者の対応が要る時） */
 export const ALIAS_PERMANENT_MESSAGE =
@@ -607,6 +609,8 @@ interface RelatedRow {
  *
  * 親の利用者を DB から読めなければ ClientLookupError をそのまま投げる（空の一覧に見せない ──
  * 「家族が登録されていない」と取り違えて登録し直させないため。受け止めるのは app/api/clients/[id]/related）。
+ * 関係者の表そのものを読めなかったときも同じ理由で DbAccessError を投げる（以前は [] を返していた ──
+ * 2026-09-24 検収の指摘）。表が未作成なら、管理者がやることを名指しする文にする。
  */
 export async function getRelatedPeople(
   clientId: string,
@@ -621,8 +625,13 @@ export async function getRelatedPeople(
     .eq("client_id", clientId)
     .order("created_at", { ascending: true });
   if (error) {
-    console.error("[db] getRelatedPeople error:", error.message);
-    return [];
+    throw dbAccessError(
+      "getRelatedPeople",
+      error,
+      MISSING_TABLE_CODES.has(error.code ?? "")
+        ? RELATED_TABLE_MISSING_LIST_MESSAGE
+        : dbFailedMessage("関係者名簿を読み込めませんでした。"),
+    );
   }
   const key = getPiiKey();
   const out: RelatedPerson[] = [];

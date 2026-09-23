@@ -1,12 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
-import {
-  CLIENT_LOOKUP_FAILED_MESSAGE,
-  ClientLookupError,
-  type DataScope,
-  resolveScope,
-  SCOPE_ERROR_MESSAGE,
-} from "@/lib/db/clients";
+import { type DataScope, resolveScope, SCOPE_ERROR_MESSAGE } from "@/lib/db/clients";
+import { DbAccessError } from "@/lib/db/errors";
 import {
   getTranscriptsByClient,
   saveTranscript,
@@ -24,7 +19,9 @@ import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
  *
  * 誰が読めるか: 親の利用者が見える人だけ（判定は getClientById に一本化）。
  * 親の利用者を DB から読めなかったとき（ClientLookupError）は 503 と CLIENT_LOOKUP_FAILED_MESSAGE
- * （「見つからない・権限がない」と答えない ── 2026-09-24 検収の指摘）。
+ * （「見つからない・権限がない」と答えない ── 2026-09-24 検収の指摘）。一覧そのものを読めなかったときも
+ * 503 と「一覧を読み込めませんでした」（lib/db/transcripts.ts が DbAccessError を投げる。以前は空の一覧だった）。
+ * どちらも lib/db/errors.ts の DbAccessError として受け、職員には e.publicMessage だけを返す。
  */
 
 function scopeOf(userId: string, orgId: string | null): DataScope | null {
@@ -78,9 +75,9 @@ export async function POST(req: NextRequest) {
     if (e instanceof TranscriptTableMissingError) {
       return NextResponse.json({ error: TRANSCRIPT_TABLE_MISSING_MESSAGE }, { status: 503 });
     }
-    if (e instanceof ClientLookupError) {
-      console.error("[transcripts] save: client lookup failed:", e.message);
-      return NextResponse.json({ error: CLIENT_LOOKUP_FAILED_MESSAGE }, { status: 503 });
+    if (e instanceof DbAccessError) {
+      console.error("[transcripts] save: db failed:", e.message);
+      return NextResponse.json({ error: e.publicMessage }, { status: 503 });
     }
     // 本文はログに出さない（出すと暗号化した意味が消える）
     console.error("[transcripts] save error:", e instanceof Error ? e.message : String(e));
@@ -108,9 +105,9 @@ export async function GET(req: NextRequest) {
     if (e instanceof TranscriptTableMissingError) {
       return NextResponse.json({ error: TRANSCRIPT_TABLE_MISSING_MESSAGE }, { status: 503 });
     }
-    if (e instanceof ClientLookupError) {
-      console.error("[transcripts] list: client lookup failed:", e.message);
-      return NextResponse.json({ error: CLIENT_LOOKUP_FAILED_MESSAGE }, { status: 503 });
+    if (e instanceof DbAccessError) {
+      console.error("[transcripts] list: db failed:", e.message);
+      return NextResponse.json({ error: e.publicMessage }, { status: 503 });
     }
     console.error("[transcripts] list error:", e instanceof Error ? e.message : String(e));
     return NextResponse.json({ error: "一覧を取れませんでした。" }, { status: 500 });

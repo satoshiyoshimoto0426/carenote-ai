@@ -19,7 +19,7 @@
 | `app/api/evaluate/` | Claude API でPDFを評価→JSON整形→Supabase保存→Blob削除 |
 | `app/api/history/` | ログインユーザーの評価履歴を返す |
 | `components/` | UI部品（FileUploader / LoadingProgress / EvaluationResults / CategoryCard / ScoreRing / MiniBar / Sidebar） |
-| `lib/db.ts` | Supabase データアクセス（saveEvaluation / getEvaluations / getEvaluationById） |
+| `lib/db.ts` | Supabase データアクセス（saveEvaluation / getEvaluations。読めなければ `DbAccessError` ── `lib/db/errors.ts`。使われていなかった getEvaluationById は 2026-09-24 に削除） |
 | `lib/requestBody.ts` | API の入口が本文を読む唯一の道（`readJsonObject`: JSON のオブジェクトだけ通し、`null`・配列・文字列などは null → 入口が 400）。使う入口は clients・clients/[id]/related・documents・documents/[id]・transcripts・generate・preview・kaipoke/assessment・rescue・extension/generate |
 | `lib/evaluationCriteria.ts` | 評価プロンプト（8カテゴリ・27点満点の採点基準） |
 | `lib/exportExcel.ts` | 評価結果の Excel 出力（xlsx） |
@@ -119,6 +119,7 @@
 | `lib/privacy/crypto.ts` | 実名のアプリ層暗号化（AES-256-GCM・鍵=`CARENOTE_PII_KEY`） | 実装・テスト済 |
 | `lib/privacy/pseudonymize.ts` | 氏名⇄記号の置換＋利用者コード採番（純粋・テスト済） | 実装・テスト済 |
 | `lib/privacy/retention.ts` | 保持期限算出（5年） | 実装・テスト済 |
+| `lib/db/errors.ts` | DB の失敗を「0件・見えない・空」と分ける共通の部品（`DbAccessError`〔職員向けの `publicMessage` つき〕・`dbFailedMessage`・`isMalformedIdError`〔22P02 は0件扱い〕）。`ClientLookupError` はこの子。見張り= `lib/db/dbFailures.test.ts`（2026-09-24） | 実装済 |
 | `lib/db/{clients,documents}.ts` | 利用者・帳票のデータアクセス（service role＋アプリ層 created_by スコープ。実名は client_identities に暗号化）。approve/unapproveDocument（G4）。帳票の `content` は**暗号化しない JSONB**で、名簿の名前は記号・番号類は戻した元の値・名簿に無い名前はそのまま入り得る（「実名を含めない」とは言えない。2026-09-23 に説明を事実へ訂正） | 実装済 |
 | `app/api/clients/`・`app/api/clients/[id]/`・`app/api/documents/`・`app/api/documents/[id]/` | 利用者CRUD（一覧/作成/詳細＋帳票）・帳票保存・帳票承認 PATCH（Clerk認証） | 実装済 |
 | `lib/clients/{listError,useClientList}.ts` | 画面から利用者一覧を読む（`fetchClientList`・`useClientList`）。「0人」と「読めなかった」を分け、読めなかったときの文言（先頭は必ず「利用者一覧を読めませんでした」）を1か所に置く。ブラウザでも読むのでサーバ専用のものを import しない | 実装済（2026-09-23） |
@@ -133,6 +134,8 @@
 **保存先の確かめ（2026-09-23・作り直し計画 S1）**: `POST /api/documents` は ①ログイン（401）②`resolveScope`（範囲を決められなければ DB に触らず 503）③本文と中身の形（本文がオブジェクトでなければ 400「リクエストの解析に失敗しました。」。中身はオブジェクトのみ・配列・文字列は 400・入れ子は **32段**まで・超えたら 400）と大きさ（JSON で **200KB** まで・超えたら 413）④`getClientById(clientId, scope)`（名簿と同じ範囲で見えない利用者なら **404「利用者が見つかりません。」で保存しない**。**DB を読めなければ 503 と `CLIENT_LOOKUP_FAILED_MESSAGE`** で保存しない）⑤`saveDocument`（常に draft・org_id はログイン中の範囲）の順。以前は Clerk の orgId をそのまま保存し、保存先が見えるかを確かめていなかった（id が分かれば他事業所の利用者に紐づけられた）。縛るのは `tests/api/documents.route.test.ts`（本物の saveDocument ＋偽 Supabase で、書こうとした行まで見る）と `tests/api/orgScope.route.test.ts`。
 
 **「見えない」と「読めなかった」を分ける（2026-09-24・S1 の検収の指摘）**: `getClientById` は 0件をエラーにしない `maybeSingle` で読み、見えない・存在しない・uuid の形でない id（22P02）は `null`、**DB の失敗は `ClientLookupError` を投げる**（以前はどちらも `null` で、DB が一瞬落ちただけで書類の保存が 404「利用者が見つかりません。」と答え、救済モードの職員が「新しい利用者として保存」で同じ方を二重に登録し得た ── U0 で止めた二重登録の裏口）。`getClientById` を通る入口すべて（`POST /api/documents`・`GET /api/clients/[id]`・`/api/clients/[id]/related` の GET/POST/DELETE・`/api/transcripts` の POST/GET・`/api/transcripts/[id]` の GET/DELETE）が **503 と `CLIENT_LOOKUP_FAILED_MESSAGE`**（「見つかりません」とは言わない）を返す。関係者名簿（`getRelatedPeople/addRelatedPerson/deleteRelatedPerson`）と文字起こし（`lib/db/transcripts.ts`）はこの例外を握らずに投げる。本文の読み方は `lib/requestBody.ts` の `readJsonObject` に一本化（JSON の `null`・配列・文字列・数値は 400。以前は `body.x` が TypeError になり JSON の無い 500 だった。同じ書き方が本文を読む 10 の入口にあった）。入口をまたいだ 400／503 は `tests/api/entryErrors.route.test.ts`、判定そのものは `lib/db/clients.test.ts`・`lib/db/transcripts.test.ts`・`lib/requestBody.test.ts` が縛る。
+
+**lib/db 全体で「0件」と「DB の失敗」を分ける (2026-09-24・S1 の検収の指摘 ── 同じ種類の3回目)**: 上の直しの後も、隣の関数が DB の失敗を 0件で返していた（`getRelatedPeople`・`getTranscriptsByClient`・`getDocumentsByClient`・`getEvaluations` は `[]`、`getTranscriptText` と `approveDocument`/`unapproveDocument` は `null`、`deleteTranscript` は `false` ＝入口で「見つかりませんでした」「書類が見つかりません。」）。いまは共通の `lib/db/errors.ts` の `DbAccessError` を投げ（1件を読むものは `maybeSingle`、uuid の形でない id は0件扱い、`deleteTranscript` は消えた件数まで見る）、入口（`GET /api/clients/[id]`・`PATCH /api/documents/[id]`・`GET /api/clients/[id]/related`・`GET /api/transcripts`・`GET/DELETE /api/transcripts/[id]`・`GET /api/history`）が **503 と `e.publicMessage`** を返す（`ClientLookupError` も子なので同じ受け方）。「失敗」だけを表す戻り値（`saveDocument`・`createClientRecord`・`saveEvaluation` の null、`saveTranscript` の `failed`、`deleteRelatedPerson` の `"error"`、`addRelatedPerson` の「登録に失敗しました。」）はそのまま。**見張り** `lib/db/dbFailures.test.ts`: Supabase を偽物にして問い合わせを1つずつ失敗させ、どの関数も「0件・見えない・空」と答えないことを確かめる。`lib/db.ts`・`lib/db/*.ts` の async 関数が一覧（CONTRACTS）に無ければ落ちる（新しい関数は DB が落ちたときの答えを決めて載せる）。入口の 503 は `tests/api/entryErrors.route.test.ts` の `DB_FAILURE_ROUTES`。
 
 実行の前提: ①`supabase/clients_documents.sql`（既存DBは `approval_migration.sql` も）を Supabase で実行 ②`CARENOTE_PII_KEY`(base64 32B) を設定。
 
@@ -251,7 +254,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-24 / 救済モードの一式の保存を途中の失敗から押し直しても、利用者をもう1人作らず・保存済みの帳票を二重に保存しない（`lib/rescue/saveBundle.ts`。S1 の検収の指摘）*
+*最終更新: 2026-09-24 / lib/db 全体で DB の失敗を `DbAccessError`（`lib/db/errors.ts`）にし、入口は 503。見張り `lib/db/dbFailures.test.ts`（故障の注入・async 関数の抜けの検査）。使われていなかった `getEvaluationById` を削除（S1 の検収の指摘）*
+*2026-09-24 / 救済モードの一式の保存を途中の失敗から押し直しても、利用者をもう1人作らず・保存済みの帳票を二重に保存しない（`lib/rescue/saveBundle.ts`。S1 の検収の指摘）*
 *2026-09-24 / `getClientById` が DB の失敗を `ClientLookupError` にし、使う入口すべてが 404 でなく 503 を返す。本文は `lib/requestBody.ts` でオブジェクトだけ通す（10の入口）。書類の中身は入れ子32段まで（S1 の検収の指摘）*
 *2026-09-24 / 画面の検査が、隠した部品（共有状態の切り替え・同意のチェック・赤い印）を「出ている」と数えないよう `isReachable` を足した（検収の指摘）*
 *2026-09-23 / テストの見張りが集計行を stdout だけから読み、JSON レポートを2つ目の判定にする（テストが書いた偽の集計行で緑になっていた ── 検収の指摘）*

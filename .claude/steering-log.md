@@ -415,3 +415,32 @@
   以前の読み方（つなぐ）に戻すと赤になること、④を止めても⑤が偽の集計行の下の skipped を名指しで止めることを、実際に走らせて確かめた。
 - **教訓**: **合否を「画面に出る文字」で決めるときは、その文字を誰が書けるかを考える**。テスト自身が書ける場所（stderr・stdout の途中）の文字は、
   判定の材料にしない。書けない材料（ツールが直接書くファイル）があれば、2つ目の判定に使う。
+
+### 2026-09-24: DB の失敗を「無い・空・見つからない」と答えていた（同じ種類の3回目）
+- **発生回数**: 3回目（1回目＝2026-09-18 文字起こしの表が無いのを「権限がありません」、2回目＝U0 988cc85 `getClients` の `[]`、
+  3回目＝S1 b9d7d35 の検収で `getClientById` の `null`）。3回目を直したコミットの検収で、同じ書き方が**隣の7関数**に残っていると指摘され、lib/db 全体を grep すると評価の履歴の2関数にもあった（計9関数）
+- **問題**: `lib/db` の関数が DB の失敗を 0件と同じ値で返し、入口がそれを「ありません」「見つかりません」と言い換えていた。
+  `getRelatedPeople`・`getTranscriptsByClient`・`getDocumentsByClient`・`getEvaluations` は `[]`（画面は「家族は未登録」「保存した書類はありません」「評価 0件」）、
+  `getTranscriptText`・`approveDocument`・`unapproveDocument` は `null`（404「見つかりませんでした。」「書類が見つかりません。」）、
+  `deleteTranscript` は読み出しの失敗も**消す操作の失敗も** `false`（消えていないのに「見つかりませんでした」＝もう無い、と伝わる）。
+  1件を読む `single()` は0件にもエラー（PGRST116）を返すので、`if (error || !data) return null` の形では2つを分けられない。
+  あわせて、救済モードの保存を途中の失敗から押し直すと同じ方をもう1人登録していた（11426ed で修正 ── 二重登録の入口としても3回目:
+  U0 の一覧の失敗・S1 の 404・押し直し）
+- **対策**: ガイド＋センサー＋テスト。
+  ①共通の部品 `lib/db/errors.ts`（`DbAccessError`〔`publicMessage`〕・`dbFailedMessage`・`isMalformedIdError`）を置き、
+  `ClientLookupError` をその子にした。8関数を「0件は0件・失敗は投げる」に直し（1件は `maybeSingle`・削除は消えた件数まで見る）、
+  7つの入口が 503 と `e.publicMessage` を返す。使われていなかった `getEvaluationById`（同じ書き方）は消した
+  ②**センサー** `lib/db/dbFailures.test.ts`: Supabase を偽物にして問い合わせを1つずつ失敗させ、どの関数も「0件・見えない・空」と
+  答えないことを確かめる（投げる／その関数が「失敗」と決めた値を返す／読み直して成功と同じ、のどれか）。
+  `lib/db.ts`・`lib/db/*.ts` の async 関数が一覧に無ければ落ちるので、新しい関数でも再発を拾う。
+  直した8関数を元の書き方に戻すと8件とも赤、一覧に無い関数を足すと赤になることを確かめた
+  ③CLAUDE.md の Rules に「lib/db の読み書きは『0件』と『DB の失敗』を分ける」を足した
+  ④入口の検査 `tests/api/entryErrors.route.test.ts` に `DB_FAILURE_ROUTES`（7つの入口・承認と取り消しを分けて8通り）を足した
+- **ファイル**: `lib/db/errors.ts` / `lib/db.ts` / `lib/db/{clients,documents,transcripts}.ts` / `app/api/{history,clients/[id],clients/[id]/related,documents/[id],transcripts,transcripts/[id]}/route.ts` /
+  `lib/db/dbFailures.test.ts` / `lib/db/{clients,transcripts}.test.ts` / `tests/api/entryErrors.route.test.ts` / `CLAUDE.md`
+- **教訓**:
+  (a) 2026-09-18 の教訓 (b)「横展開できる形にして初めて再発防止になる」を、定数（`MISSING_TABLE_CODES`）だけで止めていた。
+      **判定を共有しても、使わない関数には効かない**。「全部の関数を列挙して、同じ故障を注入する」見張りにして初めて、隣の関数と新しい関数に届く。
+  (b) 直した関数の**隣**を読む。検収の指摘は「その関数」を名指ししても、原因は書き方（`if (error || !data) return null`）にある。
+      直す前に、同じ書き方を lib/db 全体で grep する。
+  (c) 画面の側にも同じ壊れ方がある（一覧を読めなかったときに空に見せる）。サーバだけ直しても、画面が黙って空にすれば職員には同じに見える

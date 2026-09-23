@@ -57,9 +57,11 @@ const {
   getClientById,
   getClients,
   getRelatedPeople,
+  RELATED_TABLE_MISSING_LIST_MESSAGE,
   RELATED_TABLE_MISSING_MESSAGE,
   scopeExpr,
 } = await import("./clients");
+const { DbAccessError } = await import("./errors");
 
 /** 事業所に所属していない職員（従来どおり自分の行だけ） */
 const SOLO = { userId: "u1", orgId: null };
@@ -244,6 +246,36 @@ describe("getClientById: 見えない利用者と、DB を読めなかったこ�
     await expect(getRelatedPeople("c1", SOLO)).rejects.toBeInstanceOf(ClientLookupError);
     expect(calls.some((c) => c.table === "client_related_identities")).toBe(false);
     logged.mockRestore();
+  });
+
+  it("関係者の一覧は、関係者の表を読めなければ投げる（[]＝家族は未登録、に見せない ── 2026-09-24 検収の指摘）", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    ok("clients", { id: "c1", code: "A" });
+    fail("client_related_identities", "connection reset", "08006");
+    const err = await getRelatedPeople("c1", SOLO).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DbAccessError);
+    expect((err as InstanceType<typeof DbAccessError>).publicMessage).toContain(
+      "関係者名簿を読み込めませんでした。",
+    );
+    logged.mockRestore();
+  });
+
+  it("関係者の表が未作成なら、管理者が SQL を実行するよう名指しする文で投げる", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    ok("clients", { id: "c1", code: "A" });
+    fail("client_related_identities", "missing", "42P01");
+    const err = await getRelatedPeople("c1", SOLO).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DbAccessError);
+    expect((err as InstanceType<typeof DbAccessError>).publicMessage).toBe(
+      RELATED_TABLE_MISSING_LIST_MESSAGE,
+    );
+    logged.mockRestore();
+  });
+
+  it("ClientLookupError は DbAccessError の子で、職員向けの文は「見つかりません」と言わない", () => {
+    const e = new ClientLookupError("down");
+    expect(e).toBeInstanceOf(DbAccessError);
+    expect(e.publicMessage).not.toContain("見つかりません");
   });
 
   it("関係者の追加は、親の利用者を読めなければ投げる（「利用者が見つかりません。」と答えない・書かない）", async () => {

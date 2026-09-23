@@ -2,14 +2,13 @@ import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
 import {
   addRelatedPerson,
-  CLIENT_LOOKUP_FAILED_MESSAGE,
-  ClientLookupError,
   type DataScope,
   deleteRelatedPerson,
   getRelatedPeople,
   resolveScope,
   SCOPE_ERROR_MESSAGE,
 } from "@/lib/db/clients";
+import { DbAccessError } from "@/lib/db/errors";
 import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
 
 /**
@@ -20,14 +19,19 @@ import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
  * 親の利用者を DB から読めなかったとき（lib/db/clients.ts の ClientLookupError）は、3つとも
  * 503 と CLIENT_LOOKUP_FAILED_MESSAGE を返す（2026-09-24 検収の指摘）。空の一覧や「見つかりません」と
  * 答えると、登録済みの家族を登録し直させたり、消えていないのに「もう無い」と伝えたりする。
+ * 関係者の表そのものを読めなかったとき（getRelatedPeople が DbAccessError を投げる）も同じく 503 と
+ * その文（表が未作成なら、管理者が SQL を実行するよう名指しする文）。
  */
 type Ctx = { params: Promise<{ id: string }> };
 
-/** 親の利用者を読めなかったときの答え。それ以外の例外はそのまま投げ直す（握りつぶさない）。 */
+/**
+ * DB を読み書きできなかったときの答え（ClientLookupError も DbAccessError の子）。
+ * それ以外の例外はそのまま投げ直す（握りつぶさない）。
+ */
 function lookupFailed(e: unknown): NextResponse {
-  if (!(e instanceof ClientLookupError)) throw e;
-  console.error("[api/clients/[id]/related] lookup failed:", e.message);
-  return NextResponse.json({ error: CLIENT_LOOKUP_FAILED_MESSAGE }, { status: 503 });
+  if (!(e instanceof DbAccessError)) throw e;
+  console.error("[api/clients/[id]/related] db failed:", e.message);
+  return NextResponse.json({ error: e.publicMessage }, { status: 503 });
 }
 
 /** 関係者の一覧（実名つき・画面表示用）。 */

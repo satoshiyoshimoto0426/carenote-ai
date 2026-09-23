@@ -12,8 +12,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *      以前は「見えない」と同じ null になり、書類の保存や利用者ページは 404「利用者が見つかりません。」と答えていた。
  *      救済モードではその言葉を信じた職員が「新しい利用者として保存」を選び、同じ方を二重に登録し得た。
  *      いまは getClientById を使う入口すべてが 503 と CLIENT_LOOKUP_FAILED_MESSAGE を返す。
+ *   ③ 書類の一覧・承認、文字起こしの一覧・本文・削除、関係者の一覧、評価の履歴も、DB の失敗を
+ *      []・null・false（＝「ありません」「見つかりません」）で返していた（同じ日の検収の指摘）。いまは
+ *      lib/db が DbAccessError（lib/db/errors.ts）を投げ、入口は 503 とその publicMessage を返す。
  *
- * 入口を足したら、本文を読むものは BODY_ROUTES に、getClientById を通るものは LOOKUP_ROUTES に足す。
+ * 入口を足したら、本文を読むものは BODY_ROUTES に、getClientById を通るものは LOOKUP_ROUTES に、
+ * lib/db のほかの読み書きを通るものは DB_FAILURE_ROUTES に足す。関数の側の見張りは lib/db/dbFailures.test.ts。
  */
 
 const SCOPE = { userId: "user_abc", orgId: "org_xyz" };
@@ -58,6 +62,12 @@ vi.mock("@/lib/db/transcripts", async (importOriginal) => {
   return { ...orig, ...transcripts };
 });
 
+const evaluations = vi.hoisted(() => ({ getEvaluations: vi.fn(), saveEvaluation: vi.fn() }));
+vi.mock("@/lib/db", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/lib/db")>();
+  return { ...orig, ...evaluations };
+});
+
 const ai = vi.hoisted(() => ({ generateFromBody: vi.fn() }));
 vi.mock("@/lib/generation/dispatch", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/generation/dispatch")>();
@@ -68,6 +78,8 @@ const EXT_TOKEN = "abcdefghijklmnopqrstuvwxyz";
 process.env.CARENOTE_EXTENSION_TOKENS = `cm01:${EXT_TOKEN}`;
 
 const { CLIENT_LOOKUP_FAILED_MESSAGE, ClientLookupError } = await import("@/lib/db/clients");
+const { DbAccessError } = await import("@/lib/db/errors");
+const { GET: history } = await import("@/app/api/history/route");
 const { REQUEST_PARSE_ERROR_MESSAGE } = await import("@/lib/requestBody");
 const { POST: createClient } = await import("@/app/api/clients/route");
 const { GET: getClient } = await import("@/app/api/clients/[id]/route");
@@ -266,5 +278,73 @@ describe("利用者を DB から読めなかったら、どの入口も 404 に�
   it("職員向けの文言は「見つかりません」と言わず、待ってからやり直すことを伝える", () => {
     expect(CLIENT_LOOKUP_FAILED_MESSAGE).not.toContain("見つかりません");
     expect(CLIENT_LOOKUP_FAILED_MESSAGE).toContain("もう一度");
+  });
+});
+
+/** lib/db のほかの読み書きを通る入口と、その入口が呼ぶ関数（ここを DbAccessError にする）。 */
+const DB_FAILURE_ROUTES: [string, () => Promise<Response>, () => ReturnType<typeof vi.fn>][] = [
+  [
+    "GET /api/clients/[id]（書類の一覧）",
+    () => getClient(get("/api/clients/c1"), ctx),
+    () => documents.getDocumentsByClient,
+  ],
+  [
+    "PATCH /api/documents/[id]（承認）",
+    () =>
+      patchDocument(raw("/api/documents/d1", JSON.stringify({ action: "approve" }), "PATCH"), {
+        params: Promise.resolve({ id: "d1" }),
+      }),
+    () => documents.approveDocument,
+  ],
+  [
+    "PATCH /api/documents/[id]（承認の取り消し）",
+    () =>
+      patchDocument(raw("/api/documents/d1", JSON.stringify({ action: "unapprove" }), "PATCH"), {
+        params: Promise.resolve({ id: "d1" }),
+      }),
+    () => documents.unapproveDocument,
+  ],
+  [
+    "GET /api/clients/[id]/related（関係者の表）",
+    () => listRelated(get("/api/clients/c1/related"), ctx),
+    () => db.getRelatedPeople,
+  ],
+  [
+    "GET /api/transcripts（一覧）",
+    () => listTranscripts(get("/api/transcripts?clientId=c1")),
+    () => transcripts.getTranscriptsByClient,
+  ],
+  [
+    "GET /api/transcripts/[id]（本文）",
+    () => readTranscript(get("/api/transcripts/t1"), ctx),
+    () => transcripts.getTranscriptText,
+  ],
+  [
+    "DELETE /api/transcripts/[id]（削除）",
+    () => deleteTranscript(get("/api/transcripts/t1", "DELETE"), ctx),
+    () => transcripts.deleteTranscript,
+  ],
+  ["GET /api/history（評価の履歴）", () => history(), () => evaluations.getEvaluations],
+];
+
+describe("DB を読み書きできなかったら、どの入口も「ありません・見つかりません」と答えず 503 と職員向けの文", () => {
+  const PUBLIC = "テスト用の文。少し待ってから、もう一度お試しください。";
+
+  it.each(DB_FAILURE_ROUTES)("%s", async (_route, call, fn) => {
+    db.getClientById.mockResolvedValue({ id: "c1", code: "A" });
+    fn().mockRejectedValue(new DbAccessError("connection failure 08006", PUBLIC));
+    const res = await call();
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const body = await res.json();
+    expect(body).toEqual({ error: PUBLIC });
+    // DB の詳しい理由は画面へ出さない（サーバのログにだけ残す）
+    expect(JSON.stringify(body)).not.toContain("08006");
+  });
+
+  it("DB の失敗でない例外は 503 に丸めない（握りつぶさずに投げ直す）", async () => {
+    db.getClientById.mockResolvedValue({ id: "c1", code: "A" });
+    documents.getDocumentsByClient.mockRejectedValue(new TypeError("bug"));
+    await expect(getClient(get("/api/clients/c1"), ctx)).rejects.toThrow("bug");
   });
 });

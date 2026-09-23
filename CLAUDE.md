@@ -53,6 +53,11 @@
 - ✅ React Server Components を基本とし、`"use client"` は最小限
 - ✅ Server Actions は `app/actions/` に集約
 - ✅ Supabase クエリは `lib/supabase/` の関数経由のみ
+- ✅ **lib/db の読み書きは「0件」と「DB の失敗」を分ける**（2026-09-24 steering-log ── 同じ種類を3回踏んだ）:
+  1件を読むときは `maybeSingle`（`single()` は0件にもエラーを返す）。0件・uuid の形でない id（`isMalformedIdError`）は
+  null / [] / false、それ以外の失敗は `lib/db/errors.ts` の `DbAccessError`（職員向けの `publicMessage` つき）を投げ、
+  入口は 503 と `e.publicMessage` を返す（DB の詳しい理由はログだけ）。「失敗」だけを表す戻り値（保存の null など）を
+  使うときは、`lib/db/dbFailures.test.ts` の CONTRACTS に理由つきで載せる（載っていない async 関数があると落ちる）
 - ✅ 認証チェックは middleware.ts または `auth()` を使用
 - ✅ 環境変数の型は `env.ts` で zod 検証（導入予定）
 - ✅ コンポーネントは Server-first、Tailwind は arbitrary value より theme tokens を優先
