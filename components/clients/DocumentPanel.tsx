@@ -36,7 +36,7 @@ import type { SupportLogDraft } from "@/types/supportLog";
  *     「下書きJSONを貼り付けて読み込む」（extension/src/panel.html）がこの形を読む ── 形を変えると拡張が読めなくなる。
  *
  * 見た目: 区画の端から端まで置く前提で、左右の余白を区画（.client-pane）と同じ 16px／768px 以上 28px にした
- * （A6 U3b。移した時点では以前のカードの中の 20px だった）。
+ * （A6 U3b。移した時点では以前のカードの中の 20px だった）。「承認を取り消す」はスマホで押す場所を 44px にした（A6 U4 の確認）。
  *
  * @param doc 開いている書類（GET /api/clients/{id} の documents の1件）。
  * @param onChange 承認・取消が通ったときに、サーバーが返した新しい書類を渡す（呼ぶ側が一覧の同じ行を差し替える）。
@@ -170,7 +170,7 @@ export default function DocumentPanel({
               type="button"
               onClick={() => patchDocument("unapprove")}
               disabled={patching}
-              className="text-xs text-[var(--clay)] underline underline-offset-4 transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-11 items-center text-xs text-[var(--clay)] underline underline-offset-4 transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0"
             >
               {patching ? "取消中…" : "承認を取り消す"}
             </button>
@@ -200,18 +200,32 @@ export default function DocumentPanel({
  * 書類の状態の札（G4）。下書き＝注意の黄色「下書き」／承認済み＝緑「承認済み」。
  * 利用者の画面の書類の行（components/clients/ClientPane.tsx）と、開いた書類の見出しが使う。
  * 状態を画面から消さない（仕様 docs/specs/ui-redesign-and-client-storage.md の受け入れ条件「全書類が状態付きで一覧」）。
+ *
+ * @param compact 書類の行（幅 440px の区画に 名前・札・日付・「開く」を1行で並べる所）では、印を外し左右の余白を詰める。
+ *   文字と色は同じ（A6 の確認用の画面で、札が広いと書類の名前が2行に折れたため）。
  */
-export function StatusBadge({ doc }: { doc: CareDocumentRecord }) {
+export function StatusBadge({
+  doc,
+  compact = false,
+}: {
+  doc: CareDocumentRecord;
+  compact?: boolean;
+}) {
+  const pad = compact ? "px-1.5" : "px-2.5";
   if (doc.status === "approved") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--green-line)] bg-[var(--green-soft)] px-2.5 py-0.5 text-xs text-[var(--green)]">
-        <IconCheck size={12} />
+      <span
+        className={`inline-flex shrink-0 items-center gap-1 rounded-[6px] border border-[var(--green-line)] bg-[var(--green-soft)] ${pad} py-0.5 text-xs text-[var(--green)]`}
+      >
+        {compact ? null : <IconCheck size={12} />}
         承認済み
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center rounded-[6px] border border-[var(--amber-line)] bg-[var(--amber-soft)] px-2.5 py-0.5 text-xs text-[var(--amber)]">
+    <span
+      className={`inline-flex shrink-0 items-center rounded-[6px] border border-[var(--amber-line)] bg-[var(--amber-soft)] ${pad} py-0.5 text-xs text-[var(--amber)]`}
+    >
       下書き
     </span>
   );

@@ -1191,7 +1191,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px 12px;
+    gap: 4px 10px;
     min-height: 42px;
     padding: 4px 0;
     border-bottom: 1px solid var(--line-faint);
@@ -1246,6 +1246,14 @@
   /* 以前の版の行は、少し字下げして新しい版の行と分ける */
   .client-doc-older .client-pane-row {
     padding-left: 20px;
+  }
+
+  /* 関係者名簿の行の右の「→ B様の長女」（AIへ送る前に置き換わる記号）。等幅・緑（記号の札と同じ色の役割） */
+  .client-related-alias {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--green);
+    white-space: nowrap;
   }
 
   /* 区画の左右の端まで広げる物（開いた書類の承認の操作と中身）。区画の余白と同じだけ外へ出す */

@@ -10,13 +10,7 @@ import {
   IconLock,
   IconPencil,
 } from "@/components/ui/icons";
-import {
-  btnPrimary,
-  btnSecondary,
-  inputClass,
-  SectionLabel,
-  TextAction,
-} from "@/components/ui/primitives";
+import { btnPrimary, btnSecondary, SectionLabel, TextAction } from "@/components/ui/primitives";
 import { clientAttrLine, formatRegisteredDate } from "@/lib/clients/clientList";
 import { type DocTypeRow, groupDocumentsByType } from "@/lib/clients/documentRows";
 import { DOC_TYPE_LABELS } from "@/lib/create/docTypes";
@@ -187,20 +181,10 @@ export default function ClientPane({
         <>
           <DocumentList clientId={client.id} documents={documents} />
           <div className="mt-8">
-            <RelatedPeople
-              clientId={client.id}
-              clientCode={client.code}
-              inputClass={inputClass}
-              primaryClass={btnSecondary}
-              secondaryClass={btnSecondary}
-            />
+            <RelatedPeople clientId={client.id} clientCode={client.code} />
           </div>
-          <div className="mt-8">
-            <SavedTranscripts
-              clientId={client.id}
-              clientCode={client.code}
-              secondaryClass={btnSecondary}
-            />
+          <div className="mt-8 empty:hidden">
+            <SavedTranscripts clientId={client.id} />
           </div>
         </>
       )}
@@ -285,8 +269,11 @@ function DocTypeRowItem({ clientId, row }: { clientId: string; row: DocTypeRow }
         <details className="client-doc-older">
           <summary>
             <IconChevronRight size={13} />
-            以前の版（<span className="tnum">{row.older.length}</span>）
-            <span className="sr-only">{label}</span>
+            {/* 文字は1つの箱に入れる（summary は flex なので、箱が分かれると「（ 2 ）」のように間が空く） */}
+            <span>
+              以前の版（<span className="tnum">{row.older.length}</span>）
+              <span className="sr-only">{label}</span>
+            </span>
           </summary>
           <ul>
             {row.older.map((doc) => (
@@ -315,7 +302,7 @@ function DocVersion({
   const date = formatRegisteredDate(doc.createdAt);
   return (
     <>
-      <StatusBadge doc={doc} />
+      <StatusBadge doc={doc} compact />
       {date ? <span className="client-pane-date">{date}</span> : null}
       <TextAction href={openHref(clientId, doc.id)} className="client-pane-action">
         開く

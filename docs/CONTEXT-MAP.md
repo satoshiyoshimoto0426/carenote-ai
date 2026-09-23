@@ -162,7 +162,7 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 ／拡張 `kaipoke.js` の**追記モード**（`buildAppendedValue`〔純粋・二重追記防止〕→ `previewAppend`〔書かない〕→ `applyAppend`〔退避して末尾に足す〕→ `undoAppend`）。
 `content.js` CARENOTE_APPEND_*、`panel.js` 「前後を見る／この欄に追記する／元に戻す」。inject（上書き）とは別経路。登録は人。
 **D4 関係者名簿 (2026-09-10)**: `supabase/client_related.sql`（`client_related_identities`・暗号化・続柄一意）→ `lib/db/clients.ts` `getRelatedPeople/addRelatedPerson/deleteRelatedPerson`＋`loadAliases` が関係者を含める
-（記号＝`pseudonymize.relatedAliasCode`「A様の長女」・**表が読めなければ 503 で送らない**）→ `GET/POST/DELETE /api/clients/[id]/related`（DELETE は利用者IDでも絞り 0件は 404）→ `components/clients/RelatedPeople.tsx`（利用者詳細ページ）。SQL は手動実行が要る。
+（記号＝`pseudonymize.relatedAliasCode`「A様の長女」・**表が読めなければ 503 で送らない**）→ `GET/POST/DELETE /api/clients/[id]/related`（DELETE は利用者IDでも絞り 0件は 404）→ `components/clients/RelatedPeople.tsx`（利用者の区画 `ClientPane` の中 ── A6）。SQL は手動実行が要る。
 **第6段 OCR統合 (2026-09-11)**: `/rescue` 参考資料に画像（JPEG/PNG/WebP・`blob-upload` 許可）＋資料ごとの種別 → `/api/rescue`（`contentType`/`docType` を検証）
 → `lib/generation/rescueIntake.ts`（PDF=document ブロック／画像=image ブロック・種別ごとの読みどころ・`facts`〔分類＋出典＋日付〕・`conflicts`・`documents`）
 → `composeIntakeNotes`（食い違い→分類別事実）を `generateRescueBundle` の入力に。結果の全文章とファイル名に maskPii（`maskDeep`）。画面に読み取り報告・食い違い・事実（分類別）。sourceDocs の検証は `lib/rescue/sourceDocs.ts`（SSRF 許可リスト＝**非公開ストアのホストのみ**・純粋・テスト済）。Blob は **非公開ストア** `carenote-intake-private`（D6・2026-09-12）に置き、`lib/blob/readPrivate.ts`（get()）で読む（/api/evaluate も同じ）。400/422 でも finally で削除・失敗は `warnings`。
@@ -296,7 +296,17 @@ elements の部品が「押す／押さない／まだ計測していない」�
   `?doc=` のとき: 「書類の一覧へ戻る」・書類の名前・札・日付・`DocumentPanel`（区画の端から端まで）。一覧に無い id なら「この書類を開けませんでした。…」。書類を開いているあいだは関係者名簿も文字起こしも描かない（読みにいかない）。
   **緑の主ボタンは1つ**: ふだんは頭の「つくる」、下書きを開いているあいだは `DocumentPanel` の「承認する」（「つくる」は脇のボタンの見た目になる）。
   区画の幅: `components/clients/ClientsLayout.tsx` が `?doc=` を見て、選んだ方の書類を開いているあいだだけ 640px（`.pane-640`）に広げる（書類の中身は 440px では窮屈）。
-  見た目は `app/globals.css` の3つ目の `@layer components`（`.client-pane*`・`.client-doc-older`）。テスト `components/clients/ClientPane.test.tsx`（jsdom・「仮名表示中」・札・つくるの URL・どの版も開ける・頭と書類の行に実名を描かない・緑は1つ・並び順・開けない id・読めなかったとき）、`lib/clients/documentRows.test.ts`、札の文字の 4.5:1 は `app/globals.test.ts`。
+  状態の札は書類の行では `StatusBadge compact`（印なし・左右を詰める ── 440px で名前・札・日付・「開く」を1行に収めるため。文字と色は同じ）。
+  見た目は `app/globals.css` の3つ目の `@layer components`（`.client-pane*`・`.client-doc-older`・`.client-related-alias`）。テスト `components/clients/ClientPane.test.tsx`（jsdom・「仮名表示中」・札・つくるの URL・どの版も開ける・頭と書類の行に実名を描かない・緑は1つ・並び順・開けない id・読めなかったとき）、`lib/clients/documentRows.test.ts`、札の文字の 4.5:1 は `app/globals.test.ts`。
+- **`components/clients/RelatedPeople.tsx`**（A6・計画 U4）: 区画の「関係者名簿」。行 = 続柄 | 実名 | → 記号（`pseudonymize.relatedAliasCode`・等幅の緑）| 「削除」（確かめなし ── 使い方の本文どおり）。
+  登録の欄（`input[list="relation-hints"]`＋datalist・「続柄・役割（例: 長女・長男・妻）」・「氏名（例: 佐藤 一郎）」・両方入れるまで押せない「登録」）は残した（撮影の道具 `tools/shoot-plans.mjs` と使い方の本文が使う）。
+  区画が狭いので、続柄の欄は1行ぜんぶ・氏名と「登録」を次の行に（3つ横並びだと続柄の例の文が切れる）。欄には見えない label（読み上げの名前）を足した。「登録」は脇のボタン（緑は頭の「つくる」1つ）。
+  説明の文は保証できることだけ:「ここに登録した名前は、AIへ送る前に「B様の長女」のような記号に置き換わります。この名簿の実名はAIには送りません。」（計画の指摘 ── 以前の「実名はこの画面にだけ表示します」は、実名で表示・残した文字起こしにも実名が出るので書かない。**文言は吉本さんの確認待ち** ── `docs/REDESIGN-A-SIGNOFF.md` の 13）。
+  **読めなかったら空の名簿に見せない**（role="alert" でサーバーの文・通信の失敗は通信環境の文＋「もう一度読む」。以前は黙って空になった）。
+- **`components/clients/SavedTranscripts.tsx`**（A6・計画 U4）: 区画の「残した文字起こし」（旧「保存した文字起こし（A様）」）。行 = 日付と種類（＋見出し）| 字数（等幅）| 「読む」（旧「開く」・押したときだけ `GET /api/transcripts/{id}` で復号した本文を取り寄せる）| 「消す」（確かめの画面あり）。
+  実名が入っている注意と、5年の決まりの正直な文「いまは自動で消えません（管理者がまとめて消します）」はそのまま。**読めなかったら欄を消さない**（表が未作成の 503 は管理者がやることを名指しした文 `TRANSCRIPT_TABLE_MISSING_MESSAGE` をそのまま出す・「もう一度読む」。0件で読めたときは今までどおり欄を出さない）。消せなかったらサーバーの文をそのまま出す。
+  ※ 枝 `redesign/a-backend` の 41adc43 が、この2つの部品に「読めなかったら知らせる」直しを以前の見た目のまま入れている（`tests/ui/clientListErrors.live.test.tsx`）。**取り込むときはこちらの部品を残し**、向こうの検査の描き方だけを新しい引数（`RelatedPeople` は `clientId`・`clientCode`、`SavedTranscripts` は `clientId` だけ）に直す。確かめる中身（role="alert"・「もう一度読む」・0件では出さない・消す失敗の文）はこちらも同じ文と形で満たす。
+  テスト: `components/clients/RelatedPeople.test.tsx`・`components/clients/SavedTranscripts.live.test.tsx`（jsdom）。
 - **`components/clients/DocumentPanel.tsx`**（A6・計画 U3a）: 開いた書類の**承認（G4）の操作と中身**。以前はページに直接書いてあり検査が無かったので、文字も動きも変えずにここへ移した。
   下書き＝「承認する」＋押せない「コピー」＋「承認後にコピーできます」／承認済み＝「コピー」（`lib/draftText.documentContentToText`）・「カイポケ用データ」（**`JSON.stringify(content, null, 2)` そのもの ── 拡張 `extension/src/panel.html` の「下書きJSONを貼り付けて読み込む」との約束**）・「承認を取り消す」。
   承認・取消は `PATCH /api/documents/{id}`、通ったら `onChange` で呼ぶ側が行を差し替える。状態の札 `StatusBadge`（下書き＝黄・承認済み＝緑）もここ。
@@ -310,6 +320,8 @@ elements の部品が「押す／押さない／まだ計測していない」�
   `tools/shoot-plans.mjs`:55・103（`click: "新規"`。本番はまだ「新規」なので、本番に出すまで変えない）、`docs/MANUAL-VIDEO-SPEC.md`:204・224。
   A6（利用者の区画）で本文と合わなくなった所: `lib/manual/content.ts`:276-277（見出しは頭の「B様（仮名）」＋「仮名表示中」── 形は同じ・場所が区画の頭）・280・326（関係者名簿は頭の上ではなく、書類の下）・1036（「救済モードで一式」ボタン → 区画の「一式まとめて」）・1066（「この方の書類」→ 区画の「書類」・種類ごとの1行と「以前の版」・行を押すのではなく「開く」）、
   `docs/MANUAL-VIDEO-SPEC.md`:228-231（ch2 #9・10・12 ── 見出しと、パンくずの下の関係者名簿）・302（ch6 #12「この方の書類」に5件並ぶ）、公開中の ch2・ch6 の動画。
+  A6 の関係者名簿・文字起こしで合わなくなった所: `lib/manual/content.ts`:372（「実名が出るのは、この関係者名簿の画面と…だけです」── 残した文字起こしにも出る。区画の説明の文と同じ直しが要る）・375-376（「読み込みに失敗しても画面には何も出ない」── いまは知らせと「もう一度読む」が出る）、
+  `docs/ADMIN-SETUP.md`:113（「保存した文字起こし」→「残した文字起こし」）。「消す」（ADMIN-SETUP.md:132・145）はそのまま。
 
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
@@ -318,7 +330,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記。同日: 利用者の作業台（一覧の表・右の 440px の区画・上の帯への差し込み・ClientsContext・勝手に選ばない ── A5）を追記し、利用者の2画面を .legacy-page から外した。同日: A5 の検証の直し（表の見出しの行の高さぶん区画の --sticky-top を下げる・氏名を記号で表示する約束の1行を表の上に戻した）を追記。同日: 開いた書類の承認（G4）の操作を components/clients/DocumentPanel.tsx へ中身を変えずに移し、検査を足した（A6 U3a）。同日: 利用者の区画（ClientPane・書類は種類ごとの1行と以前の版・?doc= で開く・区画を 640px に広げる）を追記（A6 U3b）*
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記。同日: 利用者の作業台（一覧の表・右の 440px の区画・上の帯への差し込み・ClientsContext・勝手に選ばない ── A5）を追記し、利用者の2画面を .legacy-page から外した。同日: A5 の検証の直し（表の見出しの行の高さぶん区画の --sticky-top を下げる・氏名を記号で表示する約束の1行を表の上に戻した）を追記。同日: 開いた書類の承認（G4）の操作を components/clients/DocumentPanel.tsx へ中身を変えずに移し、検査を足した（A6 U3a）。同日: 利用者の区画（ClientPane・書類は種類ごとの1行と以前の版・?doc= で開く・区画を 640px に広げる）を追記（A6 U3b）。同日: 関係者名簿と残した文字起こしを区画の行の形にし、読めなかったことを出す形を追記（A6 U4）*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

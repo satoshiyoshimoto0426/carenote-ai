@@ -287,12 +287,12 @@ describe("書類（種類ごとに1行・以前の版）", () => {
   });
 });
 
-it("区画の並びは 書類 → 関係者名簿 → 文字起こし", async () => {
+it("区画の並びは 書類 → 関係者名簿 → 残した文字起こし", async () => {
   await pane();
   const headings = [...container.querySelectorAll("h3")].map((h) => h.textContent ?? "");
   const docs = headings.indexOf("書類");
   const related = headings.indexOf("関係者名簿");
-  const transcripts = headings.findIndex((h) => h.includes("文字起こし"));
+  const transcripts = headings.indexOf("残した文字起こし");
   expect(docs).toBeGreaterThanOrEqual(0);
   expect(docs).toBeLessThan(related);
   expect(related).toBeLessThan(transcripts);

@@ -220,6 +220,10 @@ describe("承認済み", () => {
     expect(buttonByText("コピー")?.hasAttribute("disabled")).toBe(false);
     expect(buttonByText("カイポケ用データ")).toBeDefined();
     expect(buttonByText("承認を取り消す")).toBeDefined();
+    // 文字だけの小さいボタンでも、スマホで指で押せる高さ（44px）を約束する（パソコンでは詰める）
+    expect(buttonByText("承認を取り消す")?.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["min-h-11", "md:min-h-0"]),
+    );
     expect(buttonByText("承認する")).toBeUndefined();
     expect(text()).toContain("承認済み・");
     expect(text()).toContain("下書きJSONを貼り付けて読み込む");
