@@ -15,6 +15,8 @@ import { btnPrimary, btnSecondary, Pane, PaneHeader, SectionLabel, TextAction } 
  *   - 区画は 768px 以上で自分の中だけで縦に動く。区画の中で貼りつく物（赤い言葉の「前へ／次へ」）と
  *     フォーカスの止まる位置は、区画の上端に重なる物（頭の帯）の高さだけ下げる。ここを外すと、
  *     「前へ／次へ」や操作した部品が頭の帯の裏に隠れる（2026-09-17 critical・2026-09-23 A3 と同じ種類）。
+ *   - 動く器（区画・旧画面の器）の直下の物は縮ませない。縮むと overflow-hidden の一覧が器の高さで切られ、
+ *     器は動かず下の行へ行けない（2026-09-24 A4 の検証の blocker ── 見た目の不具合なので CSS 側で止める）。
  *   - 幅を決めた区画（.pane-640 / .pane-440）と、区画どうしの境目の 1px の線（.pane + .pane）は
  *     A案の区画の決まり（計画 F6）そのもの。規則が消えても部品の出す文字列は変わらないので、CSS 側も見る。
  *   - ボタンはスマホで指で押せる大きさ（44px）を約束する（デザインの決まり）。
@@ -51,6 +53,18 @@ function allRules(): Rule[] {
 function rulesOf(selector: string, ...within: RegExp[]): Rule[] {
   return allRules().filter(
     (r) => r.selector === selector && within.every((re) => r.context.some((c) => re.test(c))),
+  );
+}
+
+/**
+ * 選択子の並び（カンマ区切り）の1つとして selector を持つ規則。規則を1つに束ねても分けても同じに見るため
+ * （rulesOf は選択子の文字列全体の一致なので、`.pane > *, .legacy-page > *` を分けただけで見失う）。
+ */
+function rulesListing(selector: string, ...within: RegExp[]): Rule[] {
+  return allRules().filter(
+    (r) =>
+      r.selector.split(",").some((s) => s.trim() === selector) &&
+      within.every((re) => r.context.some((c) => re.test(c))),
   );
 }
 
@@ -169,6 +183,20 @@ describe("区画の CSS（app/globals.css）", () => {
       expect(valuesOf(rulesOf(selector, WIDE), "min-height")).toEqual(["0"]);
     }
     expect(valuesOf(rulesOf(".panes", WIDE), "flex-direction")).toEqual(["row"]);
+  });
+
+  it("768px 以上で動く器（区画・旧画面の器）の直下の物は縮まない（一覧が器の高さで切られ、下の行へ行けなくなるのを防ぐ）", () => {
+    // 2026-09-24 A4 の検証の blocker: 器は高さの決まった flex の縦並びで、直下の物は既定で縮む。
+    // overflow-hidden の一覧（利用者の一覧・点検の履歴の Card）は縮む下限が 0 になり、器の高さまで縮んで
+    // 自分の行を切り落とした。器ははみ出す物が無いので動かず、40人の一覧の最後の行に届かなかった
+    // （本番用ビルドで計測・docs/REDESIGN-A-SIGNOFF.md の 2026-09-24。レイアウトは jsdom では測れないので、ここは規則を見る）
+    for (const selector of [".pane > *", ".legacy-page > *"]) {
+      const rules = rulesListing(selector, WIDE);
+      expect(valuesOf(rules, "flex-shrink")).toEqual(["0"]);
+      // className で足した flex-1 min-h-0（器の中で縮めて中だけ動かす物）が勝てるよう、層の中に置く
+      for (const rule of rulesListing(selector))
+        expect(rule.context.some((c) => COMPONENTS.test(c))).toBe(true);
+    }
   });
 
   it("768px 以上で幅を決めた区画は、その幅を上限に縮む（伸びない・はみ出さない）。スマホでは幅を決めない", () => {

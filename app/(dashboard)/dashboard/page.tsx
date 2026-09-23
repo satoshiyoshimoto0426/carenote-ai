@@ -151,10 +151,15 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* History list — 残りの高さを埋める（中身が少ない画面が上に貼りつかないように） */}
+      {/*
+        History list — 残りの高さを埋める（中身が少ない画面が上に貼りつかないように）。
+        埋めるのは grow（flex-grow だけ）。flex-1 は「高さ 0 から始めて縮む」も入れ直すので、器（.legacy-page）の
+        背が低い画面では overflow-hidden のこの枠が 260px まで縮み、「最初の評価を開始する」が切れる（globals.css の
+        .legacy-page > * の説明・2026-09-24 A4 の検証）。
+      */}
       <Card
         className={`flex flex-col overflow-hidden ${
-          records.length === 0 ? "min-h-[260px] flex-1" : ""
+          records.length === 0 ? "min-h-[260px] grow" : ""
         }`}
       >
         <div className="border-b border-[var(--line)] px-5 py-4">

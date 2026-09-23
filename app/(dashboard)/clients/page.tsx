@@ -183,7 +183,9 @@ export default function ClientsPage() {
           読み込み中…
         </div>
       ) : clients.length === 0 ? (
-        <Card className="flex min-h-[220px] flex-1 flex-col items-center justify-center px-5 py-16 text-center">
+        // 残りの高さを埋めるのは grow（flex-grow だけ）。flex-1 だと背の低い画面で枠が min-h（220px）まで縮み、
+        // 文が折り返して中身がそれより高くなると枠の外へはみ出す（globals.css の .legacy-page > * の説明・2026-09-24 A4 の検証）
+        <Card className="flex min-h-[220px] grow flex-col items-center justify-center px-5 py-16 text-center">
           <div className="mb-1 text-[15px] font-bold text-[var(--ink)]">まだ利用者がいません</div>
           <p className="max-w-[26rem] text-[13px] leading-relaxed text-[var(--muted)]">
             右上の「新規」から登録してください。登録した氏名は暗号化して保存し、 画面では{" "}

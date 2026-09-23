@@ -257,11 +257,15 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - **貼りつく物の基準 `--sticky-top`**（計画の指摘「区画の中は 0・文書が動く所は帯＋注意の帯」）: 768px 以上で区画（`.pane`・`.legacy-page`）が「自分の上端に重なる物の高さ」を書く
   （0。頭の帯を直下に持つ区画は `--pane-header-h` ── `.pane:has(> .pane-header)`）。`.presend-nav`（前へ／次へ）の top と区画の `scroll-padding-top`（フォーカス・飛び先の止まる位置）がこれを読み、
   無い所（スマホ＝文書が動く）では今までどおり `--shell-head-h`。**動く器に padding-top を付けない**（ブラウザは貼りつく物の基準をその分下げる ── `.legacy-page` の上下 40px は `::before`/`::after` の空の箱で空ける）。
+- **動く器の直下の物は縮ませない**（`.pane > *`・`.legacy-page > *` に `flex-shrink: 0`・768px 以上）。器は高さの決まった flex の縦並びで、
+  overflow-hidden の一覧（角を丸めた Card）は縮む下限が 0 になり、器の高さで自分の行を切り落として下の行へ行けなくなる（2026-09-24 A4 の検証の blocker ──
+  利用者の一覧と点検の履歴）。**残りの高さを埋める物は `grow`**（flex-grow だけ）を付け、`flex-1` は使わない（縮む指定と高さ 0 の出発点を入れ直すので、
+  overflow-hidden や小さい `min-h` と組むと同じ切り落としが起きる）。器の中で縮めて中だけ動かしたい物だけが `flex-1 min-h-0` を自分で付ける。
 - **まだ作り替えていない画面の器 `.legacy-page`**: 7画面（`clients`・`clients/[id]`・`create`・`evaluate`・`dashboard`・`rescue`・`guide`）の根元に付ける（`clients/[id]` は根元が3通りあるので `ClientDetail` を包む形）。
   以前の本文の幅（最大 1000px＝中身 920px＋左右 40px）と余白（スマホ 16/16/32px）を再現し、768px 以上ではそれ自体が1つの区画のように動く。旧 `.app-main-inner` の「幅の決定点」の決まりはここが引き継いだ。作り替えたページから外し、全部外れたら消す（計画 X1）。
 - **ホーム = 利用者**（吉本さん決定 2026-09-23）: `app/page.tsx` が `/` を `/clients` へ（旧 `/evaluate`）。ログイン直後の行き先は Clerk の `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` / `AFTER_SIGN_UP_URL`。
   手元の見本 `.env.local.example` は `/clients` にした（ただしこのファイルは `.gitignore` の `.env*` に当たり **git に入っていない**）。本番の Vercel の値は吉本さんが変える（`docs/REDESIGN-A-SIGNOFF.md` の 8）。
-- テスト: `components/ui/primitives.test.tsx`（部品が付けるクラス・ボタンの 44px・区画の CSS の形〔層・768px 以上で動く・`.pane-640`／`.pane-440` の幅・区画の境目の 1px の線（スマホは上・768px 以上は左）・`--sticky-top`・旧画面の器の幅〕）・`app/page.test.ts`（`/` → `/clients`）。
+- テスト: `components/ui/primitives.test.tsx`（部品が付けるクラス・ボタンの 44px・区画の CSS の形〔層・768px 以上で動く・動く器の直下の物は縮まない・`.pane-640`／`.pane-440` の幅・区画の境目の 1px の線（スマホは上・768px 以上は左）・`--sticky-top`・旧画面の器の幅〕）・`app/page.test.ts`（`/` → `/clients`）。
 - **まだ直していない文書**（D1a/D2 でまとめて）: 「ログインすると、ダッシュボードか評価するの画面が開きます」── `lib/manual/content.ts`:248（あわせて 98-99・216-217・302）・`docs/MANUAL-VIDEO-SPEC.md`:221・`docs/manual-video/ch2.draft.vtt`・公開中の ch2 の字幕。
 
 ## 4. 更新トリガ（いつここを直すか）
@@ -271,7 +275,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記*
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*
