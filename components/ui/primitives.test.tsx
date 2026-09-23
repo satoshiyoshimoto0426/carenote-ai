@@ -15,6 +15,8 @@ import { btnPrimary, btnSecondary, Pane, PaneHeader, SectionLabel, TextAction } 
  *   - 区画は 768px 以上で自分の中だけで縦に動く。区画の中で貼りつく物（赤い言葉の「前へ／次へ」）と
  *     フォーカスの止まる位置は、区画の上端に重なる物（頭の帯）の高さだけ下げる。ここを外すと、
  *     「前へ／次へ」や操作した部品が頭の帯の裏に隠れる（2026-09-17 critical・2026-09-23 A3 と同じ種類）。
+ *   - 幅を決めた区画（.pane-640 / .pane-440）と、区画どうしの境目の 1px の線（.pane + .pane）は
+ *     A案の区画の決まり（計画 F6）そのもの。規則が消えても部品の出す文字列は変わらないので、CSS 側も見る。
  *   - ボタンはスマホで指で押せる大きさ（44px）を約束する（デザインの決まり）。
  */
 
@@ -146,6 +148,9 @@ describe("区画の CSS（app/globals.css）", () => {
   it.each([
     ".panes",
     ".pane",
+    ".pane-640",
+    ".pane-440",
+    ".pane + .pane",
     ".pane-tinted",
     ".pane-header",
     ".pane-title",
@@ -164,6 +169,28 @@ describe("区画の CSS（app/globals.css）", () => {
       expect(valuesOf(rulesOf(selector, WIDE), "min-height")).toEqual(["0"]);
     }
     expect(valuesOf(rulesOf(".panes", WIDE), "flex-direction")).toEqual(["row"]);
+  });
+
+  it("768px 以上で幅を決めた区画は、その幅を上限に縮む（伸びない・はみ出さない）。スマホでは幅を決めない", () => {
+    // Pane の width={640|440} が付けるクラス。規則が消えると区画が残りの幅いっぱいに広がる
+    expect(valuesOf(rulesOf(".pane-640", WIDE), "flex")).toEqual(["0 1 640px"]);
+    expect(valuesOf(rulesOf(".pane-440", WIDE), "flex")).toEqual(["0 1 440px"]);
+    // スマホでは区画を縦に積むので、幅の規則は 768px 以上の中だけに置く
+    for (const selector of [".pane-640", ".pane-440"]) {
+      for (const rule of rulesOf(selector))
+        expect(rule.context.some((c) => WIDE.test(c))).toBe(true);
+    }
+  });
+
+  it("区画どうしの境目は 1px の線だけ。スマホ（縦に積む）は上、768px 以上（横に並ぶ）は左に引く", () => {
+    const phone = rulesOf(".pane + .pane").filter((r) => !r.context.some((c) => WIDE.test(c)));
+    expect(valuesOf(phone, "border-top")).toEqual(["1px solid var(--line)"]);
+    expect(valuesOf(phone, "border-left")).toEqual([]);
+    // 横に並べたら上の線は消し、左に引く（上下に線が残ると枠を積んだように見える）
+    expect(valuesOf(rulesOf(".pane + .pane", WIDE), "border-top")).toEqual(["0"]);
+    expect(valuesOf(rulesOf(".pane + .pane", WIDE), "border-left")).toEqual([
+      "1px solid var(--line)",
+    ]);
   });
 
   it("区画の中で貼りつく物とフォーカスの止まる位置は、区画の上端に重なる物の高さ（--sticky-top）から決める", () => {

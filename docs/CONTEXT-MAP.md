@@ -261,7 +261,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
   以前の本文の幅（最大 1000px＝中身 920px＋左右 40px）と余白（スマホ 16/16/32px）を再現し、768px 以上ではそれ自体が1つの区画のように動く。旧 `.app-main-inner` の「幅の決定点」の決まりはここが引き継いだ。作り替えたページから外し、全部外れたら消す（計画 X1）。
 - **ホーム = 利用者**（吉本さん決定 2026-09-23）: `app/page.tsx` が `/` を `/clients` へ（旧 `/evaluate`）。ログイン直後の行き先は Clerk の `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` / `AFTER_SIGN_UP_URL`。
   手元の見本 `.env.local.example` は `/clients` にした（ただしこのファイルは `.gitignore` の `.env*` に当たり **git に入っていない**）。本番の Vercel の値は吉本さんが変える（`docs/REDESIGN-A-SIGNOFF.md` の 8）。
-- テスト: `components/ui/primitives.test.tsx`（部品が付けるクラス・ボタンの 44px・区画の CSS の形〔層・768px 以上で動く・`--sticky-top`・旧画面の器の幅〕）・`app/page.test.ts`（`/` → `/clients`）。
+- テスト: `components/ui/primitives.test.tsx`（部品が付けるクラス・ボタンの 44px・区画の CSS の形〔層・768px 以上で動く・`.pane-640`／`.pane-440` の幅・区画の境目の 1px の線（スマホは上・768px 以上は左）・`--sticky-top`・旧画面の器の幅〕）・`app/page.test.ts`（`/` → `/clients`）。
 - **まだ直していない文書**（D1a/D2 でまとめて）: 「ログインすると、ダッシュボードか評価するの画面が開きます」── `lib/manual/content.ts`:248（あわせて 98-99・216-217・302）・`docs/MANUAL-VIDEO-SPEC.md`:221・`docs/manual-video/ch2.draft.vtt`・公開中の ch2 の字幕。
 
 ## 4. 更新トリガ（いつここを直すか）
