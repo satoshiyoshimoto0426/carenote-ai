@@ -204,13 +204,30 @@ AES-256-GCM・5年・可視性は `getClientById` に一本化・**AIへは渡�
 
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
+### テストの見張り（Quality Gates・2026-09-23 追加）
+```
+npm test ─> tools/run-tests.mjs
+   ├─ ⓪ tools/safety-tests.json（安全テストの一覧）を tools/testManifest.mjs で照合 ── vitest より前・数秒
+   │     ・名指しのファイル（理由つき）がディスクにある／守るフォルダが最低件数を下回っていない
+   │       （lib/privacy・tests/api・lib/recording・lib/transcribe・lib/rescue）
+   │     ・守るファイルに .skip( .only( .todo( skipIf runIf fails xit などの書き方が無い
+   ├─ ① vitest run（NO_COLOR）
+   ├─ ②③ ディスク上のテストファイル数＝走った数・`Errors` 行が無い・vitest の終了コード 0（2026-09-13 から）
+   └─ ④ 集計行 Test Files / Tests に skipped・todo・expected fail が1件でもあれば失敗
+```
+なぜ: ②だけでは、安全テストを1つ消すと両方の数が減って緑のまま、`it.skip` を入れても緑のままだった（吉本さん決定「安全テストが消えない・飛ばされない見張り」）。
+見張りの検査は `tools/testManifest.test.ts`（わざと壊した状態を作って止まることを確かめる）。CI（`quality-gates.yml`）は `npm run test` 経由で同じ見張りを通る。
+引数つき（`npm test -- <ファイル>`）でも⓪と `Errors` 行・終了コードの確認は必ず走る。件数の突き合わせと④は引数なしのときだけ（`-t` で絞ると外れたテストが skipped と数えられるため）。
+
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
 - API ルートの追加・データフローの変更
 - 外部サービスの追加・変更
 - ブラウザ拡張のソフト別アダプタを追加したとき
+- 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
+*最終更新: 2026-09-23 / テストの見張り（安全テストの一覧 `tools/safety-tests.json`・判定 `tools/testManifest.mjs`）を反映*
+*2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*
