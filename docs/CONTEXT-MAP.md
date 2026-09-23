@@ -118,7 +118,7 @@
 | `lib/privacy/crypto.ts` | 実名のアプリ層暗号化（AES-256-GCM・鍵=`CARENOTE_PII_KEY`） | 実装・テスト済 |
 | `lib/privacy/pseudonymize.ts` | 氏名⇄記号の置換＋利用者コード採番（純粋・テスト済） | 実装・テスト済 |
 | `lib/privacy/retention.ts` | 保持期限算出（5年） | 実装・テスト済 |
-| `lib/db/{clients,documents}.ts` | 利用者・帳票のデータアクセス（service role＋アプリ層 created_by スコープ。実名は client_identities に暗号化）。approve/unapproveDocument（G4） | 実装済 |
+| `lib/db/{clients,documents}.ts` | 利用者・帳票のデータアクセス（service role＋アプリ層 created_by スコープ。実名は client_identities に暗号化）。approve/unapproveDocument（G4）。帳票の `content` は**暗号化しない JSONB**で、名簿の名前は記号・番号類は戻した元の値・名簿に無い名前はそのまま入り得る（「実名を含めない」とは言えない。2026-09-23 に説明を事実へ訂正） | 実装済 |
 | `app/api/clients/`・`app/api/clients/[id]/`・`app/api/documents/`・`app/api/documents/[id]/` | 利用者CRUD（一覧/作成/詳細＋帳票）・帳票保存・帳票承認 PATCH（Clerk認証） | 実装済 |
 | `lib/clients/{listError,useClientList}.ts` | 画面から利用者一覧を読む（`fetchClientList`・`useClientList`）。「0人」と「読めなかった」を分け、読めなかったときの文言（先頭は必ず「利用者一覧を読めませんでした」）を1か所に置く。ブラウザでも読むのでサーバ専用のものを import しない | 実装済（2026-09-23） |
 | `types/{client,document}.ts` | 利用者・帳票の型 | 実装済 |
@@ -128,6 +128,8 @@
 **常に draft**（クライアントの status 指定は無視）。承認は `PATCH /api/documents/[id] {action:"approve"|"unapprove"}`
 の人間操作のみ（approved_at/approved_by を監査証跡に記録・created_by スコープ）。**未承認の保存書類はコピー不可**
 （UI 側で disabled。生成直後・保存前のコピーは従来どおり可）。コピー整形は `lib/draftText.documentContentToText`。
+
+**保存先の確かめ（2026-09-23・作り直し計画 S1）**: `POST /api/documents` は ①ログイン（401）②`resolveScope`（範囲を決められなければ DB に触らず 503）③中身の形（オブジェクトのみ。配列・文字列は 400）と大きさ（JSON で **200KB** まで・超えたら 413）④`getClientById(clientId, scope)`（名簿と同じ範囲で見えない利用者なら **404「利用者が見つかりません。」で保存しない**）⑤`saveDocument`（常に draft・org_id はログイン中の範囲）の順。以前は Clerk の orgId をそのまま保存し、保存先が見えるかを確かめていなかった（id が分かれば他事業所の利用者に紐づけられた）。縛るのは `tests/api/documents.route.test.ts`（本物の saveDocument ＋偽 Supabase で、書こうとした行まで見る）と `tests/api/orgScope.route.test.ts`。※ getClientById は DB の失敗も null で返すため、DB が落ちているときも 404 になる（保存はしない側に倒れる）。
 
 実行の前提: ①`supabase/clients_documents.sql`（既存DBは `approval_migration.sql` も）を Supabase で実行 ②`CARENOTE_PII_KEY`(base64 32B) を設定。
 
@@ -156,7 +158,7 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 **送る前に見る画面 (同日・第2段)**: `POST /api/preview`（AIへ送らず、`lib/privacy/maskBody.maskRequestBody` を通した本文＋`candidates.findNameCandidates` の候補を返す）
 → `components/drafts/PreSendPreview.tsx`（候補を赤下線）→ 職員が「この内容で送る」→ `/api/generate`（同じ maskRequestBody）。`/create` に組込済（実機確認済 2026-09-09）。
 **フル版表示 (同日)**: `GET /api/clients/aliases`（記号→実名・本人の利用者のみ）→ `/create` 結果画面の「実名で表示」切替。
-`pseudonymize.restoreNamesDeep` は表示とコピー専用。保存帳票は記号のまま（documents.ts の契約を維持）。
+`pseudonymize.restoreNamesDeep` は表示とコピー専用。保存帳票の中の名簿の名前は記号のまま（番号類は戻した元の値。何が入るかの正本は `lib/db/documents.ts` の説明）。
 **第3段 文字起こし入口 (同日・D1=外部サービス)**: `/create` 支援経過欄の「録音ファイルから文字にする」→ `POST /api/transcribe`
 → `lib/transcribe/provider.ts`（OpenAI 文字起こしAPI・`OPENAI_API_KEY`・差し込み口で他社切替可）→ 文字を支援メモに追記 → 第2段へ。
 音声は非保持。`lib/transcribe/validate.ts` が **4MB**・形式・エラー言い換え（25MB は文字起こしサービスの上限だが、手前の Vercel が 4.5MB で切るため到達できない ── 2026-09-17 実測 6MB→413）。運用は **Genspark SecondBrain（使い方B）**が正、この経路は予備（DATA-HANDLING v0.3 §5-2）。
@@ -202,7 +204,7 @@ AES-256-GCM・5年・可視性は `getClientById` に一本化・**AIへは渡�
 
 **管理者の準備手順（2026-09-13）**: `docs/ADMIN-SETUP.md` が正本（①関係者名簿の表 ②索引 ③Clerk 組織 ④既存データの移行）。SQL の中身は `supabase/client_related.sql` と `supabase/client_org_scope.sql`。
 
-**名簿の範囲（2026-09-13・G3b 吉本さん決定「事業所で共有」）**: `lib/db/clients.ts` の `scopeExpr` が唯一の絞り込みで、掛かるのは **`clients` だけ**。氏名の2表（`client_identities` / `client_related_identities`）は**親の利用者IDで引く**（`selectByClientIds`）── 3表を別々に `org_id` で絞ると、移行が揃わなかったときや組織未選択時に登録された関係者がいるときに**利用者は見えるのに氏名だけ名簿から落ちる**（＝置換も漏れ検査も効かない fail-open。独立審査 2026-09-13）。ルート（8ファイル・11ハンドラ）が範囲を渡すことは `tests/api/orgScope.route.test.ts` が縛る。
+**名簿の範囲（2026-09-13・G3b 吉本さん決定「事業所で共有」）**: `lib/db/clients.ts` の `scopeExpr` が唯一の絞り込みで、掛かるのは **`clients` だけ**。氏名の2表（`client_identities` / `client_related_identities`）は**親の利用者IDで引く**（`selectByClientIds`）── 3表を別々に `org_id` で絞ると、移行が揃わなかったときや組織未選択時に登録された関係者がいるときに**利用者は見えるのに氏名だけ名簿から落ちる**（＝置換も漏れ検査も効かない fail-open。独立審査 2026-09-13）。ルート（**11ファイル・16ハンドラ** ── 文字起こしと書類の保存を含む。2026-09-23 数え直し）が範囲を渡すことは `tests/api/orgScope.route.test.ts` が縛る。
 
 記号（A様）の採番は**範囲内の最大＋1**（件数だと範囲が混ざったとき同じ記号を二度振る）。安全網は3段: ①`assertClientCodesUnique`（同じ記号の利用者が2人 ── **復号する前に**見るので復号失敗行があっても取りこぼさない）②`expandAliasVariants` が「同じ表記が違う記号」を見つけたら `AliasConflictError`（空白違いの別人・同姓同名を黙って捨てない）③`assertUnderRowLimit`（900件超で停止 ── PostgREST の既定1000行の黙った打ち切り対策）。これらは待っても直らないので `ALIAS_PERMANENT_MESSAGE`（管理者へ連絡）で返し、読み直さない。
 
@@ -243,7 +245,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-23 / 利用者一覧の失敗を空の一覧に見せない（`getClients` の例外→`GET /api/clients` の 500→`lib/clients/` 経由で3画面が「利用者一覧を読めませんでした」・救済モードは二重登録を防ぐため保存を止める）*
+*最終更新: 2026-09-23 / 書類の保存（`POST /api/documents`）が名簿と同じ範囲で保存先の利用者を確かめる（見えなければ 404・範囲を決められなければ 503・中身はオブジェクトで 200KB まで）。保存帳票の `content` の説明を事実へ訂正。範囲を使うルートの数を 11ファイル・16ハンドラへ数え直し*
+*2026-09-23 / 利用者一覧の失敗を空の一覧に見せない（`getClients` の例外→`GET /api/clients` の 500→`lib/clients/` 経由で3画面が「利用者一覧を読めませんでした」・救済モードは二重登録を防ぐため保存を止める）*
 *2026-09-23 / 画面の安全テストを木で読む道具（`tests/helpers/markup.ts`）と共有状態の検査（`components/SharingStatus.test.tsx`）を反映。同日、`textOf` が隠した要素の文字を数えないことと、その限界を追記*
 *2026-09-23 / テストの見張り（安全テストの一覧 `tools/safety-tests.json`・判定 `tools/testManifest.mjs`・落ちたときの名指し・ルートのフックの注意喚起との接続）を反映*
 *2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*

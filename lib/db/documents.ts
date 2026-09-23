@@ -9,8 +9,23 @@ import type {
 import { createServerClient } from "../supabase/server";
 
 /**
- * 保存帳票(documents)のデータアクセス。機能仕様 §6。
- * content は帳票ごとの下書きJSON（記号で保持・実名を含めない）。retention_until は created_at + 5年。
+ * 保存帳票(documents)のデータアクセス。機能仕様 §6。retention_until は created_at + 5年。
+ *
+ * content に入るもの（暗号化していない JSONB。暗号化してあるのは名簿の氏名 client_identities /
+ * client_related_identities と文字起こし client_transcripts で、この表は対象外）:
+ *   帳票ごとの下書き JSON を、AI の返事を画面に返した形のまま保存する。
+ *   - 名簿に載っている利用者・関係者の名前は記号（A様・A様の長女）のまま。保存の前に実名へは戻さない
+ *     （「実名で表示」の restoreNamesDeep は画面とコピー専用）。
+ *   - 電話番号・住所・郵便番号・メールアドレス・生年月日・番号（区切りの無い8〜12桁と、4桁区切りの12桁）
+ *     （lib/privacy/patterns.ts の型）は、
+ *     AI へ送る時だけ札（〔電話番号1〕）にし、返事を画面へ返す前に restoreDeep で**元の値へ戻してある**ので、
+ *     元の値のまま入る（/api/generate の予定 appointments だけは札のまま。吉本さん決定 2026-09-12
+ *     「確認用の情報も蓄積したい」・docs/specs/call-pipeline.md §2.5）。
+ *   - 名簿に無い名前（職員がメモに書いた第三者など）は最初から置き換わらないので、そのまま入り得る。
+ *   したがって「実名を含めない」は保証していない。
+ *
+ * 誰が読めるか: 作成した職員本人（created_by）だけ（事業所での共有は未対応）。
+ * 保存先の利用者が本人に見えるかは、呼ぶ側の app/api/documents/route.ts が getClientById で確かめる。
  */
 
 interface DocRow {

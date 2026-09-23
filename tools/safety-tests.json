@@ -4,7 +4,7 @@
   "_how": "protectedDirs=フォルダごとの最低件数（今日の件数。新しいテストは自動で見張り対象になる）。files=名指しで守るファイルと、守る理由。安全テストを足したらここにも足す。消す・弱めるのは吉本さんの承認（横断規約 §2.7-C）のうえで、同じコミットでここを直す。",
   "protectedDirs": [
     { "dir": "lib/privacy", "minFiles": 13 },
-    { "dir": "tests/api", "minFiles": 9 },
+    { "dir": "tests/api", "minFiles": 10 },
     { "dir": "lib/recording", "minFiles": 3 },
     { "dir": "lib/transcribe", "minFiles": 3 },
     { "dir": "lib/rescue", "minFiles": 1 }
@@ -77,6 +77,10 @@
     {
       "path": "tests/api/transcribe.route.test.ts",
       "why": "文字起こし: ログインしていなければ外へ送らない・回数の上限"
+    },
+    {
+      "path": "tests/api/documents.route.test.ts",
+      "why": "書類の保存: ログイン中の範囲で見えない利用者には404で書かない・範囲を決められなければ503・常に下書き・中身はオブジェクトで200KBまで"
     },
     {
       "path": "tests/api/transcripts.route.test.ts",

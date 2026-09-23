@@ -22,7 +22,10 @@ export interface CareDocumentRecord {
   orgId: string | null;
   docType: CareDocumentType;
   status: CareDocumentStatus;
-  /** 帳票ごとの下書きJSON（AssessmentDraft など）。記号で保持（実名は含めない）。 */
+  /**
+   * 帳票ごとの下書きJSON（AssessmentDraft など）。名簿の名前は記号のまま、電話番号・住所などの型は
+   * 元の値へ戻した形、名簿に無い名前はそのまま入り得る（実名を含めないとは言えない。詳細は lib/db/documents.ts）。
+   */
   content: unknown;
   source: CareDocumentSource;
   /** 保持期限（ISO日付）。created_at + 5年。 */
