@@ -4,7 +4,7 @@
   "_how": "protectedDirs=フォルダごとの最低件数（今日の件数。新しいテストは自動で見張り対象になる）。files=名指しで守るファイルと、守る理由。安全テストを足したらここにも足す。消す・弱めるのは吉本さんの承認（横断規約 §2.7-C）のうえで、同じコミットでここを直す。",
   "protectedDirs": [
     { "dir": "lib/privacy", "minFiles": 13 },
-    { "dir": "tests/api", "minFiles": 11 },
+    { "dir": "tests/api", "minFiles": 12 },
     { "dir": "lib/recording", "minFiles": 3 },
     { "dir": "lib/transcribe", "minFiles": 3 },
     { "dir": "lib/rescue", "minFiles": 2 }
@@ -81,6 +81,14 @@
     {
       "path": "tests/api/documents.route.test.ts",
       "why": "書類の保存: ログイン中の範囲で見えない利用者には404で書かない・利用者を DB から読めなければ503（404 にしない）・範囲を決められなければ503・常に下書き・中身はオブジェクトで200KB・32段まで"
+    },
+    {
+      "path": "tests/api/latestDocs.route.test.ts",
+      "why": "利用者一覧の書類の日付: 失敗（401・範囲を決められない503・DB を読めない503・そのほか500）を空の答えにせず文で返す・範囲の外の利用者の日付を返さない・保存に残させない（no-store）"
+    },
+    {
+      "path": "lib/db/documents.test.ts",
+      "why": "書類の日付の材料: PostgREST が1回1000行で切っても全部読む（満杯のページの次も読む）・自分が保存した書類だけ（created_by）・中身は読まない・途中で失敗したら途中までを返さずに投げる"
     },
     {
       "path": "tests/api/entryErrors.route.test.ts",

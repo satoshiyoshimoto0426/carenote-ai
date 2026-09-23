@@ -46,3 +46,19 @@ export interface CareDocumentInput {
   content: unknown;
   source: CareDocumentSource;
 }
+
+/**
+ * 保存帳票の「どの利用者の・どの種類が・いつ・どの状態で」だけを持つ形（中身の content は持たない）。
+ *
+ * なぜあるか（2026-09-24・作り直し計画 U5）: 利用者一覧に種類ごとの最新日付と「更新」の列を出すのに、
+ * 下書きの本文（暗号化していない JSONB）は要らない。日付のためだけに本文をサーバのメモリや応答へ運ばない。
+ * 何と繋がるか: lib/db/documents.ts の getLatestDocMeta が返し、lib/documents/latest.ts の
+ * summarizeLatestDocs が利用者ごとにまとめ、app/api/clients/latest-docs/route.ts が画面へ返す。
+ */
+export interface CareDocumentMeta {
+  clientId: string;
+  docType: CareDocumentType;
+  status: CareDocumentStatus;
+  /** 保存した日時（DB の created_at。ISO 形式） */
+  createdAt: string;
+}

@@ -120,8 +120,9 @@
 | `lib/privacy/pseudonymize.ts` | 氏名⇄記号の置換＋利用者コード採番（純粋・テスト済） | 実装・テスト済 |
 | `lib/privacy/retention.ts` | 保持期限算出（5年） | 実装・テスト済 |
 | `lib/db/errors.ts` | DB の失敗を「0件・見えない・空」と分ける共通の部品（`DbAccessError`〔職員向けの `publicMessage` つき〕・`dbFailedMessage`・`isMalformedIdError`〔22P02 は0件扱い〕）。`ClientLookupError` はこの子。見張り= `lib/db/dbFailures.test.ts`（2026-09-24） | 実装済 |
-| `lib/db/{clients,documents}.ts` | 利用者・帳票のデータアクセス（service role＋アプリ層 created_by スコープ。実名は client_identities に暗号化）。approve/unapproveDocument（G4）。帳票の `content` は**暗号化しない JSONB**で、名簿の名前は記号・番号類は戻した元の値・名簿に無い名前はそのまま入り得る（「実名を含めない」とは言えない。2026-09-23 に説明を事実へ訂正） | 実装済 |
+| `lib/db/{clients,documents}.ts` | 利用者・帳票のデータアクセス（service role＋アプリ層 created_by スコープ。実名は client_identities に暗号化）。approve/unapproveDocument（G4）。`getLatestDocMeta`（利用者一覧の日付の列の材料。本人が保存した書類の種類・状態・保存日時だけ・ページに分けて全部読む ── 2026-09-24 U5）。帳票の `content` は**暗号化しない JSONB**で、名簿の名前は記号・番号類は戻した元の値・名簿に無い名前はそのまま入り得る（「実名を含めない」とは言えない。2026-09-23 に説明を事実へ訂正） | 実装済 |
 | `app/api/clients/`・`app/api/clients/[id]/`・`app/api/documents/`・`app/api/documents/[id]/` | 利用者CRUD（一覧/作成/詳細＋帳票）・帳票保存・帳票承認 PATCH（Clerk認証） | 実装済 |
+| `app/api/clients/latest-docs/`・`lib/documents/latest.ts` | 利用者一覧の「書類の種類ごとの最新日付」と「更新」（GET・Clerk認証・no-store）。`latest.ts` は純粋なまとめ（`summarizeLatestDocs`・ブラウザでも読める）。画面の列は統合の後で繋ぐ（下の「利用者一覧の書類の日付」） | API 実装済（2026-09-24） |
 | `lib/clients/{listError,useClientList}.ts` | 画面から利用者一覧を読む（`fetchClientList`・`useClientList`）。「0人」と「読めなかった」を分け、読めなかったときの文言（先頭は必ず「利用者一覧を読めませんでした」）を1か所に置く。ブラウザでも読むのでサーバ専用のものを import しない | 実装済（2026-09-23） |
 | `types/{client,document}.ts` | 利用者・帳票の型 | 実装済 |
 | `supabase/clients_documents.sql`・`supabase/approval_migration.sql` | clients / client_identities / documents ＋ RLS（多層防御）。approval_migration は既存DBへの G4 列追加（冪等） | 要適用（SQL Editor） |
@@ -137,6 +138,8 @@
 
 **lib/db 全体で「0件」と「DB の失敗」を分ける (2026-09-24・S1 の検収の指摘 ── 同じ種類の3回目)**: 上の直しの後も、隣の関数が DB の失敗を 0件で返していた（`getRelatedPeople`・`getTranscriptsByClient`・`getDocumentsByClient`・`getEvaluations` は `[]`、`getTranscriptText` と `approveDocument`/`unapproveDocument` は `null`、`deleteTranscript` は `false` ＝入口で「見つかりませんでした」「書類が見つかりません。」）。いまは共通の `lib/db/errors.ts` の `DbAccessError` を投げ（1件を読むものは `maybeSingle`、uuid の形でない id は0件扱い、`deleteTranscript` は消えた件数まで見る）、入口（`GET /api/clients/[id]`・`PATCH /api/documents/[id]`・`GET /api/clients/[id]/related`・`GET /api/transcripts`・`GET/DELETE /api/transcripts/[id]`・`GET /api/history`）が **503 と `e.publicMessage`** を返す（`ClientLookupError` も子なので同じ受け方）。「失敗」だけを表す戻り値（`saveDocument`・`createClientRecord`・`saveEvaluation` の null、`saveTranscript` の `failed`、`deleteRelatedPerson` の `"error"`、`addRelatedPerson` の「登録に失敗しました。」）はそのまま。**見張り** `lib/db/dbFailures.test.ts`: Supabase を偽物にして問い合わせを1つずつ失敗させ、どの関数も「0件・見えない・空」と答えないことを確かめる。`lib/db.ts`・`lib/db/*.ts` の async 関数が一覧（CONTRACTS）に無ければ落ちる（新しい関数は DB が落ちたときの答えを決めて載せる）。入口の 503 は `tests/api/entryErrors.route.test.ts` の `DB_FAILURE_ROUTES`。
 **画面も黙らない（同日）**: 503 を受けた画面が空・0件に見せないよう、`components/clients/RelatedPeople.tsx`（関係者名簿）・`components/clients/SavedTranscripts.tsx`（保存した文字起こし。以前は欄ごと消えていた・「消す」の失敗はサーバの文をそのまま）・`app/(dashboard)/dashboard/page.tsx`（評価の履歴。件数は 0 でなく「—」）が、読めなかったことを `role="alert"` の文字で出す（名簿と文字起こしは「もう一度読む」つき）。検査= `tests/ui/clientListErrors.live.test.tsx`。
+
+**利用者一覧の書類の日付（2026-09-24・作り直し計画 U5 の API 部分・吉本さん決定 2026-09-23）**: `GET /api/clients/latest-docs` は ①ログイン（401）②`resolveScope`（範囲を決められなければ DB に触らず 503）③`getClients(scope)`（名簿と同じ範囲の利用者だけ）④`getLatestDocMeta(ids, userId)`（`lib/db/documents.ts`。**この職員が保存した書類だけ**＝created_by・中身の content は読まない・利用者 id を100件ずつ・500行ずつ、満杯でないページが来るまで読む ── PostgREST の既定1000行の黙った打ち切りで、ある書類を「まだありません」に見せないため。どのページでも DB を読めなければ `DbAccessError` を投げ、途中までを返さない）⑤`summarizeLatestDocs`（`lib/documents/latest.ts`・純粋。種類ごとに一番新しい書類〔下書きも数える〕と、「更新」＝一番新しい書類の日付と利用者の登録日の新しい方。日時は文字でなく時刻で比べ、読めない日時は投げる）の順で、`{ clients: [{ clientId, latest, updatedAt }] }` を `Cache-Control: no-store` で返す。書類の行を読めなければ 503（`LATEST_DOCS_LOAD_FAILED_MESSAGE`）、利用者一覧を読めない・日時を読めないなどは 500（同じ文・理由はサーバのログだけ）。どれも空の答えにしない。一覧（`GET /api/clients`）と別の入口にしたのは、日付の失敗を日付の欄だけに留めるため。書類の見える範囲は変えていないので、事業所で共有していても同僚が保存した書類の日付は入らない（画面は「書類の日付は、自分が保存した書類だけです」を出す）。画面の列（アセス／プラン／会議／経過／モニタ／更新）は統合の後で繋ぐ。検査= `lib/documents/latest.test.ts`・`lib/db/documents.test.ts`（1回1000行で切る偽の PostgREST で2500行を全部読む）・`tests/api/latestDocs.route.test.ts`・`tests/api/orgScope.route.test.ts`・`tests/api/entryErrors.route.test.ts`（`DB_FAILURE_ROUTES`）・`lib/db/dbFailures.test.ts`（CONTRACTS）。
 
 実行の前提: ①`supabase/clients_documents.sql`（既存DBは `approval_migration.sql` も）を Supabase で実行 ②`CARENOTE_PII_KEY`(base64 32B) を設定。
 
@@ -213,11 +216,11 @@ AES-256-GCM・5年・可視性は `getClientById` に一本化・**AIへは渡�
 
 **管理者の準備手順（2026-09-13）**: `docs/ADMIN-SETUP.md` が正本（①関係者名簿の表 ②索引 ③Clerk 組織 ④既存データの移行）。SQL の中身は `supabase/client_related.sql` と `supabase/client_org_scope.sql`。
 
-**名簿の範囲（2026-09-13・G3b 吉本さん決定「事業所で共有」）**: `lib/db/clients.ts` の `scopeExpr` が唯一の絞り込みで、掛かるのは **`clients` だけ**。氏名の2表（`client_identities` / `client_related_identities`）は**親の利用者IDで引く**（`selectByClientIds`）── 3表を別々に `org_id` で絞ると、移行が揃わなかったときや組織未選択時に登録された関係者がいるときに**利用者は見えるのに氏名だけ名簿から落ちる**（＝置換も漏れ検査も効かない fail-open。独立審査 2026-09-13）。ルート（**11ファイル・16ハンドラ** ── 文字起こしと書類の保存を含む。2026-09-23 数え直し）が範囲を渡すことは `tests/api/orgScope.route.test.ts` が縛る。
+**名簿の範囲（2026-09-13・G3b 吉本さん決定「事業所で共有」）**: `lib/db/clients.ts` の `scopeExpr` が唯一の絞り込みで、掛かるのは **`clients` だけ**。氏名の2表（`client_identities` / `client_related_identities`）は**親の利用者IDで引く**（`selectByClientIds`）── 3表を別々に `org_id` で絞ると、移行が揃わなかったときや組織未選択時に登録された関係者がいるときに**利用者は見えるのに氏名だけ名簿から落ちる**（＝置換も漏れ検査も効かない fail-open。独立審査 2026-09-13）。ルート（**12ファイル・17ハンドラ** ── 文字起こし・書類の保存・書類の日付を含む。2026-09-24 に書類の日付を足した）が範囲を渡すことは `tests/api/orgScope.route.test.ts` が縛る。
 
 記号（A様）の採番は**範囲内の最大＋1**（件数だと範囲が混ざったとき同じ記号を二度振る）。安全網は3段: ①`assertClientCodesUnique`（同じ記号の利用者が2人 ── **復号する前に**見るので復号失敗行があっても取りこぼさない）②`expandAliasVariants` が「同じ表記が違う記号」を見つけたら `AliasConflictError`（空白違いの別人・同姓同名を黙って捨てない）③`assertUnderRowLimit`（900件超で停止 ── PostgREST の既定1000行の黙った打ち切り対策）。これらは待っても直らないので `ALIAS_PERMANENT_MESSAGE`（管理者へ連絡）で返し、読み直さない。
 
-**⚠ Clerk の `orgId` は「所属」ではなく「いま選んでいる事業所（Active Organization）」**。所属させただけでは null のまま＝共有は始まらない。だから `components/SharingStatus.tsx` が状態を常時表示し、その場で切り替えられるようにしている（`OrganizationSwitcher`）。表示の3状態（確認中／事業所で共有中＋事業所名／自分の登録分のみ＋「置き換わりません」の注意書き）と切り替えが**隠されずに**出ることは `components/SharingStatus.test.tsx` が縛る（Clerk は偽物にする・2026-09-23。切り替えを包む要素を隠しても緑だった穴は 2026-09-24 に `isReachable` で塞いだ）。`getClientAliases` は orgId が null のとき warn を残す（センサー）。**有効化には Clerk の組織設定＋SQL 2本の実行＋既存データの移行＋各職員が事業所を選ぶこと が要る**（手順の正本= `docs/ADMIN-SETUP.md`）。保存書類（`documents`）の共有は未対応で `created_by` のまま。
+**⚠ Clerk の `orgId` は「所属」ではなく「いま選んでいる事業所（Active Organization）」**。所属させただけでは null のまま＝共有は始まらない。だから `components/SharingStatus.tsx` が状態を常時表示し、その場で切り替えられるようにしている（`OrganizationSwitcher`）。表示の3状態（確認中／事業所で共有中＋事業所名／自分の登録分のみ＋「置き換わりません」の注意書き）と切り替えが**隠されずに**出ることは `components/SharingStatus.test.tsx` が縛る（Clerk は偽物にする・2026-09-23。切り替えを包む要素を隠しても緑だった穴は 2026-09-24 に `isReachable` で塞いだ）。`getClientAliases` は orgId が null のとき warn を残す（センサー）。**有効化には Clerk の組織設定＋SQL 2本の実行＋既存データの移行＋各職員が事業所を選ぶこと が要る**（手順の正本= `docs/ADMIN-SETUP.md`）。保存書類（`documents`）の共有は未対応で `created_by` のまま（利用者一覧の書類の日付も、自分が保存した書類だけ）。
 
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
@@ -255,7 +258,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-24 / 本文を直接読んでいた blob-upload（壊れた JSON で JSON の無い 500）と evaluate も `lib/requestBody.ts` に寄せた（12の入口。blob-upload は handleUpload の形も確かめる）。「唯一の道」の言い過ぎを直した（S1 の検収の指摘）*
+*最終更新: 2026-09-24 / 利用者一覧の書類の日付の API（`GET /api/clients/latest-docs`・`getLatestDocMeta`・`lib/documents/latest.ts`）を足した（作り直し計画 U5 の API 部分。画面の列は統合の後）。範囲を使うルートは 12ファイル・17ハンドラ*
+*2026-09-24 / 本文を直接読んでいた blob-upload（壊れた JSON で JSON の無い 500）と evaluate も `lib/requestBody.ts` に寄せた（12の入口。blob-upload は handleUpload の形も確かめる）。「唯一の道」の言い過ぎを直した（S1 の検収の指摘）*
 *2026-09-24 / 関係者名簿・保存した文字起こし・ダッシュボードが、読めなかったとき（503）に空・0件を見せず文字で出す（S1 の検収の指摘）*
 *2026-09-24 / lib/db 全体で DB の失敗を `DbAccessError`（`lib/db/errors.ts`）にし、入口は 503。見張り `lib/db/dbFailures.test.ts`（故障の注入・async 関数の抜けの検査）。使われていなかった `getEvaluationById` を削除（S1 の検収の指摘）*
 *2026-09-24 / 救済モードの一式の保存を途中の失敗から押し直しても、利用者をもう1人作らず・保存済みの帳票を二重に保存しない（`lib/rescue/saveBundle.ts`。S1 の検収の指摘）*

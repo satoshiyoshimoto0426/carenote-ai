@@ -31,6 +31,7 @@ vi.mock("@clerk/nextjs/server", () => ({ auth: clerk.auth }));
 
 const db = vi.hoisted(() => ({
   getClientAliases: vi.fn(),
+  getClients: vi.fn(),
   getClientById: vi.fn(),
   createClientRecord: vi.fn(),
   getRelatedPeople: vi.fn(),
@@ -47,6 +48,7 @@ const documents = vi.hoisted(() => ({
   approveDocument: vi.fn(),
   unapproveDocument: vi.fn(),
   getDocumentsByClient: vi.fn(),
+  getLatestDocMeta: vi.fn(),
 }));
 vi.mock("@/lib/db/documents", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/db/documents")>();
@@ -95,6 +97,7 @@ const { DbAccessError } = await import("@/lib/db/errors");
 const { GET: history } = await import("@/app/api/history/route");
 const { REQUEST_PARSE_ERROR_MESSAGE } = await import("@/lib/requestBody");
 const { POST: createClient } = await import("@/app/api/clients/route");
+const { GET: latestDocs } = await import("@/app/api/clients/latest-docs/route");
 const { GET: getClient } = await import("@/app/api/clients/[id]/route");
 const {
   GET: listRelated,
@@ -209,6 +212,10 @@ beforeEach(() => {
   documents.unapproveDocument.mockResolvedValue(null);
   documents.saveDocument.mockResolvedValue(null);
   documents.getDocumentsByClient.mockResolvedValue([]);
+  db.getClients.mockResolvedValue([
+    { id: "c1", code: "A", createdAt: "2026-09-01T00:00:00+00:00" },
+  ]);
+  documents.getLatestDocMeta.mockResolvedValue([]);
   transcripts.saveTranscript.mockResolvedValue({ ok: false, reason: "client_not_visible" });
   ai.generateFromBody.mockResolvedValue({});
   upload.handleUpload.mockResolvedValue({ type: "blob.generate-client-token", clientToken: "t" });
@@ -377,6 +384,11 @@ const DB_FAILURE_ROUTES: [string, () => Promise<Response>, () => ReturnType<type
     () => transcripts.deleteTranscript,
   ],
   ["GET /api/history（評価の履歴）", () => history(), () => evaluations.getEvaluations],
+  [
+    "GET /api/clients/latest-docs（利用者一覧の書類の日付）",
+    () => latestDocs(),
+    () => documents.getLatestDocMeta,
+  ],
 ];
 
 describe("DB を読み書きできなかったら、どの入口も「ありません・見つかりません」と答えず 503 と職員向けの文", () => {

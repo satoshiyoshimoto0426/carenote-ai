@@ -67,6 +67,7 @@ vi.mock("../supabase/server", () => ({
         "is",
         "order",
         "limit",
+        "range",
       ]) {
         chain[op] = () => {
           ops.push(op);
@@ -256,6 +257,11 @@ const CONTRACTS: Contract[] = [
     module: "documents",
     name: "getDocumentsByClient",
     call: () => documents.getDocumentsByClient("c1", "u1"),
+  },
+  {
+    module: "documents",
+    name: "getLatestDocMeta",
+    call: () => documents.getLatestDocMeta(["c1"], "u1"),
   },
   {
     module: "documents",
