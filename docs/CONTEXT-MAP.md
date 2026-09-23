@@ -222,8 +222,11 @@ npm test ─> tools/run-tests.mjs
 見張りの検査は `tools/testManifest.test.ts`（わざと壊した状態を作って止まることを確かめる）。CI（`quality-gates.yml`）は `npm run test` 経由で同じ見張りを通る（`package.json` の test が `node tools/run-tests.mjs` のままか・CI の行が `npm run test` のままか・`quality-gates.yml` に落ちても緑にする `continue-on-error` や段を飛ばす `if:` が無いかも、同じ検査が確かめる ── 入口を書き換えて見張りごと飛ばす抜け道を塞ぐ）。
 引数つき（`npm test -- <ファイル>`）でも⓪と `Errors` 行・終了コードの確認は必ず走る。件数の突き合わせと④は引数なしのときだけ（`-t` で絞ると外れたテストが skipped と数えられるため）。
 一覧の抜けを防ぐ検査: `lib/generation` で「AI への指示に氏名・実名・個人情報を書かせない」を固定している検査は、字面から拾って一覧と突き合わせる（2026-09-23 の検収で `kaipokeAssessment.test.ts` の抜けが見つかったため）。
-**未了（redesign/a を本番へ出す前に必須）**: 一覧の最低件数を下げる・名指しを消す・判定を緩める変更を人に知らせる注意喚起（MaouCastle ルートの `.claude/hooks/pre-tool-guard.sh`）に、見張りの3ファイルがまだ入っていない。
-別リポジトリのハーネス変更なので §2.7-F の二段ゲートで行う ── [maoucastle-game#38](https://github.com/satoshiyoshimoto0426/maoucastle-game/issues/38)。
+書く瞬間の注意喚起: 一覧の最低件数を下げる・名指しを消す・判定を緩める変更は、MaouCastle ルートの `.claude/hooks/pre-tool-guard.sh`（慎重領域 §6 #9）が
+見張りの4ファイル（`tools/run-tests.mjs`・`tools/safety-tests.json`・`tools/testManifest.mjs`・`tools/testManifest.test.ts`）への Edit/Write で知らせる。
+これはルートの `.claude/settings.json`（`Bash|Edit|Write`）で動く。carenote-ai 自身の `.claude/settings.json` は Bash だけを見る fail-safe で、注意喚起を持たない。
+**未了（redesign/a を本番へ出す前に必須）**: この注意喚起は maoucastle-game のブランチ `harness/h3-safety-advisory`（ab5e3ad）にあり、
+main へはまだ入っていない。ハーネスの変更なので PR＋独立審査（§2.7-F 出口）を通す ── [maoucastle-game#38](https://github.com/satoshiyoshimoto0426/maoucastle-game/issues/38)。
 
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
@@ -233,7 +236,7 @@ npm test ─> tools/run-tests.mjs
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-23 / テストの見張り（安全テストの一覧 `tools/safety-tests.json`・判定 `tools/testManifest.mjs`・落ちたときの名指し）を反映*
+*最終更新: 2026-09-23 / テストの見張り（安全テストの一覧 `tools/safety-tests.json`・判定 `tools/testManifest.mjs`・落ちたときの名指し・ルートのフックの注意喚起との接続）を反映*
 *2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

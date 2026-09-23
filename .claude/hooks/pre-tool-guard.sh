@@ -14,6 +14,10 @@ if [[ -f "$HOME/.claude/hooks/pre-bash-guard.py" ]]; then
   exit 0
 fi
 
+# python の入出力を UTF-8 に固定する（2026-09-23・maoucastle-game steering #28 の横展開）。Windows の python は
+# 既定で stdin を cp932 で読み、日本語＋\ のパス（「プ」の 0x97 と続く 0x5C が1文字に化ける）で JSON が壊れて素通ししていた。
+# 検知パターンの変更ではない（パターンはグローバル層が所有・上記の「ここは触らない」はパターンの話）。
+export PYTHONIOENCODING=utf-8
 TOOL_NAME=$(echo "$INPUT" | python -c "import sys,json; print(json.load(sys.stdin).get('tool_name',''))" 2>/dev/null || true)
 TOOL_INPUT=$(echo "$INPUT" | python -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('tool_input',{})))" 2>/dev/null || echo "{}")
 
