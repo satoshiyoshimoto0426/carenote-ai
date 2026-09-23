@@ -1,7 +1,19 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import type { ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import RootLayout from "@/app/layout";
 import { contrastRatio, parseCss, resolveColor, rootTokens } from "@/tests/helpers/cssTokens";
+
+// ③ の検査は RootLayout を実際に描いて、出てきた <link> を見る。本物の ClerkProvider は
+// サーバー側の仕組みを読み込むので、子をそのまま描くだけの代役に差し替える
+// （lib/clerkAppearance.test.ts は props を見るだけなので null を返す代役。ここは <head> の中まで描く必要がある）。
+vi.mock("@clerk/nextjs", () => ({
+  ClerkProvider: function ClerkProviderStub({ children }: { children?: ReactNode }) {
+    return children;
+  },
+}));
 
 /**
  * 全体の CSS（app/globals.css）が画面を壊していないかを見張るセンサー。
@@ -25,10 +37,13 @@ import { contrastRatio, parseCss, resolveColor, rootTokens } from "@/tests/helpe
  * ③ 書体を実際に読み込んでいるか:
  *   2026-09-16 に「layout.tsx で Noto を読み込んでいるのに --sans が一度も使っていない」ずれが
  *   見つかった。--sans / --mono の先頭の書体を app/layout.tsx が読み込んでいることを確かめる。
+ *   同日の追補（A1 の検証）: 以前は layout.tsx の**文字列**に `family=IBM+Plex+Sans+JP:` があるかだけを
+ *   見ていたので、`<link rel="stylesheet">` の行を消しても緑のままだった（URL の定数が残るため）。
+ *   今は RootLayout を描き、出てきた HTML に「その書体と太さを載せた rel="stylesheet" の <link>」が
+ *   あることを確かめる。
  */
 
 const CSS = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
-const LAYOUT = readFileSync(join(process.cwd(), "app", "layout.tsx"), "utf8");
 
 /**
  * 中に入って確かめる @ 規則。層の外に置かれた @media / @supports / @container の中の規則も
@@ -176,14 +191,168 @@ function firstFamily(stack: string): string {
     .replace(/^["']|["']$/g, "");
 }
 
+/**
+ * 書体ごとに読み込まなければならない太さ。A案の画面の決まり（本文 400・強調 500・見出し 700、
+ * 記号・件数・日付の Mono は 400 / 500 ── 実装計画 F1）。読み込んでいない太さは、近い太さで代わりに
+ * 描かれるか、ブラウザが太く見せかけて描くので、画面がデザインとずれる。
+ */
+const REQUIRED_WEIGHTS: Record<string, number[]> = {
+  "--sans": [400, 500, 700],
+  "--mono": [400, 500],
+};
+
+/** React が属性の値に入れる文字の置き換え（&amp; など）を元に戻す。&amp; は最後に戻す。 */
+function decodeAttr(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+/** 描いた HTML から、すべての <link> の属性を取り出す（属性の名前は小文字にそろえる）。 */
+function linkTags(html: string): Record<string, string>[] {
+  return [...html.matchAll(/<link\b([^>]*)>/gi)].map((tag) => {
+    const attrs: Record<string, string> = {};
+    for (const [, name, quoted] of tag[1].matchAll(
+      /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:="([^"]*)")?/g,
+    )) {
+      attrs[name.toLowerCase()] = decodeAttr(quoted ?? "");
+    }
+    return attrs;
+  });
+}
+
+/** Google Fonts の CSS の読み込み先（css2）。これ以外の <link> は書体の読み込みとして数えない。 */
+const GOOGLE_CSS2 = "https://fonts.googleapis.com/css2?";
+
+/**
+ * Google Fonts（css2）の href から、書体名ごとに読み込む太さの範囲を取り出す。
+ * family の書き方: `IBM Plex Sans JP:wght@400;500;700`、`X:ital,wght@0,400;1,700`、
+ * 可変の太さは `X:wght@100..900`。軸の指定が無い `family=X` は 400 だけ。
+ */
+function googleFontWeights(href: string): Map<string, [number, number][]> {
+  const out = new Map<string, [number, number][]>();
+  if (!href.startsWith(GOOGLE_CSS2)) return out;
+  for (const family of new URL(href).searchParams.getAll("family")) {
+    const [name, spec] = family.split(":");
+    const ranges: [number, number][] = [];
+    if (spec === undefined) {
+      ranges.push([400, 400]);
+    } else {
+      const [axes, tuples = ""] = spec.split("@");
+      const wght = axes.split(",").indexOf("wght");
+      for (const tuple of tuples.split(";")) {
+        const value = wght < 0 ? "400" : (tuple.split(",")[wght] ?? "");
+        const [lo, hi = lo] = value.split("..").map(Number);
+        if (Number.isFinite(lo) && Number.isFinite(hi)) ranges.push([lo, hi]);
+      }
+    }
+    out.set(name, [...(out.get(name) ?? []), ...ranges]);
+  }
+  return out;
+}
+
+/**
+ * 描いた HTML が、求める書体と太さを Google Fonts から読み込んでいるかを確かめ、足りないものを返す。
+ * 数えるのは、`rel` に `stylesheet` を含み、無効（disabled）でなく、`media` が付いていないか
+ * all / screen の <link> だけ（`media="print"` などは画面の表示には効かない）。
+ */
+function fontLinkProblems(
+  html: string,
+  required: { family: string; weights: number[] }[],
+): string[] {
+  const loaded = new Map<string, [number, number][]>();
+  for (const link of linkTags(html)) {
+    const rels = (link.rel ?? "").toLowerCase().split(/\s+/);
+    const media = (link.media ?? "all").trim().toLowerCase();
+    if (!rels.includes("stylesheet") || "disabled" in link || !/^(all|screen)$/.test(media))
+      continue;
+    for (const [family, ranges] of googleFontWeights(link.href ?? "")) {
+      loaded.set(family, [...(loaded.get(family) ?? []), ...ranges]);
+    }
+  }
+  const problems: string[] = [];
+  for (const { family, weights } of required) {
+    const ranges = loaded.get(family);
+    if (!ranges) {
+      problems.push(`${family} を読み込む <link rel="stylesheet"> がありません`);
+      continue;
+    }
+    const missing = weights.filter((w) => !ranges.some(([lo, hi]) => lo <= w && w <= hi));
+    if (missing.length > 0)
+      problems.push(`${family} の太さ ${missing.join(" / ")} を読み込んでいません`);
+  }
+  return problems;
+}
+
 describe("書体の指定と読み込みがずれていない", () => {
   const tokens = rootTokens(CSS);
+  const required = Object.entries(REQUIRED_WEIGHTS).map(([name, weights]) => ({
+    family: firstFamily(tokens[name] ?? ""),
+    weights,
+  }));
 
-  it("--sans / --mono の先頭の書体を app/layout.tsx が Google Fonts から読み込んでいる", () => {
-    for (const name of ["--sans", "--mono"]) {
-      const family = firstFamily(tokens[name] ?? "");
-      expect(family, `${name} の先頭の書体`).not.toBe("");
-      expect(LAYOUT).toContain(`family=${family.replace(/ /g, "+")}:`);
-    }
+  it("--sans / --mono の先頭の書体を app/layout.tsx が Google Fonts から読み込んでいる（描いた HTML で確かめる）", () => {
+    for (const { family } of required) expect(family, "--sans / --mono の先頭の書体").not.toBe("");
+    const html = renderToStaticMarkup(RootLayout({ children: null }));
+    expect(fontLinkProblems(html, required)).toEqual([]);
+  });
+
+  it("検査そのものが壊れていない（<link> が無い・rel が違う・太さが足りない、を見つけられる）", () => {
+    const need = [
+      { family: "IBM Plex Sans JP", weights: [400, 500, 700] },
+      { family: "IBM Plex Mono", weights: [400, 500] },
+    ];
+    const href =
+      "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap";
+    expect(fontLinkProblems(`<head><link href="${href}" rel="stylesheet"/></head>`, need)).toEqual(
+      [],
+    );
+    // <link> の行を消した（URL の定数だけが残った）── 以前の文字列の検査はこれを見逃した
+    expect(
+      fontLinkProblems(
+        '<head><link rel="preconnect" href="https://fonts.googleapis.com"/></head>',
+        need,
+      ),
+    ).toEqual([
+      'IBM Plex Sans JP を読み込む <link rel="stylesheet"> がありません',
+      'IBM Plex Mono を読み込む <link rel="stylesheet"> がありません',
+    ]);
+    // rel が stylesheet でない・画面に効かない media・無効
+    expect(fontLinkProblems(`<link href="${href}" rel="preload"/>`, need)).toHaveLength(2);
+    expect(
+      fontLinkProblems(`<link href="${href}" rel="stylesheet" media="print"/>`, need),
+    ).toHaveLength(2);
+    expect(
+      fontLinkProblems(`<link href="${href}" rel="stylesheet" disabled=""/>`, need),
+    ).toHaveLength(2);
+    // 太さが足りない
+    const thin =
+      "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500&amp;family=IBM+Plex+Mono:wght@400";
+    expect(fontLinkProblems(`<link href="${thin}" rel="stylesheet"/>`, need)).toEqual([
+      "IBM Plex Sans JP の太さ 700 を読み込んでいません",
+      "IBM Plex Mono の太さ 500 を読み込んでいません",
+    ]);
+    // 可変の太さの範囲・ital 付きの書き方・軸の指定なし（400 だけ）も読める
+    const variable = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@100..900";
+    const ital =
+      "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400";
+    expect(
+      fontLinkProblems(
+        `<link rel="stylesheet" href="${variable}"><link rel="stylesheet" href="${ital}">`,
+        need,
+      ),
+    ).toEqual([]);
+    expect(
+      fontLinkProblems(
+        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono">',
+        need,
+      ),
+    ).toEqual([
+      'IBM Plex Sans JP を読み込む <link rel="stylesheet"> がありません',
+      "IBM Plex Mono の太さ 500 を読み込んでいません",
+    ]);
   });
 });
