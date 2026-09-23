@@ -213,7 +213,8 @@ AES-256-GCM・5年・可視性は `getClientById` に一本化・**AIへは渡�
 Clerk の画面用の**写し**が `lib/clerkAppearance.ts`（Clerk は CSS 変数を解釈しない箇所があるため16進数で持つ）。
 センサー: `app/globals.test.ts`（①層の外で要素の余白を決める規則 ── `@media`/`@supports`/`@container` の中と `@layer a, b;` の直後も見る
 ②文字色トークンが地〔paper/card/pane/surface-2〕の上で WCAG AA 4.5:1 以上 ③`--sans`/`--mono` の先頭の書体を layout.tsx が読み込む）、
-`lib/clerkAppearance.test.ts`（写しとトークンのずれ ＋ 下の層の順番）。CSS の読み取り器は `tests/helpers/cssTokens.ts`（テスト専用）。
+`lib/clerkAppearance.test.ts`（写しとトークンのずれ ＋ 下の層の順番 ＋ 押す・入力する部品に 44px〔`min-h-11`〕を約束するクラスが付いているか・
+elements の部品が「押す／押さない／まだ計測していない」のどれかに分けてあるか）。CSS の読み取り器は `tests/helpers/cssTokens.ts`（テスト専用）。
 **`--faint` は 58 か所で本物の文字（赤い言葉の理由など）に使われている** ── 4.5:1 を割る値にしない。
 **Clerk のスタイルは `clerk` 層に入れる（3か所で1組）**: `app/layout.tsx` の `ClerkProvider appearance={{ cssLayerName: CLERK_CSS_LAYER }}`
 ＋ `app/globals.css` 先頭の `@layer theme, base, clerk, components, utilities;`（`@import "tailwindcss"` より前）＋ 名前の正本 `lib/clerkAppearance.ts` の `CLERK_CSS_LAYER`。
@@ -227,7 +228,7 @@ Clerk の画面用の**写し**が `lib/clerkAppearance.ts`（Clerk は CSS 変�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記*
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

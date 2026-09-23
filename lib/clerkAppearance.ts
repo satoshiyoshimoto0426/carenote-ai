@@ -33,6 +33,14 @@ export const CLERK_CSS_LAYER = "clerk";
  * CLERK_CSS_LAYER の層に入り、その層が utilities より前に並んでいること（上の CLERK_CSS_LAYER を参照）。
  * 2026-09-23 まではこれが無く、クラスは生成されているのに Clerk の層外スタイルに負けて画面に効いていなかった。
  *
+ * 押す・入力する部品（入力欄・主ボタン・Google でログインするボタン・パスワードを見せるボタン・
+ * 下の「ログイン / 新規登録」への切り替えリンク）は、スマホでも高さ 44px 以上にする（デザインの決まり
+ * 「押す場所は 44px 以上」）。付ける前は、375px 幅の /sign-in・/sign-up で入力欄と主ボタンが 31.4px、
+ * パスワードを見せるボタンが 40×24px、切り替えリンクが 19.4px しかなかった（2026-09-23 に開発サーバーで計測）。
+ * 外すと lib/clerkAppearance.test.ts の「押す・入力する部品は 44px 以上」が落ちる。
+ * フォームを送った後にだけ出る部品（メールの横の変更ボタン・コードの再送など）はまだ計測できていないので、
+ * docs/REDESIGN-A-SIGNOFF.md で追跡している。
+ *
  * 使う場所: app/(auth)/sign-in・sign-up のページと components/SharingStatus.tsx（組織切替）。
  */
 export const clerkAppearance: Appearance = {
@@ -57,10 +65,21 @@ export const clerkAppearance: Appearance = {
     card: "shadow-none",
     headerTitle: "text-[17px] font-bold text-[#15181c]", // --ink
     headerSubtitle: "text-[13px] text-[#59616a]", // --muted
-    socialButtonsBlockButton: "border-[#d3d9de] text-[#15181c] hover:bg-[#f7f9fa]", // --btn-line / --ink / --surface-2
+    // min-h-11 = 44px（スマホで押せる高さ）。以下、押す・入力する部品は同じ
+    socialButtonsBlockButton: "min-h-11 border-[#d3d9de] text-[#15181c] hover:bg-[#f7f9fa]", // --btn-line / --ink / --surface-2
     formFieldLabel: "text-[12.5px] font-bold text-[#15181c]", // --ink
-    formButtonPrimary: "bg-[#0e5c46] hover:bg-[#0a4735] text-white font-bold normal-case", // --green / --green-deep
-    footerActionLink: "text-[#0e5c46] hover:text-[#0a4735] font-medium", // --green / --green-deep
+    formFieldInput: "min-h-11",
+    // パスワードを見せるボタン: Clerk は入力欄の中に上下 3.7px 空けて絶対配置する（入力欄が 44px でも約 37px）。
+    // 上下いっぱい（inset-y-0）にして 44px、幅も 44px にする
+    formFieldInputShowPasswordButton: "inset-y-0 min-h-11 min-w-11",
+    // ↑のボタンは右に 4px の余白を持つので、右から 48px（pr-12）空けて、入力した文字がボタンの下に潜らないようにする
+    formFieldInputGroup: "[&>input]:pr-12",
+    formButtonPrimary: "min-h-11 bg-[#0e5c46] hover:bg-[#0a4735] text-white font-bold normal-case", // --green / --green-deep
+    // 切り替えリンクを 44px にすると、横の案内文（Don’t have an account? など）が上に寄って高さがずれる
+    // （2026-09-23 /sign-in で確認）。並びの行（footerAction）で上下の中央に揃える
+    footerAction: "items-center",
+    footerActionLink:
+      "flex min-h-11 min-w-11 items-center text-[#0e5c46] hover:text-[#0a4735] font-medium", // --green / --green-deep
     identityPreviewEditButton: "text-[#0e5c46]", // --green
     formResendCodeLink: "text-[#0e5c46]", // --green
   },

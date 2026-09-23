@@ -17,7 +17,9 @@
 /**
  * CSS のコメント（スラッシュとアスタリスクで囲んだ部分）を消す。
  * なぜ: globals.css の説明コメントには `@layer base` のような文字列そのものが書かれている。
- * 消さずに探すと、説明文を本物の宣言と取り違える（parseCss と層の順番の検査が共通で使う）。
+ * 消さずに探すと、説明文を本物の宣言と取り違える。
+ * 使う場所: この下の parseCss・layerOrderStatement と、lib/clerkAppearance.test.ts
+ * （`@import "tailwindcss"` の位置を、コメントの中の文字を数えずに探す）。
  */
 export function stripCssComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -47,7 +49,13 @@ export function layerOrderStatement(
   };
 }
 
-/** 波かっこ1組ぶんのまとまり（規則・@media・@layer など）。 */
+/**
+ * 波かっこ1組ぶんのまとまり（規則・@media・@layer など）。parseCss が返す木の1つの節。
+ * なぜ木にするか: 「層（@layer）の外か」は、どのまとまりの中にあるかでしか決まらない。以前の読み方は
+ * 最上位の段しか見ず、@media の中を見落とし、`@layer a, b;` の直後の規則を層の中と見誤った（2026-09-23）。
+ * 使う場所: app/globals.test.ts の unlayeredRules（層の外の規則を @media の中まで降りて集める）と、
+ * この下の rootTokens（最上位の `:root` を探す）。
+ */
 export interface CssNode {
   /** `{` の前に書かれたもの（選択子、または `@media (…)` などの前置き） */
   prelude: string;
@@ -59,6 +67,9 @@ export interface CssNode {
 
 /**
  * CSS を波かっこのまとまりの木に分ける。
+ * なぜ: globals.css を読む検査（層の外の余白・トークンの値）が、同じ1つの読み方を使うため。
+ * 読み方が検査ごとに違うと、片方だけ直して片方が黙って外れる。
+ * 使う場所: app/globals.test.ts（層の外の余白の規則を探す）と、この下の rootTokens（トークンを読む）。
  *
  * `;` で終わる文（`@import "tailwindcss";` / `@layer theme, base;` など）は、次の規則の
  * 選択子に混ざらないよう、その場で区切る。以前の読み方はここを区切らず、`@layer a, b;` の
@@ -108,6 +119,9 @@ export function parseCss(css: string): CssNode[] {
 /**
  * 最上位の `:root { … }` に書かれたカスタムプロパティ（`--ink` など）を名前→値で返す。
  * `:root` が複数あれば後ろが勝つ（CSS と同じ）。1つも無ければ例外 ── 読めないまま緑にしないため。
+ * なぜ: トークンの値の正本は globals.css の :root だけ。テストが値を書き写して持つと、写しがずれる。
+ * 使う場所: app/globals.test.ts（文字色のコントラスト・--sans / --mono の書体の読み込み）と
+ * lib/clerkAppearance.test.ts（Clerk の見た目の16進数・書体がトークンとずれていないか）。
  */
 export function rootTokens(css: string): Record<string, string> {
   const roots = parseCss(css).filter((n) => n.prelude === ":root");
@@ -125,6 +139,9 @@ export function rootTokens(css: string): Record<string, string> {
 /**
  * トークンの色を `#rrggbb`（小文字）で返す。`var(--other)` は辿る。
  * 16進数でない値（rgb() など）は例外にする ── 計算できない色を「合格」と扱わないため。
+ * なぜ var() を辿るか: `--x: var(--green)` のような別名のトークンも、実際に画面に出る色で比べるため。
+ * 使う場所: app/globals.test.ts（文字色と地の色のコントラスト）と
+ * lib/clerkAppearance.test.ts（Clerk の色の変数が、対応するトークンと同じ16進数か）。
  */
 export function resolveColor(tokens: Record<string, string>, name: string, depth = 0): string {
   const value = tokens[name];
@@ -139,7 +156,13 @@ export function resolveColor(tokens: Record<string, string>, name: string, depth
   return hex;
 }
 
-/** `#abc` / `#AABBCC` を `#aabbcc` にそろえる。色でなければ null。 */
+/**
+ * `#abc` / `#AABBCC` を `#aabbcc` にそろえる。色でなければ null。
+ * なぜ: 同じ色でも書き方（大文字・3桁）が違うと、文字列の比較ではずれと誤判定する。
+ * null を返すのは、書体や大きさなど色でない値を「色ではない」と見分けるため。
+ * 使う場所: この下の resolveColor・contrastRatio と、lib/clerkAppearance.test.ts
+ * （Clerk の16進数とトークンの突き合わせ・elements に書いた色がトークンにあるか）。
+ */
 export function normalizeHex(value: string): string | null {
   const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim());
   if (!m) return null;
@@ -159,7 +182,9 @@ function relativeLuminance(hex: string): number {
 
 /**
  * 2色のコントラスト比（WCAG 2.x・1〜21）。本文の文字は 4.5 以上が AA の基準。
- * 使い道: app/globals.test.ts が「文字に使う色トークンが地の色の上で読めるか」を確かめる。
+ * なぜ: テストは文字を見るが色は見ない。地に溶けて読めない文字（A案の原案の --faint #a9b0b7 は約 2:1）でも
+ * 緑のままになるので、比を数で出して縛る。
+ * 使い道:app/globals.test.ts が「文字に使う色トークンが地の色の上で読めるか」を確かめる。
  */
 export function contrastRatio(a: string, b: string): number {
   const ha = normalizeHex(a);

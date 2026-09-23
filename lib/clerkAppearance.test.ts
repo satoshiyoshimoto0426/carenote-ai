@@ -93,6 +93,119 @@ describe("Clerk の見た目が globals.css のトークンとずれない", () 
 });
 
 /**
+ * スマホで指で押す・入力する Clerk の部品のうち、最初の画面（/sign-in・/sign-up）に出るもの。
+ * デザインの決まり「押す場所は 44px 以上」の対象。2026-09-23 に開発サーバーの 375px 幅で計測すると、
+ * 入力欄と主ボタンが 31.4px、パスワードを見せるボタンが 40×24px、切り替えリンクが 19.4px しかなかった。
+ */
+const TOUCH_ELEMENTS = [
+  "socialButtonsBlockButton",
+  "formFieldInput",
+  "formFieldInputShowPasswordButton",
+  "formButtonPrimary",
+  "footerActionLink",
+];
+
+/**
+ * 上のうち、幅も 44px を約束する部品。ほかは画面の幅いっぱいに広がるので高さだけ見ればよい。
+ * 切り替えリンクは文字の長さで幅が決まる（"Sign in" で 44.9px ぎりぎりだった）ので、幅も縛る。
+ */
+const NARROW_TOUCH_ELEMENTS = ["formFieldInputShowPasswordButton", "footerActionLink"];
+
+/** 押さない部品（外枠・見出し・ラベル・並びの行）。44px の対象外。 */
+const LAYOUT_ELEMENTS = [
+  "cardBox",
+  "card",
+  "headerTitle",
+  "headerSubtitle",
+  "formFieldLabel",
+  "formFieldInputGroup",
+  "footerAction",
+];
+
+/**
+ * 押す部品だが、フォームを送った後（メールを入れて次へ進んだ後）にしか出ないため、まだ計測していないもの。
+ * エージェントはフォームを送らない決まりなので、docs/REDESIGN-A-SIGNOFF.md の行で追跡する。
+ * 計測して 44px にしたら、ここから TOUCH_ELEMENTS へ移す。
+ */
+const UNMEASURED_TOUCH_ELEMENTS = ["identityPreviewEditButton", "formResendCodeLink"];
+
+/** 押す場所の最低の高さ・幅（px）。このリポジトリのデザインの決まり（WCAG 2.5.5 の 44×44 CSS px と同じ値）。 */
+const MIN_TOUCH_PX = 44;
+
+/**
+ * Tailwind のクラスの並びから、**画面幅の条件なしで**効く最低の高さ（axis="h"）か幅（axis="w"）を px で読む。
+ * 無ければ null。`min-h-11`（1目盛り 4px ＝ 0.25rem・html の文字の大きさは既定の 16px のまま）と
+ * `min-h-[48px]` を読む。`sm:min-h-11` のように条件が付いたものは、スマホ幅で効くとは限らないので数えない。
+ * `h-11` のような固定の高さも数えない（文字が増えたときにはみ出すので、44px は min-h / min-w で約束する）。
+ */
+function minSizePx(classes: string, axis: "h" | "w"): number | null {
+  let best: number | null = null;
+  for (const cls of classes.split(/\s+/)) {
+    const m = /^min-([hw])-(?:(\d+(?:\.\d+)?)|\[(\d+(?:\.\d+)?)px\])$/.exec(cls);
+    if (!m || m[1] !== axis) continue;
+    const value = m[2] !== undefined ? Number(m[2]) * 4 : Number(m[3]);
+    if (best === null || value > best) best = value;
+  }
+  return best;
+}
+
+/** elements のクラスを部品の名前→文字列で返す（文字列でない指定は空文字にする）。 */
+function elementClasses(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(clerkAppearance.elements ?? {})) {
+    out[name] = typeof value === "string" ? value : "";
+  }
+  return out;
+}
+
+/** names のうち、axis の最低の大きさが 44px に届かない（または指定が無い）部品の名前を返す。 */
+function tooSmall(names: string[], axis: "h" | "w"): string[] {
+  const classes = elementClasses();
+  return names.filter((name) => {
+    const size = minSizePx(classes[name] ?? "", axis);
+    return size === null || size < MIN_TOUCH_PX;
+  });
+}
+
+/**
+ * Clerk の押す・入力する部品が、スマホでも 44px 以上あることを見張る。
+ *
+ * なぜ必要か: A1 の検証（2026-09-23）で、ログイン画面の部品が 19〜31px しかないと指摘された。
+ * 実際の大きさは Clerk が決め、テストは画面を描かないので、ここでは「44px を約束するクラスが付いているか」を縛る。
+ * 付けた後に実画面（375px・1440px）で 44px になったことは docs/REDESIGN-A-SIGNOFF.md の「確かめたこと」に記録した。
+ */
+describe("Clerk の押す・入力する部品は、スマホでも 44px 以上ある", () => {
+  it("TOUCH_ELEMENTS のどれにも、条件なしの min-h が 44px 以上ついている", () => {
+    expect(tooSmall(TOUCH_ELEMENTS, "h")).toEqual([]);
+  });
+
+  it("幅の小さい部品（パスワードを見せるボタン・切り替えリンク）には min-w も 44px 以上ついている", () => {
+    expect(tooSmall(NARROW_TOUCH_ELEMENTS, "w")).toEqual([]);
+  });
+
+  it("elements の部品は、どれも「押す／押さない／まだ計測していない」のどれかに分けてある", () => {
+    // 新しい部品を elements に足したとき、44px の検査から黙って漏れないようにする
+    const known = new Set([...TOUCH_ELEMENTS, ...LAYOUT_ELEMENTS, ...UNMEASURED_TOUCH_ELEMENTS]);
+    expect(Object.keys(elementClasses()).filter((name) => !known.has(name))).toEqual([]);
+  });
+
+  it("切り替えリンクを高くしたぶん、横の案内文と上下の中央で揃えている", () => {
+    // footerAction の items-center が無いと、案内文だけが 44px の枠の上に寄る（2026-09-23 /sign-in で確認）
+    expect(elementClasses().footerAction?.split(/\s+/)).toContain("items-center");
+  });
+
+  it("検査そのものが壊れていない（足りない大きさ・条件付き・固定の高さを見分けられる）", () => {
+    expect(minSizePx("min-h-11 bg-[#0e5c46]", "h")).toBe(44);
+    expect(minSizePx("min-h-[48px]", "h")).toBe(48);
+    expect(minSizePx("min-h-10", "h")).toBe(40);
+    expect(minSizePx("inset-y-0 min-h-11 min-w-11", "w")).toBe(44);
+    expect(minSizePx("min-h-11", "w")).toBeNull();
+    expect(minSizePx("sm:min-h-11 text-white", "h")).toBeNull();
+    expect(minSizePx("h-11", "h")).toBeNull();
+  });
+});
+
+/**
  * globals.css の層の宣言について、Clerk のクラスが画面に効かなくなる誤りを文章で返す（無ければ空）。
  * 本物の globals.css と、下の自己テストの悪い例の両方を**同じ関数**で見る（検査の空振りを防ぐため）。
  */
