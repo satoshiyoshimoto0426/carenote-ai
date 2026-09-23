@@ -85,7 +85,23 @@ function StatusBadge({ doc }: { doc: CareDocumentRecord }) {
   );
 }
 
+/**
+ * 利用者の詳細（/clients/[id]）。
+ *
+ * まだ A案の区画に作り替えていないので、以前の本文の幅と余白の器（app/globals.css の .legacy-page）に入れる。
+ * この画面は読み込み中・見つからない・本体の3通りの根元を返すので、1か所で包めるよう中身を ClientDetail に分けた。
+ * 作り替え（計画 U2/U3b ── 一覧の右の 440px の区画にする）で、この器は外す。
+ */
 export default function ClientDetailPage() {
+  return (
+    <div className="legacy-page">
+      <ClientDetail />
+    </div>
+  );
+}
+
+/** 利用者の詳細の中身（利用者の情報・保存した書類と承認・関係者名簿・残した文字起こし）。 */
+function ClientDetail() {
   const params = useParams<{ id: string }>();
   const [client, setClient] = useState<ClientRecord | null>(null);
   const [documents, setDocuments] = useState<CareDocumentRecord[]>([]);

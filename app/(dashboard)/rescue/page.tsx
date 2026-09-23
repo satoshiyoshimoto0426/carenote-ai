@@ -420,7 +420,7 @@ export default function RescuePage() {
   };
 
   return (
-    <div className="app-page">
+    <div className="legacy-page app-page">
       <PageHeader
         title="書類一式をつくる"
         description="利用者の人物像・診療情報などを入力すると、アセスメントからモニタリングまで5帳票の下書きを一括で作成します。"

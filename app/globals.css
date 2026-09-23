@@ -120,6 +120,7 @@
   --topbar-h: 52px; /* 上の帯 */
   --rail-w: 72px; /* 左の縦の帯（768px 以上） */
   --tabbar-h: 56px; /* スマホの下のタブ（押す場所は 44px 以上） */
+  --pane-header-h: 48px; /* 区画（.pane）の頭の帯（.pane-header）。区画の中で貼りつく物の逃がし幅にも使う */
 }
 
 /*
@@ -247,8 +248,13 @@
  *   [左の縦の帯 .rail]  [縦の列 .app-column: 上の帯 .shell-head → 本文 .app-main-inner → 送り先の表示 .app-footer]
  *
  * スマホ（768px 未満）では .rail が画面の下に固定したタブになり、列の下をタブの高さぶん空ける。
+ * 画面全体（文書）が縦に動き、上の帯は上に貼りつく。
+ * 768px 以上（A4・2026-09-23）は外枠を画面の高さちょうどに収め、文書は動かさない。本文の中の
+ * 区画（.pane）と、まだ作り替えていない画面の器（.legacy-page）が、それぞれ自分の中だけで縦に動く
+ * （A案の「作業台」── 左の入力を動かしても右の文章は動かない）。
  * 高さを calc(100dvh - …) で決めない。上の帯の下には「共有していない」注意の帯が出たり消えたり
  * 折り返したりするので、固定の数字で引くと、その時だけ下の端が画面の外へ押し出される。
+ * 代わりに、列を flex の縦並びにして本文に残りの高さを渡す（flex:1・min-height:0 を上から順に）。
  *
  * Tailwind のクラス生成に依存させない素の CSS（(dashboard) 配下のスキャン取りこぼしで
  * メニューと本文が重なった 2026-07-09 の根治策）。要素そのもの（div・a など）を狙う規則はここに書かない
@@ -474,28 +480,28 @@
 
 /*
  * フッターは本文の一部ではなく「紙の端」。上に細い区切りを置いて距離を取る（2026-09-16）。
- * 中身は AI の送り先の表示（「CareNote — Powered by Claude API」）。
+ * 中身は AI の送り先の表示（「CareNote — Powered by Claude API」）。送る帯に送信先の表示が入るまで残す。
+ * 768px 以上では列の下端に常に見えている1行になるので、高さを取りすぎないよう余白を詰める（下の @media）。
  */
 .app-footer {
+  flex-shrink: 0;
   border-top: 1px solid var(--line-soft);
   padding: 18px 16px 26px;
   text-align: center;
 }
 
 /*
- * 本文の器。**作り直す前の画面の幅の決定点**（A案の区画に作り替えるまでの間）。
- * 以前はページ側が max-w-2xl / 3xl / 4xl / 860px をそれぞれ持っていて、
- * 画面を移るたびに本文の幅と左端が動いていた（2026-09-16 吉本さん指摘
- * 「なんでこんなに左上にギュッと集まったデザインなのか」の原因のひとつ）。
+ * 本文の器（A4・2026-09-23 から**画面いっぱい**）。幅も余白も持たない ── 区画（.pane）を
+ * 端から端まで並べ、1px の線だけで区切るため。まだ作り替えていない画面は、自分の根元に
+ * .legacy-page を付けて、以前の幅（1000px）と余白を自分で持つ（下の @layer components）。
+ * 以前はここが「作り直す前の画面の幅の決定点」だった（ページごとに幅がばらばらで、画面を移るたびに
+ * 本文の幅と左端が動いていた ── 2026-09-16 吉本さん指摘。その決まりは .legacy-page が引き継ぐ）。
  * 列の中で残りの高さを取る（flex:1・min-height:0）。上の帯は流れの中にあるので、上を空ける必要はない。
  */
 .app-main-inner {
   flex: 1;
   min-height: 0;
-  width: 100%;
-  max-width: 1000px;
-  margin-inline: auto;
-  padding: 16px 16px 32px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
@@ -513,10 +519,16 @@
  * 上に貼りつく帯（.shell-head）の裏に潜ると押せなくなる（独立審査 2026-09-17 critical）。
  * 以前は固定の 80px で逃がしていたが、帯の高さは「共有していない」注意の有無と折り返しで変わるので、
  * TopBar が測った実際の高さ（--shell-head-h）の 8px 下に置く。測る前は --topbar-h を使う。
+ *
+ * A4（2026-09-23）: 768px 以上では文書ではなく区画（.pane / .legacy-page）が動くので、貼りつく基準は
+ * 区画の上端になる。そこには上の帯は重ならないので、帯の高さを足すと 52px 以上の隙間が空く。
+ * 区画は --sticky-top に「自分の上端に重なっている物の高さ」（0、または区画の頭の帯の高さ）を書くので、
+ * それがあればそちらを使う（計画の指摘「区画の中は 0・文書が動く所は帯＋注意の帯」）。
+ * スマホは文書が動くので --sticky-top は無く、今までどおり --shell-head-h を使う。
  */
 .presend-nav {
   position: sticky;
-  top: calc(var(--shell-head-h, var(--topbar-h)) + 8px);
+  top: calc(var(--sticky-top, var(--shell-head-h, var(--topbar-h))) + 8px);
   z-index: 10;
 }
 
@@ -556,12 +568,28 @@
 }
 
 @media (min-width: 768px) {
+  /*
+   * 外枠を画面の高さちょうどに収める（文書は動かさず、区画が自分の中で動く ── A4）。
+   * dvh（いま見えている高さ）は Chrome 108・Safari 15.4・Firefox 101 から使える。vh の控えを重ねて書くと
+   * Biome が同じ指定の重複として止めるので、dvh だけにした。
+   * min-height を外すのは、iPad の Safari で 100vh（道具の帯を隠したときの高さ）が 100dvh より大きく、
+   * 外枠がはみ出して文書が少し動いてしまうため。
+   */
+  .app-shell {
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  /*
+   * 外枠の高さに合わせて伸びる（以前の sticky＋height:100vh は、文書が動かなくなったので不要。
+   * 100vh は iPad で外枠より高くなり、下端のアカウントのボタンが切れる）。
+   * 画面の背が低いとき（拡大表示など）は帯の中だけで動く。
+   */
   .rail {
-    position: sticky;
-    top: 0;
-    height: 100vh;
     width: var(--rail-w);
     flex-shrink: 0;
+    min-height: 0;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -612,7 +640,213 @@
     padding: 8px 24px;
   }
 
-  .app-main-inner {
-    padding: 40px;
+  /* 列の下端に常に見えている1行（送り先の表示）。本文の高さを取りすぎない */
+  .app-footer {
+    padding: 6px 24px;
+  }
+}
+
+/*
+ * 区画（ペイン）と、まだ作り替えていない画面の器（A案「作業台」・A4・2026-09-23）。
+ * 組み立ての部品は components/ui/primitives.tsx の Pane / PaneHeader / SectionLabel / TextAction。
+ *
+ *   <div class="panes">                         ← 区画を横に並べる（本文 .app-main-inner の中）
+ *     <section class="pane pane-640">…</section> ← 幅 640px の区画（つくるの入力など）
+ *     <section class="pane pane-tinted">…</section> ← 残りの幅いっぱい（地を --pane にする）
+ *   </div>
+ *
+ * 区画どうしの境目は 1px の線だけ（隣り合った .pane の2つ目に線を引く ── カードの枠を積まない）。
+ * 768px 以上では各区画が自分の中だけで縦に動き、区画の頭の帯（.pane-header）は区画の上に貼りつく。
+ * スマホでは区画を縦に積み、画面全体（文書）が動く（スマホ用の形は M1/M2 で作る）。
+ *
+ * **@layer components に入れる理由**: 部品は className で Tailwind の指定（余白など）を足せる。
+ * 層の外に置くと、層に入った Tailwind の指定に詳細度と関係なく勝ち、足した余白が黙って消える
+ * （2026-09-23 に全画面の余白が 0 になった不具合と同じ仕組み）。層の中なら utilities が後に来て勝つ。
+ * 素の CSS で書く理由: Tailwind のクラス生成（スキャン）に頼ると、取りこぼしで本番の CSS に入らないことがある
+ * （2026-07-09）。ここに書いたものはスキャンと関係なく必ず出る（本番用ビルドの CSS で確かめる）。
+ * テスト: components/ui/primitives.test.tsx（部品が付けるクラスと、この CSS の形）。
+ */
+@layer components {
+  .panes {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 区画。地の色は --pane-bg に持ち、頭の帯（.pane-header）が同じ色で上に貼りつけるようにする */
+  .pane {
+    --pane-bg: var(--paper);
+    min-width: 0;
+    background: var(--pane-bg);
+  }
+
+  /* 右側の区画（AIに送る文章・利用者の詳細）の、ほんの少し明るい地 */
+  .pane-tinted {
+    --pane-bg: var(--pane);
+  }
+
+  /* 区画どうしの境目（スマホでは縦に積むので上の線） */
+  .pane + .pane {
+    border-top: 1px solid var(--line);
+  }
+
+  /* 区画の頭の帯（高さ 48px・下に 1px の線）。書類の種類の切り替えや、区画の名前と操作を並べる */
+  .pane-header {
+    min-height: var(--pane-header-h);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--line);
+    background: var(--pane-bg, var(--paper));
+  }
+
+  /* 区画の名前（頭の帯の中の h2）。ページの見出し（h1）は上の帯にある */
+  .pane-title {
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  /* 区画の中の小見出し・欄の名前（「会議のメモ」「書類」など）。12px の太字・字間 0.06em */
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.5;
+    letter-spacing: 0.06em;
+    color: var(--ink-2);
+  }
+
+  /*
+   * 文字だけの操作（「録音ファイルから文字にする」「この欄を記録として残す」など）。
+   * 枠も地も持たない。緑の主ボタンは1画面に1つだけなので、脇の操作はこれで並べる。
+   * 押す場所はスマホで 44px 以上（下の @media）、パソコンでも 24px 以上（WCAG 2.2 2.5.8）。
+   */
+  .text-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .text-action:hover {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .text-action:disabled {
+    color: var(--faint);
+    text-decoration: none;
+    cursor: not-allowed;
+  }
+
+  /*
+   * まだ A案の区画に作り替えていない画面の器（各ページの根元に1つ付ける）。
+   * 作り替える前の本文の幅（最大 1000px ＝ 中身 920px＋左右 40px）と余白を、画面いっぱいになった本文
+   * （.app-main-inner）の中で再現する。作り替えが終わったページから外し、全部外れたら消す（計画 X1）。
+   * 768px 以上では、この器が1つの区画のように自分の中で縦に動く。
+   */
+  .legacy-page {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 16px 32px;
+  }
+
+  @media (max-width: 767px) {
+    .pane-header {
+      flex-wrap: wrap;
+      padding: 0 16px;
+    }
+
+    .text-action {
+      min-height: 44px;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .panes {
+      flex-direction: row;
+    }
+
+    /*
+     * 区画が自分の中で縦に動く。--sticky-top は「区画の上端に重なっている物の高さ」で、
+     * 区画の中で貼りつく物（.presend-nav）と、フォーカス・飛び先を止める位置（scroll-padding-top）が読む。
+     * 頭の帯を持つ区画では、その高さぶん下げる（帯の裏に隠さない ── WCAG 2.2 AA 2.4.11・2026-09-23 A3 の教訓）。
+     */
+    .pane {
+      --sticky-top: 0px;
+      flex: 1 1 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      scroll-padding-top: calc(var(--sticky-top) + 8px);
+    }
+
+    .pane:has(> .pane-header) {
+      --sticky-top: var(--pane-header-h);
+    }
+
+    /*
+     * 決まった幅の区画。幅が足りない画面（タブレットなど）では、はみ出して横に動くより縮む方を選ぶ
+     * （flex-shrink 1・min-width 0）。つくるの2つの区画が狭い幅でどう並ぶかは C4/M2 で決める。
+     */
+    .pane-640 {
+      flex: 0 1 640px;
+    }
+
+    .pane-440 {
+      flex: 0 1 440px;
+    }
+
+    .pane + .pane {
+      border-top: 0;
+      border-left: 1px solid var(--line);
+    }
+
+    .pane-header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    /*
+     * 作り替える前と同じ幅: 中身は最大 920px で真ん中に置き、左右は最低 40px 空ける
+     * （旧 .app-main-inner の max-width:1000px＋padding:40px と同じ結果。スクロールの溝は画面の右端に出る）。
+     * 上下の 40px は padding ではなく、下の ::before / ::after の空の箱で空ける。
+     * なぜ: 動く器（スクロールする要素）に padding-top があると、ブラウザは中で貼りつく物の基準を
+     * その分だけ下げる。「前へ／次へ」（.presend-nav）が器の上端から 8px でなく 48px の所に止まり、
+     * 上に本文が透けて見える隙間ができた（A4 の検証で本番用ビルドを計測: padding 40px → 40px 下がる）。
+     */
+    .legacy-page {
+      --sticky-top: 0px;
+      min-height: 0;
+      overflow-y: auto;
+      scroll-padding-top: calc(var(--sticky-top) + 8px);
+      padding-block: 0;
+      padding-inline: max(40px, calc((100% - 920px) / 2));
+    }
+
+    .legacy-page::before,
+    .legacy-page::after {
+      content: "";
+      flex: 0 0 40px;
+    }
   }
 }

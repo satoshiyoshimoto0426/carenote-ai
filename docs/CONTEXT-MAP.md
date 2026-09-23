@@ -240,10 +240,29 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - **`components/shell/TopBar.tsx`**: 高さ 52px の上の帯（スクロールしても上に貼りつく）。左 = ページの差し込み（無ければ項目の名前）、右 = 「この画面の使い方」（`helpAnchorOf`。使い方の画面では出さない）＋ 共有状態。帯＋注意の帯の実際の高さを ResizeObserver で測って `--shell-head-h` に書く（`.presend-nav` と `html` の `scroll-padding-top` が読む。旧: 固定の 72/76/80px）。`html` の scroll-padding（上 = 帯＋8px、スマホの下 = タブ＋safe-area＋8px・`app/globals.css` の `@layer base`）が、フォーカスした部品・使い方の章の飛び先（`/guide#chN`）を帯やタブの裏に隠さない（WCAG 2.2 AA 2.4.11。章ごとの旧 `.shell-anchor` は廃止 ── 両方あると二重に下がる）。画面が描かれていない（隠れたタブの）間は測れず、見えた時に書き直す。
 - **`components/shell/TopBarSlot.tsx`**: ページが上の帯の左に見出し・道しるべを差し込む口（`TopBarSlotProvider` を layout が持ち、`TopBarSlot` で包んだ中身を createPortal で帯へ）。**まだどのページも使っていない**（利用者・つくるを作り直すスライスで使う）。
 - **`components/SharingStatus.tsx`**: `variant="bar"`（点・「共有状態を確認中／事業所で共有中＋事業所の名前／自分の登録分のみ」・`OrganizationSwitcher`）と `variant="strip"`（共有していないときだけ帯の下に `role="status"` で「…置き換わりません。複数人で使うときは、右上の事業所の切り替えから選んでください。」）。旧 `full`/`compact` は廃止。`OrganizationSwitcher` の見た目で文字を隠す指定は**切り替えのボタンの中だけ**に書く（Clerk は `__personalWorkspace` など一部の名前を、押すと開く一覧の行にも使う。`SharingStatus.test.tsx` が見張る）。
-- 高さは `calc(100dvh - …)` で決めない（注意の帯が出ると下の端が画面の外へ出るため）。寸法トークン `--topbar-h` `--rail-w` `--tabbar-h` は `app/globals.css` の `:root`。
-- 「CareNote — Powered by Claude API」（AI の送り先が画面に出る唯一の場所）は、送る帯に送信先の表示が入るまで本文の終わりに残す。
+- 高さは `calc(100dvh - …)` で決めない（注意の帯が出ると下の端が画面の外へ出るため）。寸法トークン `--topbar-h` `--rail-w` `--tabbar-h` `--pane-header-h` は `app/globals.css` の `:root`。
+  768px 以上は外枠（`.app-shell`）が画面の高さちょうど（`100dvh`）で**文書は動かない** ── 列を flex の縦並びにして本文に残りの高さを渡し、本文の中の区画が自分の中で動く（下の「区画」）。スマホは今までどおり文書が動き、上の帯が貼りつく。
+- 「CareNote — Powered by Claude API」（AI の送り先が画面に出る唯一の場所）は、送る帯に送信先の表示が入るまで残す。768px 以上では列の下端に常に見えている1行（A4 から）、スマホでは本文の終わり。
 - テスト: `components/shell/Rail.test.tsx`・`TopBar.test.tsx`（帯の高さを読む CSS が固定の数字・引き算に戻らないこと、html の scroll-padding が帯・タブの高さから決まり二重に足していないことも）・`TopBarSlot.live.test.tsx`（jsdom・差し込みと高さの書き込み）・`components/SharingStatus.test.tsx`（3つの状態・注意の帯・切り替え・44px）・`app/(dashboard)/layout.test.tsx`（外枠が共有状態・4項目・送り先の表示を持つ）。外枠の文字と地の組み合わせの 4.5:1 は `app/globals.test.ts`。
 - **まだ直していない文書**（後のマイルストーンでまとめて書き直す・作り直しは本番に出さない決定）: `lib/manual/content.ts`（共有状態は「画面の左下」・6項目のメニュー・スマホの2アイコン など）、`docs/ADMIN-SETUP.md`・`docs/DATA-HANDLING-EXPLANATION.md`（共有状態の場所）、`docs/MANUAL-VIDEO-SPEC.md`（左メニューの名前とメールで録画のアカウントを確かめる手順）、6章の動画（旧い左メニューが映っている）。
+
+### 区画（ペイン）・まだ作り替えていない画面の器・ホーム（A案「作業台」・A4・2026-09-23・ブランチ `redesign/a`）
+- **本文 `main.app-main-inner` は画面いっぱい**（幅の上限・余白なし）。区画を端から端まで並べ、1px の線だけで区切る（カードを積まない）。
+- **部品** `components/ui/primitives.tsx`: `Pane`（section／aside・`width` 640／440・`tinted`＝地を `--pane`・`label`＝読み上げの名前）、`PaneHeader`（高さ 48px・**Pane の直下に置く**・`title` は h2）、
+  `SectionLabel`（12px 太字・字間 0.06em・`htmlFor` で欄に結んだ label）、`TextAction`（文字だけの操作 ── `href`＝リンク／`onClick`＝ボタン・スマホ 44px）。
+  ボタンの寸法もアートボードへ: `btnPrimary`＝高さ 44px の緑（1画面に1つ）、`btnSecondary`＝パソコン 34px・スマホ 44px・枠 `--btn-line`・文字 `--ink`。`Card`/`PageHeader`/`SectionTitle` は作り替え前の画面のために残す（計画 X1 で片付け）。
+- **CSS** `app/globals.css` の `@layer components`: `.panes`（区画を横に並べる）・`.pane`・`.pane-640`・`.pane-440`・`.pane-tinted`・隣り合う区画の 1px の線（`.pane + .pane`）・`.pane-header`・`.pane-title`・`.section-label`・`.text-action`・`.legacy-page`。
+  層に入れるのは、部品に className で足した Tailwind の指定（余白など）が勝てるように（層の外の規則は層の中に必ず勝つ ── 2026-09-23 の余白 0 の不具合と同じ仕組み）。素の CSS なのでスキャンの取りこぼしと無関係に本番の CSS に出る（本番用ビルドで確認済み）。
+- **768px 以上は区画が自分の中で縦に動く**（左の入力を動かしても右は動かない）。区画の頭の帯は区画の上に貼りつく。スマホは区画を縦に積み、文書が動く（スマホ用の形は M1/M2）。
+- **貼りつく物の基準 `--sticky-top`**（計画の指摘「区画の中は 0・文書が動く所は帯＋注意の帯」）: 768px 以上で区画（`.pane`・`.legacy-page`）が「自分の上端に重なる物の高さ」を書く
+  （0。頭の帯を直下に持つ区画は `--pane-header-h` ── `.pane:has(> .pane-header)`）。`.presend-nav`（前へ／次へ）の top と区画の `scroll-padding-top`（フォーカス・飛び先の止まる位置）がこれを読み、
+  無い所（スマホ＝文書が動く）では今までどおり `--shell-head-h`。**動く器に padding-top を付けない**（ブラウザは貼りつく物の基準をその分下げる ── `.legacy-page` の上下 40px は `::before`/`::after` の空の箱で空ける）。
+- **まだ作り替えていない画面の器 `.legacy-page`**: 7画面（`clients`・`clients/[id]`・`create`・`evaluate`・`dashboard`・`rescue`・`guide`）の根元に付ける（`clients/[id]` は根元が3通りあるので `ClientDetail` を包む形）。
+  以前の本文の幅（最大 1000px＝中身 920px＋左右 40px）と余白（スマホ 16/16/32px）を再現し、768px 以上ではそれ自体が1つの区画のように動く。旧 `.app-main-inner` の「幅の決定点」の決まりはここが引き継いだ。作り替えたページから外し、全部外れたら消す（計画 X1）。
+- **ホーム = 利用者**（吉本さん決定 2026-09-23）: `app/page.tsx` が `/` を `/clients` へ（旧 `/evaluate`）。ログイン直後の行き先は Clerk の `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` / `AFTER_SIGN_UP_URL`。
+  手元の見本 `.env.local.example` は `/clients` にした（ただしこのファイルは `.gitignore` の `.env*` に当たり **git に入っていない**）。本番の Vercel の値は吉本さんが変える（`docs/REDESIGN-A-SIGNOFF.md` の 8）。
+- テスト: `components/ui/primitives.test.tsx`（部品が付けるクラス・ボタンの 44px・区画の CSS の形〔層・768px 以上で動く・`--sticky-top`・旧画面の器の幅〕）・`app/page.test.ts`（`/` → `/clients`）。
+- **まだ直していない文書**（D1a/D2 でまとめて）: 「ログインすると、ダッシュボードか評価するの画面が開きます」── `lib/manual/content.ts`:248（あわせて 98-99・216-217・302）・`docs/MANUAL-VIDEO-SPEC.md`:221・`docs/manual-video/ch2.draft.vtt`・公開中の ch2 の字幕。
 
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
@@ -252,7 +271,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した*
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

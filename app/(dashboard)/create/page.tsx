@@ -306,7 +306,7 @@ export default function CreatePage() {
   };
 
   return (
-    <div className="app-page">
+    <div className="legacy-page app-page">
       <PageHeader
         title="帳票作成（下書き）"
         description="メモを入力すると、AIがルールに沿って帳票の下書きを作成します"

@@ -122,7 +122,7 @@ export default function EvaluatePage() {
   };
 
   return (
-    <div className="app-page">
+    <div className="legacy-page app-page">
       <PageHeader
         title="ケアプラン評価"
         description="書類一式PDFをアップロードしてAI評価を実行します"

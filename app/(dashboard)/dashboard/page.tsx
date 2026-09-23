@@ -79,7 +79,7 @@ export default function DashboardPage() {
     }));
 
   return (
-    <div className="animate-fadeIn app-page">
+    <div className="legacy-page animate-fadeIn app-page">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="ダッシュボード" description="評価履歴とスコア推移" helpAnchor="ch1" />

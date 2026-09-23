@@ -177,7 +177,7 @@ describe("帯の高さを読む CSS（app/globals.css）", () => {
     [".presend-nav", "top"],
     // フォーカスした部品・使い方の章の飛び先（/guide#chN）を、帯の 8px 下に止める
     ["html", "scroll-padding-top"],
-  ])("%s の %s は、どの幅でも測った高さ（--shell-head-h）から決める", (selector, property) => {
+  ])("%s の %s は、固定の数字でなく測った高さ（--shell-head-h）から決める（768px 以上の区画の中は --sticky-top が先 ── primitives.test.tsx）", (selector, property) => {
     const values = valuesOf(declarationsOf(selector), property);
     expect(values.length).toBeGreaterThan(0);
     for (const value of values) expect(value).toContain(`var(${SHELL_HEAD_HEIGHT_VAR}`);

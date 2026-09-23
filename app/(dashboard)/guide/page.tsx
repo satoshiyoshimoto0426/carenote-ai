@@ -60,7 +60,7 @@ const CALLOUT_STYLE: Record<
 
 export default function GuidePage() {
   return (
-    <div className="app-page">
+    <div className="legacy-page app-page">
       <PageHeader
         title="使い方"
         description="はじめての方は ① から順に読んでください。各章の動画は、実際の画面を録画したものです。"
