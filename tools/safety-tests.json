@@ -7,7 +7,7 @@
     { "dir": "tests/api", "minFiles": 11 },
     { "dir": "lib/recording", "minFiles": 3 },
     { "dir": "lib/transcribe", "minFiles": 3 },
-    { "dir": "lib/rescue", "minFiles": 1 }
+    { "dir": "lib/rescue", "minFiles": 2 }
   ],
   "files": [
     {
@@ -135,6 +135,10 @@
       "why": "資料のURLは非公開ストアだけ許す（外部のURLを読みに行かない）"
     },
     {
+      "path": "lib/rescue/saveBundle.test.ts",
+      "why": "一式の保存を途中の失敗から押し直しても、利用者をもう1人作らず・保存済みの帳票を二重に保存しない（同じ方の二重登録を防ぐ）"
+    },
+    {
       "path": "components/drafts/PreSendPreview.test.tsx",
       "why": "送る前の画面: 赤い言葉の印（隠した印は数えない）と数、畳んでも赤は全部出す、理由「敬称の前」を畳んだ欄でも開いた欄でも文字で出す（本文には差し込まない）、赤があれば前へ/次への帯と合計の数を出す"
     },
@@ -168,7 +172,7 @@
     },
     {
       "path": "tests/ui/clientListErrors.live.test.tsx",
-      "why": "利用者一覧を読めないとき、画面が「利用者一覧を読めませんでした」を出す・救済モードは「新しい利用者として保存」を止める（同じ方の二重登録を防ぐ）・/clients は「まだ利用者がいません」と出さない"
+      "why": "利用者一覧を読めないとき、画面が「利用者一覧を読めませんでした」を出す・救済モードは「新しい利用者として保存」を止める（同じ方の二重登録を防ぐ）・/clients は「まだ利用者がいません」と出さない・救済モードの保存を途中の失敗から押し直しても利用者をもう1人作らず、作り直した一式を「保存しました」と見せない"
     },
     {
       "path": "lib/db/transcripts.test.ts",

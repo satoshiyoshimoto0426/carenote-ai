@@ -14,6 +14,9 @@ import { attrOf, elementsOf, type MarkupElement, textOf } from "@/tests/helpers/
  *   救済モードの保存は「新しい利用者として保存」だけが残って**同じ方を二重に登録**できた。
  *   /clients は「まだ利用者がいません」と出していた。どれも失敗を空の一覧に見せる壊れ方。
  *
+ * 救済モードの保存パネルは、途中の1枚で失敗したあとの押し直しも動かして確かめる（2026-09-24 検収の指摘）。
+ * 以前は押し直すたびに利用者をもう1人作り、保存済みの帳票も二重に保存していた（同じ方の二重登録の別の入口）。
+ *
  * 偽物にするのは通信（fetch）と、保存パネルと関係のない帳票の表示部品だけ。画面そのものは本物を動かす。
  * 文字は tests/helpers/markup.ts の textOf で読む（隠した要素の文字を「出ている」と数えない）。
  */
@@ -68,9 +71,22 @@ const CLIENT_A = {
 let calls: string[] = [];
 /** GET /api/clients に順番に返す応答（最後の1つは何度でも返す） */
 let listResponses: (() => Response)[] = [];
+/** POST /api/documents で送った本文（保存先と帳票の種類） */
+let documentPosts: { clientId: unknown; docType: unknown }[] = [];
+/** POST /api/documents の何回目（1から数える）を 503 にするか */
+let failDocumentCalls: number[] = [];
+/** POST /api/clients が作った利用者の数（作るたびに new-1, new-2 … と別の id を返す） */
+let createdClients = 0;
+
+/** 利用者を DB から読めなかったとき（app/api/documents/route.ts の 503）の文言。押し直しを勧める */
+const LOOKUP_FAILED =
+  "利用者の情報を読み込めませんでした。少し待ってから、もう一度お試しください。直らない場合は管理者にご連絡ください。";
 
 function installFetch() {
   calls = [];
+  documentPosts = [];
+  failDocumentCalls = [];
+  createdClients = 0;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -81,8 +97,18 @@ function installFetch() {
         if (!next) throw new Error("一覧の応答が用意されていません");
         return next();
       }
-      if (url === "/api/clients" && method === "POST") return json({ ...CLIENT_A, id: "new" }, 201);
-      if (url === "/api/documents" && method === "POST") return json({ id: "d1" }, 201);
+      if (url === "/api/clients" && method === "POST") {
+        createdClients += 1;
+        return json({ ...CLIENT_A, id: `new-${createdClients}`, code: "B" }, 201);
+      }
+      if (url === "/api/documents" && method === "POST") {
+        const body = JSON.parse(String(init?.body)) as { clientId: unknown; docType: unknown };
+        documentPosts.push({ clientId: body.clientId, docType: body.docType });
+        if (failDocumentCalls.includes(documentPosts.length)) {
+          return json({ error: LOOKUP_FAILED }, 503);
+        }
+        return json({ id: `d${documentPosts.length}` }, 201);
+      }
       if (url === "/api/rescue" && method === "POST") {
         return json({
           assessment: {},
@@ -242,6 +268,110 @@ describe("救済モードの保存パネル（/rescue）", () => {
       (o) => o.textContent,
     );
     expect(options).toContain("A様");
+  });
+});
+
+describe("救済モードの保存の押し直し（/rescue・2026-09-24 検収の指摘）", () => {
+  /** 人物像を1つ書いて一式を作り、保存パネルが出るところまで進める（一覧は A様 だけ読める） */
+  async function renderResult() {
+    listResponses = [() => json([CLIENT_A])];
+    const { default: RescuePage } = await import("@/app/(dashboard)/rescue/page");
+    await render(<RescuePage />);
+    await typeInto("#f-personality", "穏やかな方");
+    await click(buttonByText("書類一式を生成する"));
+    if (!container.querySelector("#save-client")) throw new Error("保存パネルが出ていません");
+  }
+
+  /** ブラウザと同じ手順で値を入れて、React が拾える input / change を起こす */
+  async function typeInto(selector: string, value: string) {
+    const el = container.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+      selector,
+    );
+    if (!el) throw new Error(`${selector} が見つかりません`);
+    const proto = Object.getPrototypeOf(el) as object;
+    const setValue = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    await act(async () => {
+      setValue?.call(el, value);
+      el.dispatchEvent(
+        new Event(el instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }),
+      );
+    });
+  }
+
+  /** 保存の押しボタン（文言は「この利用者に5帳票を保存」か「残りのN帳票を保存」） */
+  function saveButton(): HTMLButtonElement {
+    const found = [...container.querySelectorAll("button")].find((b) =>
+      /^(この利用者に5帳票を保存|残りの\d帳票を保存)$/.test(b.textContent?.trim() ?? ""),
+    );
+    if (!found) throw new Error("保存のボタンが見つかりません");
+    return found;
+  }
+
+  const savedPairs = () => documentPosts.map((p) => `${String(p.clientId)}:${String(p.docType)}`);
+
+  it("新しい利用者で3枚目が失敗し、押し直しても利用者は1人だけ・各帳票はその利用者へ1回ずつ", async () => {
+    await renderResult();
+    await typeInto("#new-client-name", "テスト花子");
+    failDocumentCalls = [3];
+
+    await click(saveButton());
+    expect(visibleText()).toContain(LOOKUP_FAILED);
+    expect(calls.filter((c) => c === "POST /api/clients")).toHaveLength(1);
+    // 保存先を選び直させず、どこへ・あと何枚かを画面の文字で出す
+    expect(container.querySelector("#save-client")).toBeNull();
+    expect(container.querySelector("#new-client-name")).toBeNull();
+    expect(visibleText()).toContain("B様");
+    expect(visibleText()).toContain("この保存で新しく登録");
+    expect(saveButton().textContent?.trim()).toBe("残りの3帳票を保存");
+
+    await click(saveButton());
+    expect(calls.filter((c) => c === "POST /api/clients")).toHaveLength(1);
+    expect(savedPairs()).toEqual([
+      "new-1:assessment",
+      "new-1:carePlan",
+      "new-1:meetingSummary", // 1回目は 503
+      "new-1:meetingSummary",
+      "new-1:supportLog",
+      "new-1:monitoring",
+    ]);
+    expect(visibleText()).toContain("利用者に保存しました");
+  });
+
+  it("既にいる利用者を選んで2枚目が失敗しても、押し直しで保存済みの帳票を二重に保存しない", async () => {
+    await renderResult();
+    await typeInto("#save-client", "c1");
+    failDocumentCalls = [2];
+
+    await click(saveButton());
+    expect(visibleText()).toContain(LOOKUP_FAILED);
+    expect(visibleText()).toContain("A様");
+    expect(saveButton().textContent?.trim()).toBe("残りの4帳票を保存");
+
+    await click(saveButton());
+    expect(calls.filter((c) => c === "POST /api/clients")).toHaveLength(0);
+    expect(savedPairs()).toEqual([
+      "c1:assessment",
+      "c1:carePlan",
+      "c1:carePlan",
+      "c1:meetingSummary",
+      "c1:supportLog",
+      "c1:monitoring",
+    ]);
+  });
+
+  it("保存した後に作り直した一式は「保存しました」と見せず、もう一度保存先を選ばせる", async () => {
+    await renderResult();
+    await typeInto("#save-client", "c1");
+    await click(saveButton());
+    expect(visibleText()).toContain("利用者に保存しました");
+
+    await click(buttonByText("別の人物像で作り直す"));
+    await typeInto("#f-personality", "別の方");
+    await click(buttonByText("書類一式を生成する"));
+    // 前の一式の「保存しました」を、まだ保存していない一式に出さない
+    expect(container.innerHTML).not.toContain("利用者に保存しました");
+    expect(container.querySelector("#save-client")).not.toBeNull();
+    expect(saveButton().textContent?.trim()).toBe("この利用者に5帳票を保存");
   });
 });
 

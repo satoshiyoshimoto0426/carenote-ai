@@ -140,6 +140,8 @@
 一覧を使う画面は3つで、すべて `lib/clients/listError.ts` を通す: ①`/clients`（読めなければ「まだ利用者がいません」を出さない）②`components/create/SaveTranscriptBar.tsx`（保存先を選べないことを出す）③`/rescue` の保存パネル（**一覧を読めるまで保存を止める** ── 読めないまま進むと行き先が「新しい利用者として保存」だけになり、同じ方を黙って二重に登録する。氏名の表記が空白だけ違うと `expandAliasVariants` が別人とみなして事業所全体の送信が止まる）。②③は「一覧をもう一度読む」で読み直せる。
 検査= `lib/db/clients.test.ts`（例外）・`tests/api/clients.route.test.ts`（500）・`lib/clients/listError.test.ts`・`tests/ui/clientListErrors.live.test.tsx`（3画面を jsdom で動かす）。
 
+**一式の保存の押し直し (2026-09-24・S1 の検収の指摘)**: `/rescue` の保存は `lib/rescue/saveBundle.ts`（`saveBundleDocuments`）が「新しい利用者なら `POST /api/clients` → 5帳票を1枚ずつ `POST /api/documents`」の順に進め、**1歩ごとに途中経過**（保存先の利用者・保存済みの帳票）を画面の state へ渡す。途中の1枚で失敗して押し直すと、**同じ利用者へ残りの帳票だけ**を保存する（以前は作った利用者の id を関数の中にしか持たず、押し直すたびにもう1人作り、保存済みの帳票も二重に保存していた ── 失敗の文言「少し待ってから、もう一度お試しください」が押し直しを勧めるので必ず起きる）。途中経過がある間は保存先を選び直させず、どこへ・あと何枚かを文字で出す。一式を作り直したら「保存しました」と途中経過を捨てる（以前は前の一式の「保存しました」が次の一式に残っていた）。検査= `lib/rescue/saveBundle.test.ts`・`tests/ui/clientListErrors.live.test.tsx`（押し直しを画面で動かす）。
+
 **B（現行ダークのまま機能追加）完了**: `app/(dashboard)/clients/`（一覧＋新規作成）・`clients/[id]/`（詳細＋保存帳票）、
 Sidebar に「👥 利用者」、救済結果を選択/新規の利用者に5帳票一括保存（`/rescue` の保存パネル）。compile/build 検証済（実行は上記前提が必要・UI見た目はAで刷新）。
 **残り（A＝editorial 総替え）**: layout/Sidebar/ホーム/既存ページ（create/evaluate/rescue/clients）をデザインシステムv0へ。
@@ -249,7 +251,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-24 / `getClientById` が DB の失敗を `ClientLookupError` にし、使う入口すべてが 404 でなく 503 を返す。本文は `lib/requestBody.ts` でオブジェクトだけ通す（10の入口）。書類の中身は入れ子32段まで（S1 の検収の指摘）*
+*最終更新: 2026-09-24 / 救済モードの一式の保存を途中の失敗から押し直しても、利用者をもう1人作らず・保存済みの帳票を二重に保存しない（`lib/rescue/saveBundle.ts`。S1 の検収の指摘）*
+*2026-09-24 / `getClientById` が DB の失敗を `ClientLookupError` にし、使う入口すべてが 404 でなく 503 を返す。本文は `lib/requestBody.ts` でオブジェクトだけ通す（10の入口）。書類の中身は入れ子32段まで（S1 の検収の指摘）*
 *2026-09-24 / 画面の検査が、隠した部品（共有状態の切り替え・同意のチェック・赤い印）を「出ている」と数えないよう `isReachable` を足した（検収の指摘）*
 *2026-09-23 / テストの見張りが集計行を stdout だけから読み、JSON レポートを2つ目の判定にする（テストが書いた偽の集計行で緑になっていた ── 検収の指摘）*
 *2026-09-23 / 書類の保存（`POST /api/documents`）が名簿と同じ範囲で保存先の利用者を確かめる（見えなければ 404・範囲を決められなければ 503・中身はオブジェクトで 200KB まで）。保存帳票の `content` の説明を事実へ訂正。範囲を使うルートの数を 11ファイル・16ハンドラへ数え直し*
