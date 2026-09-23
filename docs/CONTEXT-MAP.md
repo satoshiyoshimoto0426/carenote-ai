@@ -20,7 +20,7 @@
 | `app/api/history/` | ログインユーザーの評価履歴を返す |
 | `components/` | UI部品（FileUploader / LoadingProgress / EvaluationResults / CategoryCard / ScoreRing / MiniBar / Sidebar） |
 | `lib/db.ts` | Supabase データアクセス（saveEvaluation / getEvaluations。読めなければ `DbAccessError` ── `lib/db/errors.ts`。使われていなかった getEvaluationById は 2026-09-24 に削除） |
-| `lib/requestBody.ts` | API の入口が本文を読む唯一の道（`readJsonObject`: JSON のオブジェクトだけ通し、`null`・配列・文字列などは null → 入口が 400）。使う入口は clients・clients/[id]/related・documents・documents/[id]・transcripts・generate・preview・kaipoke/assessment・rescue・extension/generate |
+| `lib/requestBody.ts` | API の入口が **JSON の**本文を読む道（`readJsonObject`: JSON のオブジェクトだけ通し、読めない JSON・`null`・配列・文字列などは null → 入口が 400）。使う入口は clients・clients/[id]/related・documents・documents/[id]・transcripts・generate・preview・kaipoke/assessment・rescue・extension/generate・blob-upload・evaluate の 12（blob-upload と evaluate は 2026-09-24 に寄せた ── それまでは直接読み、blob-upload は壊れた JSON で JSON の無い 500 だった）。JSON でない本文は別: `/api/transcribe` は音声を formData で読む。入口ごとの 400 は `tests/api/entryErrors.route.test.ts` |
 | `lib/evaluationCriteria.ts` | 評価プロンプト（8カテゴリ・27点満点の採点基準） |
 | `lib/exportExcel.ts` | 評価結果の Excel 出力（xlsx） |
 | `lib/supabase/{client,server}.ts` | Supabase クライアント（anon＝RLS / service role＝RLSバイパス・サーバ専用） |
@@ -255,7 +255,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-24 / 関係者名簿・保存した文字起こし・ダッシュボードが、読めなかったとき（503）に空・0件を見せず文字で出す（S1 の検収の指摘）*
+*最終更新: 2026-09-24 / 本文を直接読んでいた blob-upload（壊れた JSON で JSON の無い 500）と evaluate も `lib/requestBody.ts` に寄せた（12の入口。blob-upload は handleUpload の形も確かめる）。「唯一の道」の言い過ぎを直した（S1 の検収の指摘）*
+*2026-09-24 / 関係者名簿・保存した文字起こし・ダッシュボードが、読めなかったとき（503）に空・0件を見せず文字で出す（S1 の検収の指摘）*
 *2026-09-24 / lib/db 全体で DB の失敗を `DbAccessError`（`lib/db/errors.ts`）にし、入口は 503。見張り `lib/db/dbFailures.test.ts`（故障の注入・async 関数の抜けの検査）。使われていなかった `getEvaluationById` を削除（S1 の検収の指摘）*
 *2026-09-24 / 救済モードの一式の保存を途中の失敗から押し直しても、利用者をもう1人作らず・保存済みの帳票を二重に保存しない（`lib/rescue/saveBundle.ts`。S1 の検収の指摘）*
 *2026-09-24 / `getClientById` が DB の失敗を `ClientLookupError` にし、使う入口すべてが 404 でなく 503 を返す。本文は `lib/requestBody.ts` でオブジェクトだけ通す（10の入口）。書類の中身は入れ子32段まで（S1 の検収の指摘）*

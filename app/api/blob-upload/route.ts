@@ -1,8 +1,22 @@
 import { type HandleUploadBody, handleUpload } from "@vercel/blob/client";
 import { type NextRequest, NextResponse } from "next/server";
+import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
 
+/**
+ * 資料（PDF・画像）を非公開の Vercel Blob へ画面から直接上げるための、アップロード用の札を出す入口。
+ * 呼ぶ画面: 救済モード（app/(dashboard)/rescue）と点検（app/(dashboard)/evaluate）の upload()。
+ * 上げた資料は /api/rescue・/api/evaluate が読み、処理の後で必ず消す。
+ *
+ * 本文は lib/requestBody.ts の readJsonObject で読む（2026-09-24 検収の指摘）。以前は try の外で
+ * `await request.json()` を呼んでいたので、JSON として読めない本文は JSON の無い 500 になり、JSON の null は
+ * handleUpload の中の TypeError（内部の文言つきの 400）になっていた。オブジェクトでなければ 400 と決まった文で返す。
+ * type（札を出す／上げ終わった）と payload の形を isUploadBody で確かめ、合わなければ同じ 400 にする。
+ */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const body = (await request.json()) as HandleUploadBody;
+  const body = await readJsonObject(request);
+  if (!body || !isUploadBody(body)) {
+    return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
+  }
 
   try {
     const jsonResponse = await handleUpload({
@@ -31,4 +45,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 400 });
   }
+}
+
+/**
+ * @vercel/blob の handleUpload が受け取る本文の形か（type が2種類のどちらかで、payload がオブジェクト）。
+ * 型を言い張る（as）のではなく実際に確かめてから渡す。中身の細部は handleUpload が確かめる。
+ */
+function isUploadBody(v: unknown): v is HandleUploadBody {
+  if (typeof v !== "object" || v === null || !("type" in v) || !("payload" in v)) return false;
+  const known = v.type === "blob.generate-client-token" || v.type === "blob.upload-completed";
+  return known && typeof v.payload === "object" && v.payload !== null;
 }

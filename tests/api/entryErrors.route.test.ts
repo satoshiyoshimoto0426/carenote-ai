@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *   ① 本文が JSON の `null` だと `await req.json()` は null を返し、続く `body.clientId` などが TypeError になって、
  *      入口は JSON の無い 500 を返していた（書き込みや送信は無かった）。同じ書き方が 10 の入口にあった。
  *      いまは lib/requestBody.ts の readJsonObject を通し、オブジェクト以外は 400 で止める。
+ *      残っていた blob-upload（try の外の request.json() で、壊れた JSON は JSON の無い 500）と evaluate も
+ *      同じ日の検収の指摘で寄せたので、本文を読む入口は 12。
  *   ② 利用者1件を DB から読めなかったとき（lib/db/clients.ts の getClientById が ClientLookupError を投げる）、
  *      以前は「見えない」と同じ null になり、書類の保存や利用者ページは 404「利用者が見つかりません。」と答えていた。
  *      救済モードではその言葉を信じた職員が「新しい利用者として保存」を選び、同じ方を二重に登録し得た。
@@ -68,12 +70,23 @@ vi.mock("@/lib/db", async (importOriginal) => {
   return { ...orig, ...evaluations };
 });
 
+const upload = vi.hoisted(() => ({ handleUpload: vi.fn() }));
+vi.mock("@vercel/blob/client", () => ({ handleUpload: upload.handleUpload }));
+
+const blobStore = vi.hoisted(() => ({ readPrivateBlob: vi.fn(), del: vi.fn() }));
+vi.mock("@/lib/blob/readPrivate", () => ({ readPrivateBlob: blobStore.readPrivateBlob }));
+vi.mock("@vercel/blob", () => ({ del: blobStore.del, get: vi.fn() }));
+
+/** 点検（/api/evaluate）が AI を呼ぶ通信。本文の検査で止まれば呼ばれない */
+const aiFetch = vi.hoisted(() => vi.fn());
+
 const ai = vi.hoisted(() => ({ generateFromBody: vi.fn() }));
 vi.mock("@/lib/generation/dispatch", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/generation/dispatch")>();
   return { ...orig, generateFromBody: ai.generateFromBody };
 });
 
+process.env.ANTHROPIC_API_KEY = "test-key";
 const EXT_TOKEN = "abcdefghijklmnopqrstuvwxyz";
 process.env.CARENOTE_EXTENSION_TOKENS = `cm01:${EXT_TOKEN}`;
 
@@ -99,6 +112,8 @@ const { POST: preview } = await import("@/app/api/preview/route");
 const { POST: assessment } = await import("@/app/api/kaipoke/assessment/route");
 const { POST: rescue } = await import("@/app/api/rescue/route");
 const { POST: extensionGenerate } = await import("@/app/api/extension/generate/route");
+const { POST: blobUpload } = await import("@/app/api/blob-upload/route");
+const { POST: evaluate } = await import("@/app/api/evaluate/route");
 
 const ctx = { params: Promise.resolve({ id: "c1" }) };
 
@@ -159,9 +174,20 @@ const BODY_ROUTES: [string, (body: string) => Promise<Response>, () => unknown[]
       ),
     () => [ai.generateFromBody],
   ],
+  [
+    "POST /api/blob-upload",
+    (b) => blobUpload(raw("/api/blob-upload", b)),
+    () => [upload.handleUpload],
+  ],
+  [
+    "POST /api/evaluate",
+    (b) => evaluate(raw("/api/evaluate", b)),
+    () => [blobStore.readPrivateBlob, aiFetch],
+  ],
 ];
 
 const BAD_BODIES: [string, string][] = [
+  ["JSON として読めない", "{not json"],
   ["JSON の null", "null"],
   ["配列", '[{"clientId":"c1"}]'],
   ["文字列", '"c1"'],
@@ -185,10 +211,16 @@ beforeEach(() => {
   documents.getDocumentsByClient.mockResolvedValue([]);
   transcripts.saveTranscript.mockResolvedValue({ ok: false, reason: "client_not_visible" });
   ai.generateFromBody.mockResolvedValue({});
+  upload.handleUpload.mockResolvedValue({ type: "blob.generate-client-token", clientToken: "t" });
+  blobStore.readPrivateBlob.mockResolvedValue(null);
+  blobStore.del.mockResolvedValue(undefined);
+  aiFetch.mockResolvedValue(new Response("{}", { status: 500 }));
+  vi.stubGlobal("fetch", aiFetch);
 });
 
 afterEach(() => {
   logged.mockRestore();
+  vi.unstubAllGlobals();
 });
 
 describe("本文がオブジェクトでなければ、どの入口も 400 と JSON（先の処理を呼ばない）", () => {
@@ -201,6 +233,26 @@ describe("本文がオブジェクトでなければ、どの入口も 400 と J
       for (const fn of downstream()) expect(fn).not.toHaveBeenCalled();
     });
   }
+});
+
+describe("アップロードの札（/api/blob-upload）は、handleUpload の形でない本文も 400 で止める", () => {
+  it.each([
+    ["知らない type", { type: "blob.delete-everything", payload: {} }],
+    ["payload が無い", { type: "blob.generate-client-token" }],
+    ["payload が文字列", { type: "blob.generate-client-token", payload: "x" }],
+  ])("%s", async (_name, body) => {
+    const res = await blobUpload(raw("/api/blob-upload", JSON.stringify(body)));
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: REQUEST_PARSE_ERROR_MESSAGE });
+    expect(upload.handleUpload).not.toHaveBeenCalled();
+  });
+
+  it("正しい形なら handleUpload へ渡す（上の検査が空振りしていない証拠）", async () => {
+    const body = { type: "blob.generate-client-token", payload: { pathname: "intake/1.pdf" } };
+    const res = await blobUpload(raw("/api/blob-upload", JSON.stringify(body)));
+    expect(res.status).toBe(200);
+    expect(upload.handleUpload).toHaveBeenCalledWith(expect.objectContaining({ body }));
+  });
 });
 
 /** getClientById を通る入口と、その入口が利用者を読むときに呼ぶ関数（ここを「読めなかった」にする）。 */

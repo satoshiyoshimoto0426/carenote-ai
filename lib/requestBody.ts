@@ -6,9 +6,11 @@
  *   各入口は結果をオブジェクトとみなして `body.clientId` のように読んでいたため、本文が `null` だと
  *   TypeError になり、入口は JSON の無い 500 を返していた（書き込みや AI への送信は起きていなかった）。
  *   同じ書き方が 10 の入口にあったので、写して直すのではなく、ここへまとめる。
+ *   同じ日の検収で、直接読んでいた blob-upload（try の外で読み、壊れた JSON は JSON の無い 500）と evaluate も寄せた。
  *
- * 使う入口: app/api/{clients, clients/[id]/related, documents, documents/[id], transcripts,
- *   generate, preview, kaipoke/assessment, rescue, extension/generate}/route.ts。
+ * 使う入口（JSON の本文を読む 12）: app/api/{clients, clients/[id]/related, documents, documents/[id], transcripts,
+ *   generate, preview, kaipoke/assessment, rescue, extension/generate, blob-upload, evaluate}/route.ts。
+ *   JSON でない本文（/api/transcribe の音声 formData）はここを通らない。
  * 入口ごとの 400 は tests/api/entryErrors.route.test.ts、ここの判定は lib/requestBody.test.ts が縛る。
  */
 
