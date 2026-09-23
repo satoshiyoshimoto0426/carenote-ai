@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { findNameCandidates } from "@/lib/privacy/candidates";
 import { COLLAPSE_CHARS } from "@/lib/privacy/previewNav";
+import { elementsOf, hasClass, type MarkupElement, textOf, within } from "@/tests/helpers/markup";
 import PreSendPreview, { type PreviewData } from "./PreSendPreview";
 
 /**
@@ -74,6 +75,28 @@ describe("送る前に見る画面の既定表示", () => {
     expect(html).not.toContain("<mark");
   });
 
+  it("赤い言葉があれば、前へ/次への帯を出す（文字のボタンで1か所ずつ送れる）", () => {
+    const nav = navOf(view({ meetingNotes: "長女の佐藤さんより電話。" }));
+    const buttons = within(nav, (el) => el.tagName === "button").map(textOf);
+    expect(buttons).toEqual(["前へ", "次へ"]);
+  });
+
+  it("2つの欄に分かれた赤い言葉（2か所＋1か所）は、帯に合計の3か所として出る", () => {
+    const meetingNotes = "長女の佐藤さんより電話。担当の宮本さんが同席。";
+    const supportNotes = "次男の鈴木さんが来所。";
+    // 前提: 本物の検出器で、欄ごとに2つと1つ拾われる
+    expect(findNameCandidates(meetingNotes)).toHaveLength(2);
+    expect(findNameCandidates(supportNotes)).toHaveLength(1);
+    const html = view({ meetingNotes, supportNotes });
+    const nav = navOf(html);
+    // 合計は帯の中に出る（件数の文と、何か所目かの表示の両方）。欄ごとの数（2・1）と取り違えない
+    expect(textOf(nav)).toContain("（3か所）");
+    expect(textOf(nav)).toContain("— / 3");
+    // 欄ごとの数は、それぞれの欄の中に出る
+    const sections = elementsOf(html).filter((el) => el.tagName === "section");
+    expect(sections.map((s) => textOf(s).match(/赤い言葉 (\d+)か所/)?.[1])).toEqual(["2", "1"]);
+  });
+
   it("欄の見出しに文字数が出る（どれくらい長いかを先に知らせる）", () => {
     const html = view({ meetingNotes: "本人から電話。" });
     expect(html).toContain(">7字</span>");
@@ -81,6 +104,22 @@ describe("送る前に見る画面の既定表示", () => {
 
   it("「なぜ赤いか」が文字で読める（ふきだしだけだとタッチ端末に届かない）", () => {
     const html = view({ meetingNotes: `${FILLER}長女の佐藤さんより電話。` });
-    expect(html).toContain("敬称の前");
+    // 以前は html 全体に「敬称の前」があるかだけを見ていたため、<mark title="敬称の前"> の
+    // ふきだしだけで満たされ、画面の文字が消えても緑だった（2026-09-23 計画 F0a）。
+    // 画面に出る文字として、その赤い言葉と同じ行に理由が出ていることを見る
+    const rows = elementsOf(html).filter(
+      (el) =>
+        el.tagName === "li" &&
+        within(el, (m) => m.tagName === "mark").some((m) => textOf(m) === "佐藤"),
+    );
+    expect(rows).toHaveLength(1);
+    expect(textOf(rows[0])).toContain("（敬称の前）");
   });
 });
+
+/** 前へ/次への帯（presend-nav）を1つだけ取り出す。無い・2つ以上あるなら落とす。 */
+function navOf(html: string): MarkupElement {
+  const navs = elementsOf(html).filter((el) => hasClass(el, "presend-nav"));
+  expect(navs).toHaveLength(1);
+  return navs[0];
+}

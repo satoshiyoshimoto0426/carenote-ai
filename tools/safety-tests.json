@@ -124,11 +124,19 @@
     },
     {
       "path": "components/drafts/PreSendPreview.test.tsx",
-      "why": "送る前の画面: 赤い言葉の印と数、畳んでも赤は全部出す、理由「敬称の前」"
+      "why": "送る前の画面: 赤い言葉の印と数、畳んでも赤は全部出す、理由「敬称の前」を文字で出す、赤があれば前へ/次への帯と合計の数を出す"
     },
     {
       "path": "components/recording/RecordingPanel.test.tsx",
-      "why": "録音: 表示スイッチは既定で出さない・同意の文・一時停止・音声は保存しない"
+      "why": "録音: 表示スイッチは既定で出さない・同意の文・同意するまで「録音を始める」は押せない（disabled 属性）・一時停止・音声は保存しない"
+    },
+    {
+      "path": "components/SharingStatus.test.tsx",
+      "why": "名簿の共有状態: 確認中／事業所で共有中＋事業所名／自分の登録分のみ＋「置き換わりません」の注意書き＋その場で選べる切り替え"
+    },
+    {
+      "path": "tests/helpers/markup.test.ts",
+      "why": "画面の検査が使う HTML の読み取り道具（属性と画面の文字を分けて読めないと、上の画面の検査が黙って空振りする）"
     },
     {
       "path": "components/recording/RecordingPanel.live.test.tsx",

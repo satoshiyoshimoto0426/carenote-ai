@@ -353,3 +353,23 @@
   ①stop-build-check.sh を exit 2（作業を止める）にする ②push 前に `gh run list` で直前の CI を確かめる。
 - **関連**: 審査エージェントの検証用ファイルが**4回目**で残っていた（`__doubt_live4` / `__lens3live` /
   `zzlens1b.probe`）。名前の規則が毎回ずれるので、.gitignore を「`__` か `zz` で始まるテストファイル」まで広げた。
+
+### 2026-09-23: 画面の安全テスト3件が、壊れても緑のままだった（空振りの検査）
+- **発生回数**: 同じ種類（検査は緑なのに守れていない）の2回目（1回目＝2026-09-17 送る前の画面で赤い言葉が消えても緑）
+- **問題**: 作業台（A案）へ作り直す前の点検で、描いた HTML を**文字列のまま**照合していた検査が空振りしていた。
+  ①「録音を始める」の disabled を `/<button[^>]*disabled[^>]*>/` で見ていたが、ボタンの class にある
+  Tailwind の `disabled:opacity-50` の文字で満たされ、**同意なしで押せる状態でも緑**
+  ②畳んだ欄の理由「（敬称の前）」を html 全体の `toContain` で見ていたが、`<mark title="敬称の前">` の
+  ふきだしで満たされ、**画面の文字が消えても緑**（タッチ端末ではふきだしが出ない）
+  ③帯の件数 `3</span>か所` は欄が1つの例しかなく、**合計と欄ごとの数を区別できなかった**
+  さらに名簿の共有状態の表示（SharingStatus）には検査が1つも無かった。
+- **対策**: テスト＋道具。`tests/helpers/markup.ts`（parse5 で HTML を木として読み、属性と画面の文字を分ける）を足し、
+  3件を木で読む形に直した（①disabled 属性そのもの ②その赤い言葉と同じ行の、画面に出る文字 ③2欄に2＋1か所の例で、帯に合計3）。
+  帯が「出ること」の検査も足した（これまでは「出ないこと」だけ）。`components/SharingStatus.test.tsx` を新設（3状態×2種類）。
+  部品をわざと壊して7通りとも赤になり、以前の照合は①②③の壊し方で緑のままだったことを確かめた。
+  道具そのものの検査 `tests/helpers/markup.test.ts` と SharingStatus の検査を安全テストの一覧に載せた。
+- **ファイル**: `components/recording/RecordingPanel.test.tsx` / `components/drafts/PreSendPreview.test.tsx` /
+  `components/SharingStatus.test.tsx` / `tests/helpers/markup.ts` / `tests/helpers/markup.test.ts` / `tools/safety-tests.json` / `package.json`（parse5 を開発用に明記）
+- **教訓**:
+  (a) **画面の検査は、文字列ではなく木で読む**。属性（class・title）の中の文字と、画面に出る文字を混ぜると空振りする。
+  (b) 新しい検査は、**部品を壊して赤になるのを見るまで**信用しない。緑になったことは証拠にならない。

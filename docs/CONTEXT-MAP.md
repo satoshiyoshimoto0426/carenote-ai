@@ -200,7 +200,7 @@ AES-256-GCM・5年・可視性は `getClientById` に一本化・**AIへは渡�
 
 記号（A様）の採番は**範囲内の最大＋1**（件数だと範囲が混ざったとき同じ記号を二度振る）。安全網は3段: ①`assertClientCodesUnique`（同じ記号の利用者が2人 ── **復号する前に**見るので復号失敗行があっても取りこぼさない）②`expandAliasVariants` が「同じ表記が違う記号」を見つけたら `AliasConflictError`（空白違いの別人・同姓同名を黙って捨てない）③`assertUnderRowLimit`（900件超で停止 ── PostgREST の既定1000行の黙った打ち切り対策）。これらは待っても直らないので `ALIAS_PERMANENT_MESSAGE`（管理者へ連絡）で返し、読み直さない。
 
-**⚠ Clerk の `orgId` は「所属」ではなく「いま選んでいる事業所（Active Organization）」**。所属させただけでは null のまま＝共有は始まらない。だから `components/SharingStatus.tsx` が状態を常時表示し、その場で切り替えられるようにしている（`OrganizationSwitcher`）。`getClientAliases` は orgId が null のとき warn を残す（センサー）。**有効化には Clerk の組織設定＋SQL 2本の実行＋既存データの移行＋各職員が事業所を選ぶこと が要る**（手順の正本= `docs/ADMIN-SETUP.md`）。保存書類（`documents`）の共有は未対応で `created_by` のまま。
+**⚠ Clerk の `orgId` は「所属」ではなく「いま選んでいる事業所（Active Organization）」**。所属させただけでは null のまま＝共有は始まらない。だから `components/SharingStatus.tsx` が状態を常時表示し、その場で切り替えられるようにしている（`OrganizationSwitcher`）。表示の3状態（確認中／事業所で共有中＋事業所名／自分の登録分のみ＋「置き換わりません」の注意書き）と切り替えが出ることは `components/SharingStatus.test.tsx` が縛る（Clerk は偽物にする・2026-09-23）。`getClientAliases` は orgId が null のとき warn を残す（センサー）。**有効化には Clerk の組織設定＋SQL 2本の実行＋既存データの移行＋各職員が事業所を選ぶこと が要る**（手順の正本= `docs/ADMIN-SETUP.md`）。保存書類（`documents`）の共有は未対応で `created_by` のまま。
 
 仕様と5段計画: [specs/call-pipeline.md](specs/call-pipeline.md)。根拠調査: [CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)。
 
@@ -219,7 +219,8 @@ npm test ─> tools/run-tests.mjs
         （合否は集計行で決める。JSON が読めなくても合格にはしない）
 ```
 なぜ: ②だけでは、安全テストを1つ消すと両方の数が減って緑のまま、`it.skip` を入れても緑のままだった（吉本さん決定「安全テストが消えない・飛ばされない見張り」）。
-見張りの検査は `tools/testManifest.test.ts`（わざと壊した状態を作って止まることを確かめる）。CI（`quality-gates.yml`）は `npm run test` 経由で同じ見張りを通る（`package.json` の test が `node tools/run-tests.mjs` のままか・CI の行が `npm run test` のままか・`quality-gates.yml` に落ちても緑にする `continue-on-error` や段を飛ばす `if:` が無いかも、同じ検査が確かめる ── 入口を書き換えて見張りごと飛ばす抜け道を塞ぐ）。
+見張りの検査は `tools/testManifest.test.ts`（わざと壊した状態を作って止まることを確かめる）。
+画面の検査（送る前の画面・録音・共有状態）は、描いた HTML を `tests/helpers/markup.ts`（parse5 で木として読む・属性と画面の文字を分ける）で読む。文字列の照合では class の `disabled:` や title のふきだしで空振りしていた（2026-09-23・steering-log）。道具そのものの検査は `tests/helpers/markup.test.ts`。CI（`quality-gates.yml`）は `npm run test` 経由で同じ見張りを通る（`package.json` の test が `node tools/run-tests.mjs` のままか・CI の行が `npm run test` のままか・`quality-gates.yml` に落ちても緑にする `continue-on-error` や段を飛ばす `if:` が無いかも、同じ検査が確かめる ── 入口を書き換えて見張りごと飛ばす抜け道を塞ぐ）。
 引数つき（`npm test -- <ファイル>`）でも⓪と `Errors` 行・終了コードの確認は必ず走る。件数の突き合わせと④は引数なしのときだけ（`-t` で絞ると外れたテストが skipped と数えられるため）。
 一覧の抜けを防ぐ検査: `lib/generation` で「AI への指示に氏名・実名・個人情報を書かせない」を固定している検査は、字面から拾って一覧と突き合わせる（2026-09-23 の検収で `kaipokeAssessment.test.ts` の抜けが見つかったため）。
 書く瞬間の注意喚起: 一覧の最低件数を下げる・名指しを消す・判定を緩める変更は、MaouCastle ルートの `.claude/hooks/pre-tool-guard.sh`（慎重領域 §6 #9）が
@@ -236,7 +237,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-23 / テストの見張り（安全テストの一覧 `tools/safety-tests.json`・判定 `tools/testManifest.mjs`・落ちたときの名指し・ルートのフックの注意喚起との接続）を反映*
+*最終更新: 2026-09-23 / 画面の安全テストを木で読む道具（`tests/helpers/markup.ts`）と共有状態の検査（`components/SharingStatus.test.tsx`）を反映*
+*2026-09-23 / テストの見張り（安全テストの一覧 `tools/safety-tests.json`・判定 `tools/testManifest.mjs`・落ちたときの名指し・ルートのフックの注意喚起との接続）を反映*
 *2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

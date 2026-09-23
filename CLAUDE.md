@@ -36,7 +36,9 @@
   入口を書き換えて見張りごと飛ばす変更（`package.json` の test を `vitest run` にする・CI の `npm run test` を変える・
   `quality-gates.yml` に `continue-on-error` や `if:` を足す）も、同じ検査が落とす。
   安全テストを足したら一覧にも足す。消す・弱めるときは吉本さんの承認（横断規約 §2.7-C）のうえで、一覧も同じコミットで直す
-- React コンポーネントテスト: `@testing-library/react` は必要時に追加
+- React コンポーネントテスト: `@testing-library/react` は必要時に追加。`renderToStaticMarkup` で描いた HTML は
+  `tests/helpers/markup.ts`（parse5）で**木として読む**。文字列の正規表現・`toContain` で属性や押せる/押せないを見ない
+  （class の `disabled:` や title のふきだしで満たされ、壊れても緑になる ── 2026-09-23 steering-log）。新しい検査は部品をわざと壊して赤になるのを確かめる
 - E2E: `Playwright` 導入予定（P2 のブラウザ拡張フローで）
 - カバレッジ目標: 80%
 

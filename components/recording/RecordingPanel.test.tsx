@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { attrOf, elementsOf, textOf } from "@/tests/helpers/markup";
 
 /**
  * 録音パネルの**出るか出ないか**と、**押せるか押せないか**を固定する。
@@ -59,7 +60,13 @@ describe("同意の確認", () => {
   it("伝えたことにチェックが入るまで「録音を始める」は押せない", async () => {
     const html = await render("on");
     expect(html).toContain("その場にいる全員に、記録を作るために録音することを伝えました");
-    expect(html).toMatch(/<button[^>]*disabled[^>]*>録音を始める<\/button>/);
+    // 属性として disabled があるかを木で読む。以前の正規表現は、ボタンの class にある
+    // Tailwind の「disabled:opacity-50」の文字で満たされ、押せる状態でも緑だった（2026-09-23 計画 F0a）
+    const starts = elementsOf(html).filter(
+      (el) => el.tagName === "button" && textOf(el) === "録音を始める",
+    );
+    expect(starts).toHaveLength(1);
+    expect(attrOf(starts[0], "disabled")).toBe("");
   });
 
   it("音声を保存しないことと、一時停止できることを画面に書いてある", async () => {
