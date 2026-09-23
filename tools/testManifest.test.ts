@@ -6,6 +6,8 @@
  * 集計に skipped を混ぜる）を1つずつ作り、見張りが該当の名前を挙げて止めることを確かめる。
  * 繋がり: 判定= tools/testManifest.mjs／呼ぶ側= tools/run-tests.mjs（npm test）／一覧= tools/safety-tests.json。
  */
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import realManifest from "./safety-tests.json";
 import {
@@ -249,6 +251,30 @@ describe("いま使っている一覧 tools/safety-tests.json", () => {
       "tools/testManifest.test.ts",
     ]) {
       expect(paths).toContain(core);
+    }
+  });
+
+  it("AI への指示に「氏名・実名・個人情報を書かせない」を固定している検査（lib/generation）は、すべて名指しで守る", () => {
+    // なぜ: 2026-09-23 の検収で、同じ種類の3件のうち kaipokeAssessment.test.ts だけが一覧から漏れていた
+    // （消しても npm test が緑のままだった）。名前を並べるだけでは次の漏れを防げないので、
+    // 字面から「その種類の検査」を拾い、一覧と突き合わせる。
+    const dir = join(process.cwd(), "lib", "generation");
+    const pinsNoPii = /toContain\(\s*["'`][^"'`]*(氏名|実名|個人情報)/;
+    const found = readdirSync(dir)
+      .filter((name) => /\.test\.tsx?$/.test(name))
+      .filter((name) => pinsNoPii.test(readFileSync(join(dir, name), "utf8")))
+      .map((name) => `lib/generation/${name}`);
+    // 拾い方そのものが壊れて 0 件になり、黙って合格するのを防ぐ（今日ある3件は必ず拾えること）
+    expect(found).toEqual(
+      expect.arrayContaining([
+        "lib/generation/kaipokeAssessment.test.ts",
+        "lib/generation/rescueIntake.test.ts",
+        "lib/generation/supportLogAppointments.test.ts",
+      ]),
+    );
+    const paths = realManifest.files.map((f) => f.path);
+    for (const path of found) {
+      expect(paths, `${path} を tools/safety-tests.json に足してください`).toContain(path);
     }
   });
 });

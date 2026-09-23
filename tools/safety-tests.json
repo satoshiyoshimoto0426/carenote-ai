@@ -171,6 +171,10 @@
       "why": "予定の抜き出しで、個人情報を書かせない指示"
     },
     {
+      "path": "lib/generation/kaipokeAssessment.test.ts",
+      "why": "カイポケの欄に合わせるとき、氏名・住所・電話番号・医療機関名・事業所名を書かせない指示"
+    },
+    {
       "path": "lib/calendar/links.test.ts",
       "why": "カレンダーへ渡す文字に番号が混ざっても札に変える（二重の安全網）"
     },
