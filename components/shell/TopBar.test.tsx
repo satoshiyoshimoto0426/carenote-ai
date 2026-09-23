@@ -118,34 +118,91 @@ describe("TopBar（上の帯）", () => {
  * 固定の数字（旧 72/76/80px）に戻すと、注意の帯が出ている時だけ「前へ／次へ」や章の見出しが
  * 帯の裏に潜る（2026-09-17 critical と同じ種類）。高さを「画面の高さ − 帯」の引き算で決めるのも、
  * 注意の帯の有無で下の端が画面の外へ出るのでやめた（計画の指摘）。どちらもここで止める。
+ *
+ * A3 の検証の追補: キーボードで移った先（フォーカス）も、上の帯とスマホの下のタブの裏に隠れていた
+ * （WCAG 2.2 AA 2.4.11。375px で帯やタブの裏のボタンに focus() しても画面が動かなかった）。
+ * 文書（html）の scroll-padding で上下を空けているかも、ここで縛る。
  */
 describe("帯の高さを読む CSS（app/globals.css）", () => {
   const CSS = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 
-  /** @media の中まで降りて、選択子がちょうど selector の規則の宣言を全部集める。 */
-  function declarationsOf(selector: string): string[] {
+  /**
+   * @media / @layer の中まで降りて、選択子がちょうど selector の規則の宣言を集める。
+   * within を渡すと、前置き（`@media (…)` など）がそれに合うまとまりの中にある規則だけを集める。
+   */
+  function declarationsOf(selector: string, within?: RegExp): string[] {
     const out: string[] = [];
-    const visit = (nodes: CssNode[]) => {
+    const visit = (nodes: CssNode[], inside: boolean) => {
       for (const node of nodes) {
-        if (node.prelude.trim() === selector) out.push(node.declarations);
-        visit(node.children);
+        const here = inside || (within?.test(node.prelude) ?? false);
+        if (node.prelude.trim() === selector && (within === undefined || here)) {
+          out.push(node.declarations);
+        }
+        visit(node.children, here);
       }
     };
-    visit(parseCss(CSS));
+    visit(parseCss(CSS), false);
+    return out;
+  }
+
+  /** 宣言の並びから、property の値を全部取り出す。 */
+  function valuesOf(bodies: string[], property: string): string[] {
+    return bodies.flatMap((body) =>
+      [...body.matchAll(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, "g"))].map((m) =>
+        m[1].trim(),
+      ),
+    );
+  }
+
+  /** 選択子 selector の規則が property: value を持っている @media の前置きを集める（層の外なら ""）。 */
+  function mediaHaving(selector: string, property: string, value: RegExp): string[] {
+    const out: string[] = [];
+    const visit = (nodes: CssNode[], media: string) => {
+      for (const node of nodes) {
+        const here = node.prelude.startsWith("@media") ? node.prelude : media;
+        if (
+          node.prelude.trim() === selector &&
+          valuesOf([node.declarations], property).some((v) => value.test(v))
+        ) {
+          out.push(here);
+        }
+        visit(node.children, here);
+      }
+    };
+    visit(parseCss(CSS), "");
     return out;
   }
 
   it.each([
     [".presend-nav", "top"],
-    [".shell-anchor", "scroll-margin-top"],
+    // フォーカスした部品・使い方の章の飛び先（/guide#chN）を、帯の 8px 下に止める
+    ["html", "scroll-padding-top"],
   ])("%s の %s は、どの幅でも測った高さ（--shell-head-h）から決める", (selector, property) => {
-    const values = declarationsOf(selector).flatMap((body) =>
-      [...body.matchAll(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, "g"))].map((m) =>
-        m[1].trim(),
-      ),
-    );
+    const values = valuesOf(declarationsOf(selector), property);
     expect(values.length).toBeGreaterThan(0);
     for (const value of values) expect(value).toContain(`var(${SHELL_HEAD_HEIGHT_VAR}`);
+  });
+
+  it("スマホでは、下のタブの高さと iPhone の下端（safe-area）の上に、フォーカスした部品を止める", () => {
+    const values = valuesOf(declarationsOf("html", /^@media\b/), "scroll-padding-bottom");
+    expect(values.length).toBeGreaterThan(0);
+    for (const value of values) {
+      expect(value).toContain("var(--tabbar-h)");
+      expect(value).toContain("env(safe-area-inset-bottom)");
+    }
+  });
+
+  it("下を空ける幅は、下のタブを画面の下に固定する幅と同じ（片方だけ変えると、隠れる幅か無駄に空く幅ができる）", () => {
+    const tabBar = mediaHaving(".rail", "position", /^fixed$/);
+    const padded = mediaHaving("html", "scroll-padding-bottom", /--tabbar-h/);
+    expect(tabBar.length).toBeGreaterThan(0);
+    expect(padded).toEqual(tabBar);
+  });
+
+  it("帯の高さを scroll-margin でも足していない（html の scroll-padding-top と足し算になり、二重に下がる）", () => {
+    expect(stripCssComments(CSS)).not.toMatch(
+      new RegExp(`scroll-margin[a-z-]*\\s*:[^;]*${SHELL_HEAD_HEIGHT_VAR}`),
+    );
   });
 
   it("高さを「画面の高さ − 何か」の引き算で決めていない", () => {

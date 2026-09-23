@@ -18,6 +18,8 @@ import SharingStatus from "./SharingStatus";
 
 const clerk = vi.hoisted(() => ({
   state: { isLoaded: true, organization: null as { name: string } | null },
+  /** 最後に描いた OrganizationSwitcher が受け取った appearance.elements（見た目の指定の全部） */
+  elements: {} as Record<string, string>,
 }));
 
 vi.mock("@clerk/nextjs", () => ({
@@ -27,14 +29,16 @@ vi.mock("@clerk/nextjs", () => ({
     afterSelectOrganizationUrl?: string;
     afterSelectPersonalUrl?: string;
     appearance?: { elements?: Record<string, string> };
-  }) =>
-    createElement("div", {
+  }) => {
+    clerk.elements = props.appearance?.elements ?? {};
+    return createElement("div", {
       "data-org-switcher": "",
       "data-hide-personal": String(props.hidePersonal),
       "data-after-org": props.afterSelectOrganizationUrl,
       "data-after-personal": props.afterSelectPersonalUrl,
       "data-trigger": props.appearance?.elements?.organizationSwitcherTrigger ?? "",
-    }),
+    });
+  },
 }));
 
 function draw(variant: "bar" | "strip"): string {
@@ -100,6 +104,37 @@ describe("SharingStatus variant bar（上の帯の右側）", () => {
   it("切り替えのボタンはスマホでも押せる大きさ（44px = min-h-11 / min-w-11）", () => {
     const trigger = /data-trigger="([^"]*)"/.exec(draw("bar"))?.[1] ?? "";
     expect(trigger.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-11", "min-w-11"]));
+  });
+
+  /**
+   * 文字を隠す指定（sr-only など）は、切り替えの**ボタンの中だけ**に効かせる。
+   * Clerk の要素の名前の後ろの `__○○` は、使う場所ごとの名前だが、ボタンと押すと開く一覧で同じ名前を
+   * 使うものがある（`__personalWorkspace` は一覧の「個人のアカウント」の行にも使われる）。
+   * そこに隠す指定を書くと、スマホで一覧の行の文字が消え、共有していない注意が案内する先の道具が
+   * 印と矢印だけになる（A3 の検証 2026-09-23 で見つかった旧指定）。ボタンだけに付く名前は
+   * `organizationSwitcherTrigger` で始まるもの（ボタンそのもの・中の矢印）と、`__organizationSwitcherTrigger`
+   * で終わるもの（ボタンの中の事業所の表示）だけ（@clerk/shared の型 OrganizationPreviewId）。
+   */
+  it("文字を隠す指定は、切り替えのボタンの中だけに効く（押すと開く一覧の行の文字は消さない）", () => {
+    draw("bar");
+    const hides = (classes: string) =>
+      classes.split(/\s+/).some((c) => /(^|:)(sr-only|hidden|invisible)$/.test(c));
+    const outsideTrigger = Object.entries(clerk.elements)
+      .filter(([, classes]) => hides(classes))
+      .map(([key]) => key)
+      .filter(
+        (key) =>
+          !key.startsWith("organizationSwitcherTrigger") &&
+          !key.endsWith("__organizationSwitcherTrigger"),
+      );
+    expect(outsideTrigger).toEqual([]);
+  });
+
+  it("スマホでは、ボタンの中の個人のアカウントの名前だけを読み上げに残す（帯からはみ出さない）", () => {
+    draw("bar");
+    expect(clerk.elements.organizationSwitcherTrigger.split(/\s+/)).toContain(
+      "max-md:[&_.cl-userPreviewTextContainer]:sr-only",
+    );
   });
 
   it("帯の中には注意の文を出さない（注意は帯の下の strip が出す）", () => {

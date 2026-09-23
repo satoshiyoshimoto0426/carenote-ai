@@ -377,3 +377,25 @@
   ①stop-build-check.sh を exit 2（作業を止める）にする ②push 前に `gh run list` で直前の CI を確かめる。
 - **関連**: 審査エージェントの検証用ファイルが**4回目**で残っていた（`__doubt_live4` / `__lens3live` /
   `zzlens1b.probe`）。名前の規則が毎回ずれるので、.gitignore を「`__` か `zz` で始まるテストファイル」まで広げた。
+
+### 2026-09-23: 貼りつく帯の裏にフォーカスが隠れ、Clerk の一覧の行の文字も消えていたおそれ（A3 外枠の検証）
+- **発生回数**: 帯の裏に隠れる件は2回目（1回目＝2026-09-17 独立審査 critical「前へ／次へ」が上の帯の裏に潜った）。
+  Clerk の件は1回目（ただし「外から入る部品に書いた見た目の指定が、思った場所と違う所に効く」は 2026-09-23 の Clerk の層の件に続く同じ系統）
+- **問題**: ①A3 で上の帯を**どの幅でも**貼りつく形にし、スマホの下のタブを画面の下に固定したが、画面を動かす入れ物（html）に
+  scroll-padding が無かった。375px でタブや帯の裏にあるボタンへ Tab・`focus()` で移っても画面が動かず、隠れたまま
+  （WCAG 2.2 AA 2.4.11）。使い方の章の飛び先は `.shell-anchor` で1つずつ逃がしていたので、フォーカスの方は誰も見ていなかった。
+  ②`OrganizationSwitcher` のスマホの見た目で `userPreviewTextContainer__personalWorkspace` を読み上げ用に隠したが、
+  Clerk は `personalWorkspace` を押すと開く一覧の「個人のアカウント」の行にも使う（PersonalWorkspacePreview が常にこの名前で描く）。
+  共有していない注意が「ここから選んで」と案内する道具の行が、スマホで印と矢印だけになるおそれがあった（ログインが要るので実物は未確認）。
+- **対策**: ①`app/globals.css` の `@layer base` で `html` に scroll-padding（上 = 測った帯の高さ＋8px、スマホの下 = タブ＋safe-area＋8px）。
+  `.shell-anchor` は廃止（両方あると足し算になり二重に下がる）。センサー `components/shell/TopBar.test.tsx` ── 帯・タブの高さから決めているか・
+  下を空ける幅とタブを固定する幅が同じか・scroll-margin で帯の高さを二重に足していないか（変異で4通り赤を確認）。
+  ②隠す指定を切り替えのボタンの子孫だけに効く `max-md:[&_.cl-userPreviewTextContainer]:sr-only` に移した。センサー
+  `components/SharingStatus.test.tsx` ── 文字を隠す指定がボタンだけに付く名前（`organizationSwitcherTrigger…` / `…__organizationSwitcherTrigger`）
+  以外に書かれたら落ちる（旧指定に戻すと赤を確認）。実物の一覧は `docs/REDESIGN-A-SIGNOFF.md` の 5（エ）で追跡。
+- **教訓**:
+  (a) 上や下に**貼りつく・固定する帯を足したら、同じ段で html の scroll-padding も足す**。帯の裏に隠れるのは「前へ／次へ」や章の見出しだけでなく、
+      キーボードで移った先（フォーカス）も同じ。要素ごとに逃がすのではなく、画面を動かす入れ物に1か所で書く。
+  (b) Clerk の elements の `__○○` は「その場所だけの名前」とは限らない。**隠す・消す指定を書く前に、その名前を Clerk のソースで
+      どこが使っているかを確かめる**（`@clerk/shared` の型 `UserPreviewId` / `OrganizationPreviewId` に候補が並ぶ）。一つの部品だけに効かせたいときは、
+      その部品の要素（例: `organizationSwitcherTrigger`）に子孫の選択子で書く。Tailwind の角かっこの中では `_` が空白になるので、`__` 付きのクラス名は狙えない。

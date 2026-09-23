@@ -10,7 +10,8 @@ import { helpAnchorOf, NAV_ITEMS, sectionOf } from "@/lib/nav";
 
 /**
  * 上の帯と本文が重ならないよう、帯（＋注意の帯）の実際の高さを書き込む CSS 変数の名前。
- * app/globals.css の .presend-nav（赤い言葉の「前へ／次へ」の帯）と .shell-anchor（使い方の章の飛び先）が読む。
+ * app/globals.css の .presend-nav（赤い言葉の「前へ／次へ」の帯）と html の scroll-padding-top
+ * （フォーカスした部品・使い方の章の飛び先が帯の裏に隠れないようにする）が読む。
  */
 export const SHELL_HEAD_HEIGHT_VAR = "--shell-head-h";
 

@@ -168,6 +168,31 @@
     border-color: var(--green);
     box-shadow: 0 0 0 3px rgba(14, 92, 70, 0.13);
   }
+
+  /*
+   * キーボードで移った先（フォーカス）と、ページ内の飛び先（使い方の章 /guide#chN）が、
+   * 上に貼りつく帯（.shell-head）とスマホの下のタブ（.rail）の裏に隠れないようにする
+   * （WCAG 2.2 AA 2.4.11「フォーカスが隠れない」── A3 の検証で、375px で帯やタブの裏のボタンに
+   * focus() しても画面が動かず、隠れたままだったことが分かった）。
+   * 画面を動かしているのは文書そのもの（html）なので、ここに「端から空けておく幅」を書く。
+   * ブラウザは Tab での移動・focus()・# の飛び先のどれでも、この幅を避けて止める（計測済み: 375px で3つとも、
+   * 1440px で focus() ── docs/REDESIGN-A-SIGNOFF.md の「確かめたこと」）。
+   *   上 = TopBar が測った帯＋注意の帯の高さ（--shell-head-h。測る前は --topbar-h）＋ 8px。
+   *   下 = スマホだけ、下のタブ＋ iPhone の下端の横線（safe-area）＋ 8px。
+   * 章の見出しを1つずつ逃がしていた旧 .shell-anchor（scroll-margin-top）はこれに置き換えた
+   * （両方あると足し算になり、帯の高さぶん二重に下がる）。
+   * 外枠の無い画面（/sign-in /sign-up）でも同じ幅が空くが、止まる位置が少し内側になるだけで害は無い。
+   * 検査: components/shell/TopBar.test.tsx（帯の測った高さ・タブの高さから決めているか、二重に足していないか）。
+   */
+  html {
+    scroll-padding-top: calc(var(--shell-head-h, var(--topbar-h)) + 8px);
+  }
+
+  @media (max-width: 767px) {
+    html {
+      scroll-padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);
+    }
+  }
 }
 
 /* 記号（A様）の共通見た目。氏名と見分けがつくよう等幅＋淡い緑の札にする */
@@ -493,11 +518,6 @@
   position: sticky;
   top: calc(var(--shell-head-h, var(--topbar-h)) + 8px);
   z-index: 10;
-}
-
-/* ページ内の飛び先（使い方の章 /guide#chN）が上の帯の裏に隠れないようにする */
-.shell-anchor {
-  scroll-margin-top: calc(var(--shell-head-h, var(--topbar-h)) + 16px);
 }
 
 /* スマホ: 左の帯を画面の下のタブにする（4項目・文字つき・押す場所は 56px） */

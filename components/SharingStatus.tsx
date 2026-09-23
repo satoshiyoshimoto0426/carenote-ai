@@ -31,7 +31,8 @@ import { clerkAppearance } from "@/lib/clerkAppearance";
  *   - components/shell/TopBar.tsx が両方を描く（app/(dashboard)/layout.tsx の外枠に入っているので、
  *     ページの側で消すことはできない）。
  *   - サーバ側の実際の絞り込みは lib/db/clients.ts の scopeExpr。
- *   - テスト: components/SharingStatus.test.tsx（3つの状態・注意の帯・切り替えの有無）。
+ *   - テスト: components/SharingStatus.test.tsx（3つの状態・注意の帯・切り替えの有無・
+ *     文字を隠す指定が切り替えのボタンの中だけに効き、押すと開く一覧の行を消さないか）。
  */
 export default function SharingStatus({ variant }: { variant: "bar" | "strip" }) {
   const { organization, isLoaded } = useOrganization();
@@ -74,14 +75,21 @@ export default function SharingStatus({ variant }: { variant: "bar" | "strip" })
           ...clerkAppearance,
           elements: {
             ...clerkAppearance.elements,
-            // 押す場所はスマホでも 44px（min-h-11 / min-w-11）
+            // 押す場所はスマホでも 44px（min-h-11 / min-w-11）。
+            // max-md:[&_.cl-userPreviewTextContainer]:sr-only = 個人のアカウントを選んでいるときの
+            // ボタンの中の名前を、スマホでは読み上げにだけ残す（帯からはみ出さないように）。
+            // **このボタンの子孫だけ**に効かせる ── Clerk は押すと開く一覧の「個人のアカウント」の行にも
+            // 同じ名前（userPreviewTextContainer__personalWorkspace）を使うので、その名前に書くと
+            // スマホで一覧の行の文字まで消える（旧指定・A3 の検証 2026-09-23）。
+            // ボタンの中で userPreview を使うのは個人のアカウントの表示だけ（事業所は organizationPreview）。
+            // __personalWorkspace 付きのクラス名を狙わないのは、Tailwind では _ が空白の意味になるため
             organizationSwitcherTrigger:
-              "min-h-11 min-w-11 justify-center rounded-[8px] px-1.5 hover:bg-[var(--active)]",
+              "min-h-11 min-w-11 justify-center rounded-[8px] px-1.5 hover:bg-[var(--active)] max-md:[&_.cl-userPreviewTextContainer]:sr-only",
             // 事業所の名前は左の文字（sharing-org）で見せるので、切り替えのボタンの中では
-            // 読み上げにだけ残す（帯の中で同じ名前が2回並ばないように）。事業所の印（画像）と矢印は残す
+            // 読み上げにだけ残す（帯の中で同じ名前が2回並ばないように）。事業所の印（画像）と矢印は残す。
+            // 名前の後ろの organizationSwitcherTrigger はボタンの中だけの名前（一覧の行は
+            // organizationSwitcherActiveOrganization / organizationSwitcherListedOrganization）なので、一覧には効かない
             organizationPreviewTextContainer__organizationSwitcherTrigger: "sr-only",
-            // 個人のアカウントの名前は、幅の狭いスマホでは読み上げにだけ残す（帯からはみ出さないように）
-            userPreviewTextContainer__personalWorkspace: "max-md:sr-only",
           },
         }}
       />
