@@ -21,7 +21,18 @@ function nextResult(table: string): Result {
 /** from(table).select().eq()... のどこで await されても結果が返る偽ビルダー（Promise にメソッドを生やす） */
 function fakeFrom(table: string) {
   const chain = Promise.resolve(nextResult(table)) as Promise<Result> & Record<string, unknown>;
-  for (const op of ["select", "eq", "or", "in", "delete", "insert", "order", "limit", "single"]) {
+  for (const op of [
+    "select",
+    "eq",
+    "or",
+    "in",
+    "delete",
+    "insert",
+    "order",
+    "limit",
+    "single",
+    "maybeSingle",
+  ]) {
     chain[op] = (...args: unknown[]) => {
       calls.push({ table, op, args });
       return chain;
@@ -36,8 +47,10 @@ const KEY = randomBytes(32);
 process.env.CARENOTE_PII_KEY = KEY.toString("base64");
 
 const {
+  addRelatedPerson,
   ALIAS_PERMANENT_MESSAGE,
   AliasLoadError,
+  ClientLookupError,
   createClientRecord,
   deleteRelatedPerson,
   getClientAliases,
@@ -174,6 +187,91 @@ describe("getClients: DB を読めなければ例外（空の一覧に見せな�
   });
 });
 
+/**
+ * 利用者1件の読み出しは「見えない（0件）」と「読めなかった（DB の失敗）」を分ける（2026-09-24 検収の指摘）。
+ * 以前はどちらも null で、書類の保存は DB が一時的に落ちただけで 404「利用者が見つかりません。」と答えていた。
+ */
+describe("getClientById: 見えない利用者と、DB を読めなかったことを分ける", () => {
+  beforeEach(() => {
+    results.clear();
+    calls.length = 0;
+  });
+
+  const row = {
+    id: "c1",
+    org_id: "org_xyz",
+    code: "A",
+    attributes: {},
+    created_by: "u2",
+    created_at: "2026-09-01",
+    updated_at: "2026-09-02",
+  };
+
+  it("見える利用者は記録の形で返す", async () => {
+    ok("clients", row);
+    await expect(getClientById("c1", SOLO)).resolves.toMatchObject({ id: "c1", code: "A" });
+  });
+
+  it("見えない利用者（0件）は null", async () => {
+    results.set("clients", { data: null, error: null });
+    await expect(getClientById("c1", SOLO)).resolves.toBeNull();
+  });
+
+  it("0件をエラーにしない読み方（maybeSingle）で読む ── single() だと0件が DB の失敗に化ける", async () => {
+    ok("clients", row);
+    await getClientById("c1", SOLO);
+    const ops = calls.filter((c) => c.table === "clients").map((c) => c.op);
+    expect(ops).toContain("maybeSingle");
+    expect(ops).not.toContain("single");
+  });
+
+  it("DB がエラーを返したら ClientLookupError を投げ、null（＝見えない）にしない", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    fail("clients", "JWT issued at future");
+    await expect(getClientById("c1", SOLO)).rejects.toBeInstanceOf(ClientLookupError);
+    logged.mockRestore();
+  });
+
+  it("id が uuid の形でない（22P02）ときは、どの行にも当たらないので null", async () => {
+    fail("clients", 'invalid input syntax for type uuid: "abc"', "22P02");
+    await expect(getClientById("abc", SOLO)).resolves.toBeNull();
+  });
+
+  it("関係者の一覧は、親の利用者を読めなければ投げる（空の一覧に見せない・関係者の表に触れない）", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    fail("clients", "connection reset");
+    ok("client_related_identities", []);
+    await expect(getRelatedPeople("c1", SOLO)).rejects.toBeInstanceOf(ClientLookupError);
+    expect(calls.some((c) => c.table === "client_related_identities")).toBe(false);
+    logged.mockRestore();
+  });
+
+  it("関係者の追加は、親の利用者を読めなければ投げる（「利用者が見つかりません。」と答えない・書かない）", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    fail("clients", "connection reset");
+    await expect(
+      addRelatedPerson({
+        clientId: "c1",
+        userId: "u1",
+        orgId: null,
+        relation: "長女",
+        name: "佐藤一郎",
+      }),
+    ).rejects.toBeInstanceOf(ClientLookupError);
+    expect(calls.some((c) => c.table === "client_related_identities")).toBe(false);
+    logged.mockRestore();
+  });
+
+  it("関係者の削除は、親の利用者を読めなければ投げる（not_found と答えない・消さない）", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    fail("clients", "connection reset");
+    ok("client_related_identities", [{ id: "r1" }]);
+    await expect(deleteRelatedPerson("r1", "c1", SOLO)).rejects.toBeInstanceOf(ClientLookupError);
+    expect(calls.some((c) => c.table === "client_related_identities")).toBe(false);
+    logged.mockRestore();
+  });
+});
+
 describe("deleteRelatedPerson: 所有者・利用者で絞り、0件は not_found", () => {
   beforeEach(() => {
     results.clear();
@@ -201,7 +299,8 @@ describe("deleteRelatedPerson: 所有者・利用者で絞り、0件は not_foun
   });
 
   it("親の利用者が範囲外なら、関係者の表に触れずに not_found", async () => {
-    results.set("clients", { data: null, error: { message: "no rows" } });
+    // 範囲外＝0件。maybeSingle ではエラーではなく「行が無い」応答になる
+    results.set("clients", { data: null, error: null });
     ok("client_related_identities", [{ id: "r1" }]);
     expect(await deleteRelatedPerson("r1", "c1", SOLO)).toBe("not_found");
     expect(calls.some((c) => c.table === "client_related_identities")).toBe(false);
@@ -295,7 +394,8 @@ describe("読み出しはすべて範囲（scopeExpr）を通る", () => {
   });
 
   it("getRelatedPeople は親の利用者が範囲外なら中身を読まない", async () => {
-    results.set("clients", { data: null, error: { message: "no rows" } });
+    // 範囲外＝0件。maybeSingle ではエラーではなく「行が無い」応答になる
+    results.set("clients", { data: null, error: null });
     ok("client_related_identities", [
       {
         id: "r1",

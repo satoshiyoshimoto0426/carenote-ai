@@ -4,7 +4,7 @@
   "_how": "protectedDirs=フォルダごとの最低件数（今日の件数。新しいテストは自動で見張り対象になる）。files=名指しで守るファイルと、守る理由。安全テストを足したらここにも足す。消す・弱めるのは吉本さんの承認（横断規約 §2.7-C）のうえで、同じコミットでここを直す。",
   "protectedDirs": [
     { "dir": "lib/privacy", "minFiles": 13 },
-    { "dir": "tests/api", "minFiles": 10 },
+    { "dir": "tests/api", "minFiles": 11 },
     { "dir": "lib/recording", "minFiles": 3 },
     { "dir": "lib/transcribe", "minFiles": 3 },
     { "dir": "lib/rescue", "minFiles": 1 }
@@ -80,7 +80,11 @@
     },
     {
       "path": "tests/api/documents.route.test.ts",
-      "why": "書類の保存: ログイン中の範囲で見えない利用者には404で書かない・範囲を決められなければ503・常に下書き・中身はオブジェクトで200KBまで"
+      "why": "書類の保存: ログイン中の範囲で見えない利用者には404で書かない・利用者を DB から読めなければ503（404 にしない）・範囲を決められなければ503・常に下書き・中身はオブジェクトで200KB・32段まで"
+    },
+    {
+      "path": "tests/api/entryErrors.route.test.ts",
+      "why": "入口をまたいで: 本文がオブジェクトでなければ400（JSON の無い500にしない）・利用者を DB から読めなければ503（「見つかりません」と答えて二重登録へ進ませない）"
     },
     {
       "path": "tests/api/transcripts.route.test.ts",
@@ -156,7 +160,11 @@
     },
     {
       "path": "lib/db/clients.test.ts",
-      "why": "名簿の安全網（範囲の絞り込み・記号の重複・900件で止める）と、利用者一覧を読めなければ空の一覧にせず例外にすること"
+      "why": "名簿の安全網（範囲の絞り込み・記号の重複・900件で止める）と、利用者一覧・利用者1件を読めなければ空や「見えない」にせず例外にすること"
+    },
+    {
+      "path": "lib/requestBody.test.ts",
+      "why": "入口が受け取る本文はオブジェクトだけ（JSON の null・配列・文字列を通さない）"
     },
     {
       "path": "tests/ui/clientListErrors.live.test.tsx",
@@ -164,7 +172,7 @@
     },
     {
       "path": "lib/db/transcripts.test.ts",
-      "why": "文字起こしの保存: 暗号化・見える範囲・5年"
+      "why": "文字起こしの保存: 暗号化・見える範囲・5年・親の利用者を DB から読めなければ投げる（「見えない」と答えない）"
     },
     {
       "path": "lib/manual/videoScript.test.ts",

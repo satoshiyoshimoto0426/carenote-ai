@@ -10,6 +10,7 @@ import { GenerateRequestError, generateFromBody } from "@/lib/generation/dispatc
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskRequestBody } from "@/lib/privacy/maskBody";
 import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
+import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
 
 // Opus + adaptive thinking は時間がかかるため余裕を持たせる
 export const maxDuration = 300;
@@ -53,6 +54,10 @@ export function OPTIONS(req: NextRequest): NextResponse {
   return withCors(new NextResponse(null, { status: 204 }), origin);
 }
 
+/**
+ * 拡張からの生成（上の説明のとおり Clerk ではなくトークンで認可）。順番は ①トークン(401) ②回数の上限(429)
+ * ③本文（lib/requestBody.ts の readJsonObject。オブジェクトでなければ 400）④名簿なしの黒塗り（残れば 422）⑤生成。
+ */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const origin = resolveCorsOrigin(req.headers.get("origin"), process.env);
   const cors = (res: NextResponse) => withCors(res, origin);
@@ -82,12 +87,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return cors(NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 }));
+  const parsed = await readJsonObject(req);
+  if (!parsed) {
+    return cors(NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 }));
   }
+  let body: Record<string, unknown> = parsed;
 
   // 名簿なしの黒塗り（型置換＋漏れ検査）。残っていれば 422 で止める（fail-closed）
   const vault = createPiiVault();

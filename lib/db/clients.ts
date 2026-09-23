@@ -254,7 +254,49 @@ export async function getClients(scope: DataScope): Promise<ClientRecord[]> {
   return (data as ClientRow[]).map(toRecord);
 }
 
-/** 利用者を1件取得（範囲チェック込み）。 */
+/**
+ * 利用者1件を DB から読めなかったときに getClientById が投げる（「見えない・存在しない」とは別）。
+ *
+ * なぜ分けるか（2026-09-24 検収の指摘・作り直し計画 S1）:
+ *   以前は DB の失敗も null（＝見えない）で返していた。書類の保存（POST /api/documents）は
+ *   DB が一時的に落ちただけで 404「利用者が見つかりません。」と答え、救済モードの職員はその言葉を
+ *   信じて「新しい利用者として保存」を選び、同じ方を二重に登録し得た（U0 で止めた二重登録の裏口・§2.7-B②）。
+ *
+ * 受け止める側: getClientById を通る入口すべて（app/api/documents・app/api/clients/[id]・
+ * app/api/clients/[id]/related・app/api/transcripts・app/api/transcripts/[id]）が
+ * 503 と CLIENT_LOOKUP_FAILED_MESSAGE にする。DB の詳しい理由は message に入れ、画面へは出さない。
+ */
+export class ClientLookupError extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "ClientLookupError";
+  }
+}
+
+/**
+ * 利用者1件を DB から読めなかったとき、入口が 503 で返す職員向けの言葉。
+ * 「見つかりません」とは言わない ── 言うと、いる利用者を新しく登録し直してしまう。
+ */
+export const CLIENT_LOOKUP_FAILED_MESSAGE =
+  "利用者の情報を読み込めませんでした。少し待ってから、もう一度お試しください。直らない場合は管理者にご連絡ください。";
+
+/**
+ * PostgreSQL の invalid_text_representation（SQLSTATE 22P02）。uuid の列に uuid の形でない id を渡すと返る。
+ * そういう id はどの行にも当たらないので、DB の失敗ではなく「見えない利用者」として扱う
+ * （以前から URL に壊れた id が来たら 404 だった。その答えを変えない）。
+ */
+const INVALID_TEXT_REPRESENTATION = "22P02";
+
+/**
+ * 利用者を1件取得する（範囲チェック込み）。書類の保存・利用者ページ・関係者名簿・文字起こしの
+ * 「その利用者が見えるか」の判定は、すべてここに一本化している（判定を写すと片方だけ直って漏れる）。
+ *
+ * @returns 見える利用者。見えない・存在しない・id が uuid の形でないときは null。
+ * @throws ClientLookupError DB を読めなかったとき（null＝見えない、と取り違えないため）。
+ *
+ * 0件をエラーにしない maybeSingle で読む。single() だと PostgREST は0件にもエラー（PGRST116）を返すので、
+ * 「見えない」と「DB の失敗」を分けられない。
+ */
 export async function getClientById(id: string, scope: DataScope): Promise<ClientRecord | null> {
   const db = createServerClient();
   const { data, error } = await db
@@ -262,8 +304,14 @@ export async function getClientById(id: string, scope: DataScope): Promise<Clien
     .select("*")
     .eq("id", id)
     .or(scopeExpr(scope))
-    .single();
-  if (error || !data) return null;
+    .maybeSingle();
+  if (error) {
+    if (error.code === INVALID_TEXT_REPRESENTATION) return null;
+    // 利用者の保存や閲覧が止まる＝業務が止まる。原因を追えるようにサーバのログへ残す（画面へは出さない）
+    console.error("[db] getClientById error:", error.code ?? "", error.message);
+    throw new ClientLookupError(`getClientById: ${error.code ?? ""} ${error.message}`);
+  }
+  if (!data) return null;
   return toRecord(data as ClientRow);
 }
 
@@ -556,6 +604,9 @@ interface RelatedRow {
  * 境界は**親の利用者**（見てよい利用者か）だけにする。関係者行の org_id でも絞ると、
  * 組織が選ばれていないときに登録された家族が画面から消え、名簿（loadAliases）との
  * 見え方もズレる（独立審査 2026-09-13）。関係者は利用者の付属物として扱う。
+ *
+ * 親の利用者を DB から読めなければ ClientLookupError をそのまま投げる（空の一覧に見せない ──
+ * 「家族が登録されていない」と取り違えて登録し直させないため。受け止めるのは app/api/clients/[id]/related）。
  */
 export async function getRelatedPeople(
   clientId: string,
@@ -591,7 +642,10 @@ export async function getRelatedPeople(
   return out;
 }
 
-/** 関係者を追加する。同じ利用者に同じ続柄は登録できない（記号が重なるため）。 */
+/**
+ * 関係者を追加する。同じ利用者に同じ続柄は登録できない（記号が重なるため）。
+ * 親の利用者を DB から読めなければ ClientLookupError をそのまま投げる（「利用者が見つかりません。」と答えない）。
+ */
 export async function addRelatedPerson(params: {
   clientId: string;
   userId: string;
@@ -638,7 +692,8 @@ export async function addRelatedPerson(params: {
 /**
  * 関係者を削除する（所有者チェック込み・利用者IDでも絞る）。
  * 0件（他人の id・存在しない id・別の利用者の id）は "not_found" にして、画面に「消えた」と誤って伝えない
- * （独立審査 2026-09-11 D8）。
+ * （独立審査 2026-09-11 D8）。親の利用者を DB から読めなければ ClientLookupError をそのまま投げる
+ * （"not_found" と答えると、消えていないのに「もう無い」と伝わる）。
  */
 export async function deleteRelatedPerson(
   id: string,

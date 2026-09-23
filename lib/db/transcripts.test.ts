@@ -63,6 +63,7 @@ vi.mock("../supabase/server", () => ({
 }));
 
 const { decryptString, getPiiKey } = await import("@/lib/privacy/crypto");
+const { ClientLookupError } = await import("./clients");
 const {
   deleteTranscript,
   getTranscriptsByClient,
@@ -220,6 +221,37 @@ describe("本文を読む: getTranscriptText", () => {
     calls.row = rowFor(encryptString(SECRET, getPiiKey()));
     process.env.CARENOTE_PII_KEY = Buffer.alloc(32, 9).toString("base64");
     await expect(getTranscriptText("t1", SCOPE)).rejects.toBeTruthy();
+  });
+});
+
+/**
+ * 親の利用者を DB から読めなかったとき（2026-09-24 検収の指摘）。
+ * getClientById は ClientLookupError を投げるので、ここで握って「見えない」と答えない。
+ * 入口（app/api/transcripts/*）が 503 と職員向けの文言にする。
+ */
+describe("親の利用者を DB から読めなかったとき", () => {
+  const lookupFailed = () => clients.getClientById.mockRejectedValue(new ClientLookupError("down"));
+
+  it("保存は投げる（client_not_visible と答えない・DBにも書かない）", async () => {
+    lookupFailed();
+    await expect(save()).rejects.toBeInstanceOf(ClientLookupError);
+    expect(calls.inserted).toBeNull();
+  });
+
+  it("一覧は投げる（空の一覧に見せない）", async () => {
+    lookupFailed();
+    await expect(getTranscriptsByClient("c1", SCOPE)).rejects.toBeInstanceOf(ClientLookupError);
+  });
+
+  it("本文を読むときは投げる（見つからないと答えない）", async () => {
+    lookupFailed();
+    await expect(getTranscriptText("t1", SCOPE)).rejects.toBeInstanceOf(ClientLookupError);
+  });
+
+  it("消すときは投げる（消さない・見つからないと答えない）", async () => {
+    lookupFailed();
+    await expect(deleteTranscript("t1", SCOPE)).rejects.toBeInstanceOf(ClientLookupError);
+    expect(calls.deleted).toEqual([]);
   });
 });
 

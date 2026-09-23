@@ -11,6 +11,7 @@ import { findNameCandidates, type NameCandidate } from "@/lib/privacy/candidates
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskRequestBody } from "@/lib/privacy/maskBody";
 import { createPiiVault } from "@/lib/privacy/vault";
+import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
 
 /**
  * 送る前に見る（docs/specs/call-pipeline.md 第2段）。
@@ -23,6 +24,11 @@ export interface PreviewResponse {
   candidates: Record<string, NameCandidate[]>;
 }
 
+/**
+ * 送る前の画面（components/drafts/PreSendPreview）へ、黒塗り後の本文と「名前らしい語」の候補を返す。
+ * 順番は /api/generate と同じ（ログイン → 範囲 → 本文 → 名簿 → 黒塗り）で、AI へは送らない。
+ * 本文がオブジェクトでなければ lib/requestBody.ts の readJsonObject で 400、名簿が読めなければ 503。
+ */
 export async function POST(req: NextRequest) {
   const { userId, orgId } = await auth();
   if (!userId) {
@@ -36,12 +42,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
-  }
+  const body = await readJsonObject(req);
+  if (!body) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
 
   // 名簿が読めなければ確認画面も出さない（実名が残った文章を「送っていい」と見せないため）
   let aliases: Awaited<ReturnType<typeof getClientAliases>>;

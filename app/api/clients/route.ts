@@ -8,6 +8,7 @@ import {
   resolveScope,
   SCOPE_ERROR_MESSAGE,
 } from "@/lib/db/clients";
+import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
 import type { ClientAttributes } from "@/types/client";
 
 /**
@@ -50,12 +51,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
-  }
+  const body = await readJsonObject(req);
+  if (!body) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
 
   const name = typeof body.name === "string" ? body.name : undefined;
   const attributes =

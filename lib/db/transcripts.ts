@@ -10,6 +10,8 @@
  *   **親の利用者が見える人だけ**。判定は lib/db/clients.getClientById（org_id または created_by）に
  *   一本化する。この表に独自のスコープ判定を書かない ── 判定が2か所に分かれると、
  *   片方だけ直したときに静かに漏れる（関係者名簿で同じ設計にしてある）。
+ *   getClientById が DB を読めずに投げる ClientLookupError は、ここで握らずにそのまま投げる
+ *   （「見えない」と取り違えない ── 2026-09-24 検収の指摘。入口が 503 にする）。
  *
  * ⚠ ここで復号した本文を**AIへ渡してはいけない**。黒塗りを通っていない生の実名そのもの。
  *   用途は職員が画面で読み返すことだけ（「言った・言わない」の確認）。
@@ -95,7 +97,9 @@ function toSummary(r: Row): TranscriptSummary {
 
 /**
  * 文字起こしを保存する。親の利用者が見えない人には保存させない。
- * @returns 保存できた概要。利用者が見えない・保存に失敗したときは null。
+ * @returns 保存できたら概要。利用者が見えなければ reason "client_not_visible"、書き込みに失敗したら "failed"。
+ * @throws ClientLookupError 親の利用者を DB から読めなかったとき（書き込まない）。
+ * @throws TranscriptTableMissingError 表が未作成のとき。
  */
 export async function saveTranscript(params: {
   clientId: string;
@@ -132,7 +136,10 @@ export async function saveTranscript(params: {
   return { ok: true, transcript: toSummary(data as Row) };
 }
 
-/** 指定利用者の文字起こし一覧（新しい順）。本文は返さない。 */
+/**
+ * 指定利用者の文字起こし一覧（新しい順）。本文は返さない。利用者が見えなければ空。
+ * @throws ClientLookupError 親の利用者を DB から読めなかったとき（空の一覧に見せない）。
+ */
 export async function getTranscriptsByClient(
   clientId: string,
   scope: DataScope,
@@ -157,6 +164,7 @@ export async function getTranscriptsByClient(
 /**
  * 1件の本文を復号して返す。親の利用者が見えない人には返さない。
  * 鍵が違う・中身が改ざんされていれば復号が例外を投げるので、null にして握りつぶさない。
+ * 親の利用者を DB から読めなければ ClientLookupError をそのまま投げる。
  */
 export async function getTranscriptText(
   id: string,
@@ -182,6 +190,7 @@ export async function getTranscriptText(
 /**
  * 1件消す。親の利用者が見えない人には消させない。
  * @returns 消せたら true。
+ * @throws ClientLookupError 親の利用者を DB から読めなかったとき（消さない・false と答えない）。
  */
 export async function deleteTranscript(id: string, scope: DataScope): Promise<boolean> {
   const db = createServerClient();

@@ -74,12 +74,25 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-const { SCOPE_ERROR_MESSAGE } = await import("@/lib/db/clients");
+const { CLIENT_LOOKUP_FAILED_MESSAGE, ClientLookupError, SCOPE_ERROR_MESSAGE } = await import(
+  "@/lib/db/clients"
+);
 const { POST } = await import("@/app/api/documents/route");
 
 const SCOPE = { userId: "u1", orgId: "org_1" };
 /** 保存する中身の上限（JSON にしたときの UTF-8 のバイト数）。この数そのものが約束なので値で固定する。 */
 const LIMIT_BYTES = 200 * 1024;
+/** 保存する中身の入れ子の深さの上限（中身そのものを 1 と数える）。帳票で最も深い第2表でも 5。 */
+const LIMIT_DEPTH = 32;
+
+/**
+ * `{"a":{"a":...1}}` を depth 段の入れ子で、JSON の文字列として作る。
+ * JSON.stringify に渡すと深い入れ子でテスト自身が落ちるので、文字列を直接つなぐ。
+ */
+const nestedJson = (depth: number) => `${'{"a":'.repeat(depth)}1${"}".repeat(depth)}`;
+/** valid() と同じ欄で、content だけを生の JSON 文字列で差し込んだ本文。 */
+const rawBodyWithContent = (contentJson: string) =>
+  `{"clientId":"c1","docType":"assessment","source":"rescue","content":${contentJson}}`;
 
 const CLIENT = {
   id: "c1",
@@ -157,6 +170,26 @@ describe("誰が保存できるか", () => {
     await expect(res.json()).resolves.toEqual({ error: "利用者が見つかりません。" });
     expect(clients.getClientById).toHaveBeenCalledWith("other-org-client", SCOPE);
     expectNothingWritten();
+  });
+
+  /**
+   * 2026-09-24 検収の指摘: 以前は DB の失敗も「見えない」と同じ null になり、404「利用者が見つかりません。」を
+   * 返していた。救済モードの職員はその言葉を信じて「新しい利用者として保存」を選び、同じ方を二重に登録し得た。
+   */
+  it("利用者を DB から読めなければ 503 と職員向けの文言（404 にしない・保存の関数を呼ばない）", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    clients.getClientById.mockRejectedValue(new ClientLookupError("JWT issued at future"));
+    const res = await POST(post(valid()));
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const body = await res.json();
+    expect(body).toEqual({ error: CLIENT_LOOKUP_FAILED_MESSAGE });
+    expect(body.error).not.toContain("見つかりません");
+    // DB の詳しい理由は画面へ出さない（サーバのログにだけ残す）
+    expect(JSON.stringify(body)).not.toContain("JWT");
+    expect(logged).toHaveBeenCalled();
+    expectNothingWritten();
+    logged.mockRestore();
   });
 });
 
@@ -292,6 +325,63 @@ describe("受け取る中身の形と大きさ", () => {
   it("JSON として読めなければ 400", async () => {
     const res = await POST(post("{not json"));
     expect(res.status).toBe(400);
+    expectNothingWritten();
+  });
+
+  /**
+   * 2026-09-24 検収の指摘: 本文が JSON の null だと req.json() は null を返し、`body.clientId` で
+   * TypeError になって、JSON の無い 500 を返していた（書き込みは無かった）。
+   */
+  it.each([
+    ["JSON の null", "null"],
+    ["配列", JSON.stringify([valid()])],
+    ["文字列", JSON.stringify("c1")],
+    ["数値", "42"],
+  ])("本文が%sなら 400 と JSON（利用者も調べず、何も書かない）", async (_name, raw) => {
+    const res = await POST(post(raw));
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    await expect(res.json()).resolves.toEqual({ error: "リクエストの解析に失敗しました。" });
+    expect(clients.getClientById).not.toHaveBeenCalled();
+    expectNothingWritten();
+  });
+});
+
+/**
+ * 2026-09-24 検収の指摘: 20万段の入れ子（約1.2MB）は JSON.parse では読めるが、大きさを測る
+ * JSON.stringify がスタックを使い切って RangeError になり、入口は JSON の無い 500 を返していた。
+ * 深さは再帰を使わずに数えるので、どれだけ深くても 400 で止まる。
+ */
+describe("受け取る中身の入れ子の深さ", () => {
+  it(`ちょうど ${LIMIT_DEPTH} 段までは保存する`, async () => {
+    const res = await POST(post(rawBodyWithContent(nestedJson(LIMIT_DEPTH))));
+    expect(res.status).toBe(201);
+    expect(docs.saveDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it(`${LIMIT_DEPTH + 1} 段なら、200KB より小さくても 400（利用者も調べず、何も書かない）`, async () => {
+    const raw = rawBodyWithContent(nestedJson(LIMIT_DEPTH + 1));
+    expect(new TextEncoder().encode(raw).byteLength).toBeLessThan(LIMIT_BYTES);
+    const res = await POST(post(raw));
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "保存する内容の形が正しくありません。" });
+    expect(clients.getClientById).not.toHaveBeenCalled();
+    expectNothingWritten();
+  });
+
+  it("配列の入れ子も同じ深さで数える", async () => {
+    const raw = rawBodyWithContent(`{"a":${"[".repeat(LIMIT_DEPTH)}1${"]".repeat(LIMIT_DEPTH)}}`);
+    const res = await POST(post(raw));
+    expect(res.status).toBe(400);
+    expectNothingWritten();
+  });
+
+  it("20万段の入れ子（検収で再現した形）でも、落ちずに 400 と JSON を返す", async () => {
+    const raw = rawBodyWithContent(nestedJson(200_000));
+    const res = await POST(post(raw));
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    await expect(res.json()).resolves.toEqual({ error: "保存する内容の形が正しくありません。" });
     expectNothingWritten();
   });
 });

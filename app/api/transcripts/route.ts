@@ -1,6 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
-import { type DataScope, resolveScope, SCOPE_ERROR_MESSAGE } from "@/lib/db/clients";
+import {
+  CLIENT_LOOKUP_FAILED_MESSAGE,
+  ClientLookupError,
+  type DataScope,
+  resolveScope,
+  SCOPE_ERROR_MESSAGE,
+} from "@/lib/db/clients";
 import {
   getTranscriptsByClient,
   saveTranscript,
@@ -8,6 +14,7 @@ import {
   TranscriptTableMissingError,
 } from "@/lib/db/transcripts";
 import { checkTranscriptInput } from "@/lib/privacy/transcriptInput";
+import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
 
 /**
  * 文字起こし全文の保存と一覧（docs/specs/recording-pipeline.md R4）。
@@ -16,6 +23,8 @@ import { checkTranscriptInput } from "@/lib/privacy/transcriptInput";
  *   用途は職員が画面で読み返すことだけ。保存は暗号化して行う（lib/db/transcripts）。
  *
  * 誰が読めるか: 親の利用者が見える人だけ（判定は getClientById に一本化）。
+ * 親の利用者を DB から読めなかったとき（ClientLookupError）は 503 と CLIENT_LOOKUP_FAILED_MESSAGE
+ * （「見つからない・権限がない」と答えない ── 2026-09-24 検収の指摘）。
  */
 
 function scopeOf(userId: string, orgId: string | null): DataScope | null {
@@ -34,12 +43,8 @@ export async function POST(req: NextRequest) {
   const scope = scopeOf(userId, orgId ?? null);
   if (!scope) return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
-  }
+  const body = await readJsonObject(req);
+  if (!body) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
 
   const clientId = typeof body.clientId === "string" ? body.clientId : "";
   if (!clientId) {
@@ -73,6 +78,10 @@ export async function POST(req: NextRequest) {
     if (e instanceof TranscriptTableMissingError) {
       return NextResponse.json({ error: TRANSCRIPT_TABLE_MISSING_MESSAGE }, { status: 503 });
     }
+    if (e instanceof ClientLookupError) {
+      console.error("[transcripts] save: client lookup failed:", e.message);
+      return NextResponse.json({ error: CLIENT_LOOKUP_FAILED_MESSAGE }, { status: 503 });
+    }
     // 本文はログに出さない（出すと暗号化した意味が消える）
     console.error("[transcripts] save error:", e instanceof Error ? e.message : String(e));
     return NextResponse.json({ error: "保存に失敗しました。" }, { status: 500 });
@@ -98,6 +107,10 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     if (e instanceof TranscriptTableMissingError) {
       return NextResponse.json({ error: TRANSCRIPT_TABLE_MISSING_MESSAGE }, { status: 503 });
+    }
+    if (e instanceof ClientLookupError) {
+      console.error("[transcripts] list: client lookup failed:", e.message);
+      return NextResponse.json({ error: CLIENT_LOOKUP_FAILED_MESSAGE }, { status: 503 });
     }
     console.error("[transcripts] list error:", e instanceof Error ? e.message : String(e));
     return NextResponse.json({ error: "一覧を取れませんでした。" }, { status: 500 });
