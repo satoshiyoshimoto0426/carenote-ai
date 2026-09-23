@@ -4,6 +4,10 @@
  * 関係者名簿（D4）: 利用者ごとに家族・担当者・主治医などを登録する。
  * 登録した名前は黒塗りで「A様の長女」のような記号に置き換わり、AIへは出ない。
  * 実名はログイン職員の画面にだけ表示する。
+ *
+ * 一覧を読めなかったとき（GET /api/clients/[id]/related が 503 など）は、空の一覧を見せずに
+ * 読めなかったことを文字で出し、読み直せるようにする（2026-09-24 検収の指摘 ── 以前は黙って空になり、
+ * 「家族はまだ登録されていない」と見えていた）。
  */
 import { useCallback, useEffect, useState } from "react";
 import type { RelatedPerson } from "@/lib/db/clients";
@@ -40,14 +44,27 @@ export default function RelatedPeople({
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 一覧を読めなかったときの文（読めたら null）。空の一覧と取り違えないよう別に持つ */
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const resp = await fetch(`/api/clients/${clientId}/related`);
-      const data = await resp.json();
-      if (resp.ok) setPeople(data as RelatedPerson[]);
+      const data = (await resp.json().catch(() => null)) as
+        | RelatedPerson[]
+        | { error?: string }
+        | null;
+      if (!resp.ok || !Array.isArray(data)) {
+        const message = data && !Array.isArray(data) ? data.error : undefined;
+        setLoadError(message || "関係者名簿を読み込めませんでした。");
+        return;
+      }
+      setLoadError(null);
+      setPeople(data);
     } catch {
-      // 一覧の取得失敗は画面上の空表示で足りる（追加時にエラーが出る）
+      setLoadError(
+        "関係者名簿を読み込めませんでした。通信環境を確かめて、もう一度お試しください。",
+      );
     }
   }, [clientId]);
 
@@ -105,6 +122,15 @@ export default function RelatedPeople({
         ご家族や関係先の方の名前を登録すると、メモの中の名前が「{clientCode}
         様の長女」のような記号に置き換わってからAIへ送られます。 実名はこの画面にだけ表示します。
       </p>
+
+      {loadError && (
+        <div role="alert" className="mt-3 flex flex-wrap items-center gap-2">
+          <p className="text-xs font-medium text-[var(--clay)]">{loadError}</p>
+          <button type="button" onClick={() => load()} className={`${secondaryClass} text-xs`}>
+            もう一度読む
+          </button>
+        </div>
+      )}
 
       {people.length > 0 && (
         <ul className="mt-3 space-y-1.5">

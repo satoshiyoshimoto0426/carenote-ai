@@ -50,18 +50,41 @@ function ScoreBadge({ score }: { score: number }) {
   );
 }
 
+/**
+ * ダッシュボード（/dashboard）。本人の評価（点検）の履歴を GET /api/history で読み、件数・平均・推移・一覧を出す。
+ * 作り直し計画では「点検」の中へ移す（吉本さん決定 2026-09-23・後のマイルストーン）。
+ *
+ * 履歴を読めなかったとき（503 など）は、件数を 0 と出さず（「—」）、一覧の場所に読めなかったことを文字で出す
+ * （2026-09-24 検収の指摘 ── 以前は失敗を黙って捨て、「まだ評価履歴がありません」と見えていた）。
+ */
 export default function DashboardPage() {
   const [records, setRecords] = useState<EvaluationRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  /** 履歴を読めなかったときの文（読めたら null）。0件と取り違えないよう別に持つ */
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/history")
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setRecords(data);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    (async () => {
+      try {
+        const r = await fetch("/api/history");
+        const data = (await r.json().catch(() => null)) as
+          | EvaluationRecord[]
+          | { error?: string }
+          | null;
+        if (!r.ok || !Array.isArray(data)) {
+          const message = data && !Array.isArray(data) ? data.error : undefined;
+          setLoadError(message || "評価の履歴を読み込めませんでした。");
+          return;
+        }
+        setRecords(data);
+      } catch {
+        setLoadError(
+          "評価の履歴を読み込めませんでした。通信環境を確かめて、もう一度お試しください。",
+        );
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   const totalEvals = records.length;
@@ -92,9 +115,10 @@ export default function DashboardPage() {
       {/* Stats */}
       <div className="mb-[var(--sp-4)] grid grid-cols-3 gap-3">
         {[
-          { label: "総評価数", value: totalEvals, unit: "件" },
-          { label: "平均スコア", value: avgScore, unit: "/27" },
-          { label: "優良評価", value: highScoreCount, unit: "件" },
+          // 読めなかったときは 0 と出さない（0件と取り違えさせない）
+          { label: "総評価数", value: loadError ? "—" : totalEvals, unit: "件" },
+          { label: "平均スコア", value: loadError ? "—" : avgScore, unit: "/27" },
+          { label: "優良評価", value: loadError ? "—" : highScoreCount, unit: "件" },
         ].map(({ label, value, unit }) => (
           <Card key={label} className="px-4 py-5 text-center">
             <div className="text-[12px] font-medium text-[var(--muted)]">{label}</div>
@@ -164,6 +188,10 @@ export default function DashboardPage() {
         {loading ? (
           <div className="animate-pulse py-12 text-center text-sm text-[var(--faint)]">
             読み込み中...
+          </div>
+        ) : loadError ? (
+          <div role="alert" className="px-5 py-10 text-center">
+            <p className="text-sm font-medium text-[var(--clay)]">{loadError}</p>
           </div>
         ) : records.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center px-5 py-16 text-center">

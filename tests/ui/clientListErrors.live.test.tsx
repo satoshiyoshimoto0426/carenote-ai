@@ -17,6 +17,10 @@ import { attrOf, elementsOf, type MarkupElement, textOf } from "@/tests/helpers/
  * 救済モードの保存パネルは、途中の1枚で失敗したあとの押し直しも動かして確かめる（2026-09-24 検収の指摘）。
  * 以前は押し直すたびに利用者をもう1人作り、保存済みの帳票も二重に保存していた（同じ方の二重登録の別の入口）。
  *
+ * 利用者の画面の関係者名簿・保存した文字起こしと、ダッシュボードの評価の履歴も、読めなかったとき（サーバが 503）に
+ * 空・0件に見せないことを確かめる（同じ日の検収の指摘 ── サーバは DB の失敗を 503 で返すようになったが、
+ * 画面がそれを黙って捨てると職員には同じに見える）。
+ *
  * 偽物にするのは通信（fetch）と、保存パネルと関係のない帳票の表示部品だけ。画面そのものは本物を動かす。
  * 文字は tests/helpers/markup.ts の textOf で読む（隠した要素の文字を「出ている」と数えない）。
  */
@@ -34,6 +38,20 @@ vi.mock("@/components/drafts/CarePlanDraftView", () => ({ default: () => null })
 vi.mock("@/components/drafts/MeetingSummaryDraftView", () => ({ default: () => null }));
 vi.mock("@/components/drafts/MonitoringDraftView", () => ({ default: () => null }));
 vi.mock("@/components/drafts/SupportLogDraftView", () => ({ default: () => null }));
+// ダッシュボードの推移グラフ。ここで見るのは履歴を読めたかどうかだけで、グラフの部品は読み込みが重い（jsdom で数十秒）ので描かない
+vi.mock("recharts", () => {
+  const none = () => null;
+  return {
+    CartesianGrid: none,
+    Line: none,
+    LineChart: none,
+    ReferenceLine: none,
+    ResponsiveContainer: none,
+    Tooltip: none,
+    XAxis: none,
+    YAxis: none,
+  };
+});
 
 /** 溜まっている非同期処理を出し切る（偽の通信の応答を act の中で受け取る） */
 const flush = async () => {
@@ -77,6 +95,8 @@ let documentPosts: { clientId: unknown; docType: unknown }[] = [];
 let failDocumentCalls: number[] = [];
 /** POST /api/clients が作った利用者の数（作るたびに new-1, new-2 … と別の id を返す） */
 let createdClients = 0;
+/** そのほかの通信（"GET /api/history" の形）に順番に返す応答（最後の1つは何度でも返す） */
+let routes: Record<string, (() => Response)[]> = {};
 
 /** 利用者を DB から読めなかったとき（app/api/documents/route.ts の 503）の文言。押し直しを勧める */
 const LOOKUP_FAILED =
@@ -87,6 +107,7 @@ function installFetch() {
   documentPosts = [];
   failDocumentCalls = [];
   createdClients = 0;
+  routes = {};
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -117,6 +138,11 @@ function installFetch() {
           supportLog: {},
           monitoring: {},
         });
+      }
+      const queue = routes[`${method} ${url}`];
+      if (queue && queue.length > 0) {
+        const next = queue.length > 1 ? queue.shift() : queue[0];
+        if (next) return next();
       }
       throw new Error(`想定外の通信: ${method} ${url}`);
     }),
@@ -372,6 +398,124 @@ describe("救済モードの保存の押し直し（/rescue・2026-09-24 検収�
     expect(container.innerHTML).not.toContain("利用者に保存しました");
     expect(container.querySelector("#save-client")).not.toBeNull();
     expect(saveButton().textContent?.trim()).toBe("この利用者に5帳票を保存");
+  });
+});
+
+/** サーバが DB を読めなかったときの 503（app/api の入口が DbAccessError の publicMessage で返す形） */
+const dbDown = (message: string) => () => json({ error: message }, 503);
+
+describe("関係者名簿（利用者の画面・2026-09-24 検収の指摘）", () => {
+  const RELATED_DOWN =
+    "関係者名簿を読み込めませんでした。少し待ってから、もう一度お試しください。直らない場合は管理者にご連絡ください。";
+
+  async function renderRelated() {
+    const { default: RelatedPeople } = await import("@/components/clients/RelatedPeople");
+    await render(
+      <RelatedPeople
+        clientId="c1"
+        clientCode="A"
+        inputClass=""
+        primaryClass=""
+        secondaryClass=""
+      />,
+    );
+  }
+
+  it("一覧が 503 なら、読めなかったことを文字で出す（空の名簿に見せない）", async () => {
+    routes["GET /api/clients/c1/related"] = [dbDown(RELATED_DOWN)];
+    await renderRelated();
+    const alert = elementsOf(container.innerHTML).find((e) => attrOf(e, "role") === "alert");
+    expect(alert && textOf(alert)).toContain(RELATED_DOWN);
+  });
+
+  it("「もう一度読む」で読み直し、読めたら知らせが消えて名簿が出る", async () => {
+    routes["GET /api/clients/c1/related"] = [
+      dbDown(RELATED_DOWN),
+      () =>
+        json([{ id: "r1", clientId: "c1", relation: "長女", name: "山田春子", createdAt: "x" }]),
+    ];
+    await renderRelated();
+    await click(buttonByText("もう一度読む"));
+    expect(visibleText()).not.toContain(RELATED_DOWN);
+    expect(visibleText()).toContain("山田春子");
+  });
+
+  it("0人で読めたときは知らせを出さない（失敗とは区別する）", async () => {
+    routes["GET /api/clients/c1/related"] = [() => json([])];
+    await renderRelated();
+    expect(container.innerHTML).not.toContain("読み込めませんでした");
+  });
+});
+
+describe("保存した文字起こし（利用者の画面・2026-09-24 検収の指摘）", () => {
+  const LIST_DOWN =
+    "保存した文字起こしの一覧を読み込めませんでした。少し待ってから、もう一度お試しください。直らない場合は管理者にご連絡ください。";
+  const DELETE_DOWN =
+    "文字起こしを消せませんでした（消えていません）。少し待ってから、もう一度お試しください。直らない場合は管理者にご連絡ください。";
+  const SUMMARY = {
+    id: "t1",
+    clientId: "c1",
+    kind: "meeting",
+    title: "9月の会議",
+    chars: 5,
+    createdAt: "2026-09-17T00:00:00Z",
+    retentionUntil: "2031-09-17T00:00:00Z",
+  };
+
+  async function renderSaved() {
+    const { default: SavedTranscripts } = await import("@/components/clients/SavedTranscripts");
+    await render(<SavedTranscripts clientId="c1" clientCode="A" secondaryClass="" />);
+  }
+
+  it("一覧が 503 なら、欄を消さずに読めなかったことを文字で出す（「無い」に見せない）", async () => {
+    routes["GET /api/transcripts?clientId=c1"] = [dbDown(LIST_DOWN)];
+    await renderSaved();
+    const alert = elementsOf(container.innerHTML).find((e) => attrOf(e, "role") === "alert");
+    expect(alert && textOf(alert)).toContain(LIST_DOWN);
+  });
+
+  it("0件で読めたときは欄を出さない（上の検査が空振りしていない証拠）", async () => {
+    routes["GET /api/transcripts?clientId=c1"] = [() => json({ transcripts: [] })];
+    await renderSaved();
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("消せなかったときは、サーバの文（消えていません）をそのまま出す", async () => {
+    routes["GET /api/transcripts?clientId=c1"] = [() => json({ transcripts: [SUMMARY] })];
+    routes["DELETE /api/transcripts/t1"] = [dbDown(DELETE_DOWN)];
+    const confirmed = vi.spyOn(window, "confirm").mockReturnValue(true);
+    await renderSaved();
+    await click(buttonByText("消す"));
+    expect(visibleText()).toContain(DELETE_DOWN);
+    confirmed.mockRestore();
+  });
+});
+
+describe("ダッシュボードの評価の履歴（2026-09-24 検収の指摘）", () => {
+  const HISTORY_DOWN =
+    "評価の履歴を読み込めませんでした。少し待ってから、もう一度お試しください。直らない場合は管理者にご連絡ください。";
+
+  async function renderDashboard() {
+    const { default: DashboardPage } = await import("@/app/(dashboard)/dashboard/page");
+    await render(<DashboardPage />);
+  }
+
+  it("履歴が 503 なら、読めなかったことを文字で出し、「まだ評価履歴がありません」も件数 0 も出さない", async () => {
+    routes["GET /api/history"] = [dbDown(HISTORY_DOWN)];
+    await renderDashboard();
+    const alert = elementsOf(container.innerHTML).find((e) => attrOf(e, "role") === "alert");
+    expect(alert && textOf(alert)).toContain(HISTORY_DOWN);
+    // 隠して出しても「出ていない」と取り違えないよう、HTML 全体で見る
+    expect(container.innerHTML).not.toContain("まだ評価履歴がありません");
+    expect(visibleText()).toContain("総評価数—件");
+  });
+
+  it("0件で読めたときは「まだ評価履歴がありません」と件数 0 を出す（失敗とは区別する）", async () => {
+    routes["GET /api/history"] = [() => json([])];
+    await renderDashboard();
+    expect(visibleText()).toContain("まだ評価履歴がありません");
+    expect(visibleText()).toContain("総評価数0件");
+    expect(container.innerHTML).not.toContain("読み込めませんでした");
   });
 });
 

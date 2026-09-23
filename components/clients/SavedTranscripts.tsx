@@ -9,6 +9,10 @@
  *
  * ⚠ ここに出る本文は**黒塗りを通っていない実名そのもの**。画面を人に見せないこと。
  *   一覧では本文を取りに行かず、「開く」を押したときだけサーバで復号して取り寄せる。
+ *
+ * 一覧を読めなかったとき（GET /api/transcripts が 503 など）は、欄ごと消さずに読めなかったことを文字で出す
+ * （2026-09-24 検収の指摘 ── 以前は黙って欄が消え、「保存した文字起こしは無い」と見えていた）。
+ * 消せなかったときは、サーバの文（「消せませんでした（消えていません）。」など）をそのまま出す。
  */
 import { useCallback, useEffect, useState } from "react";
 import type { TranscriptSummary } from "@/lib/db/transcripts";
@@ -32,14 +36,26 @@ export default function SavedTranscripts({ clientId, clientCode, secondaryClass 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /** 一覧を読めなかったときの文（読めたら null）。0件と取り違えないよう別に持つ */
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/transcripts?clientId=${encodeURIComponent(clientId)}`);
-      if (!res.ok) return;
-      const data = (await res.json()) as { transcripts?: TranscriptSummary[] };
-      setItems(data.transcripts ?? []);
+      const data = (await res.json().catch(() => ({}))) as {
+        transcripts?: TranscriptSummary[];
+        error?: string;
+      };
+      if (!res.ok || !Array.isArray(data.transcripts)) {
+        setLoadError(data.error || "保存した文字起こしの一覧を読み込めませんでした。");
+        return;
+      }
+      setLoadError(null);
+      setItems(data.transcripts);
     } catch {
-      // 一覧が取れないだけなら、画面は壊さず空のままにする
+      setLoadError(
+        "保存した文字起こしの一覧を読み込めませんでした。通信環境を確かめて、もう一度お試しください。",
+      );
     }
   }, [clientId]);
 
@@ -69,7 +85,10 @@ export default function SavedTranscripts({ clientId, clientCode, secondaryClass 
     setError(null);
     try {
       const res = await fetch(`/api/transcripts/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("消せませんでした");
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "消せませんでした");
+      }
       if (openId === id) {
         setOpenId(null);
         setText("");
@@ -82,7 +101,8 @@ export default function SavedTranscripts({ clientId, clientCode, secondaryClass 
     }
   };
 
-  if (items.length === 0) return null;
+  // 0件なら欄を出さない。読めなかったときは出す（0件と取り違えさせない）
+  if (items.length === 0 && !loadError) return null;
 
   return (
     <section className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-4">
@@ -94,6 +114,19 @@ export default function SavedTranscripts({ clientId, clientCode, secondaryClass 
         保存から5年を過ぎたら消す決まりですが、いまは自動で消えません（管理者がまとめて消します）。
         すぐ消したいものは、その行の「消す」を押してください。
       </p>
+
+      {loadError && (
+        <div role="alert" className="mt-2.5 flex flex-wrap items-center gap-2">
+          <p className="text-xs font-medium text-[var(--clay)]">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className={`${secondaryClass} h-7 px-2.5 text-xs`}
+          >
+            もう一度読む
+          </button>
+        </div>
+      )}
 
       <ul className="mt-2.5 space-y-2">
         {items.map((t) => (

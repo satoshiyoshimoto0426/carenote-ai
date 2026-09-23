@@ -136,6 +136,7 @@
 **「見えない」と「読めなかった」を分ける（2026-09-24・S1 の検収の指摘）**: `getClientById` は 0件をエラーにしない `maybeSingle` で読み、見えない・存在しない・uuid の形でない id（22P02）は `null`、**DB の失敗は `ClientLookupError` を投げる**（以前はどちらも `null` で、DB が一瞬落ちただけで書類の保存が 404「利用者が見つかりません。」と答え、救済モードの職員が「新しい利用者として保存」で同じ方を二重に登録し得た ── U0 で止めた二重登録の裏口）。`getClientById` を通る入口すべて（`POST /api/documents`・`GET /api/clients/[id]`・`/api/clients/[id]/related` の GET/POST/DELETE・`/api/transcripts` の POST/GET・`/api/transcripts/[id]` の GET/DELETE）が **503 と `CLIENT_LOOKUP_FAILED_MESSAGE`**（「見つかりません」とは言わない）を返す。関係者名簿（`getRelatedPeople/addRelatedPerson/deleteRelatedPerson`）と文字起こし（`lib/db/transcripts.ts`）はこの例外を握らずに投げる。本文の読み方は `lib/requestBody.ts` の `readJsonObject` に一本化（JSON の `null`・配列・文字列・数値は 400。以前は `body.x` が TypeError になり JSON の無い 500 だった。同じ書き方が本文を読む 10 の入口にあった）。入口をまたいだ 400／503 は `tests/api/entryErrors.route.test.ts`、判定そのものは `lib/db/clients.test.ts`・`lib/db/transcripts.test.ts`・`lib/requestBody.test.ts` が縛る。
 
 **lib/db 全体で「0件」と「DB の失敗」を分ける (2026-09-24・S1 の検収の指摘 ── 同じ種類の3回目)**: 上の直しの後も、隣の関数が DB の失敗を 0件で返していた（`getRelatedPeople`・`getTranscriptsByClient`・`getDocumentsByClient`・`getEvaluations` は `[]`、`getTranscriptText` と `approveDocument`/`unapproveDocument` は `null`、`deleteTranscript` は `false` ＝入口で「見つかりませんでした」「書類が見つかりません。」）。いまは共通の `lib/db/errors.ts` の `DbAccessError` を投げ（1件を読むものは `maybeSingle`、uuid の形でない id は0件扱い、`deleteTranscript` は消えた件数まで見る）、入口（`GET /api/clients/[id]`・`PATCH /api/documents/[id]`・`GET /api/clients/[id]/related`・`GET /api/transcripts`・`GET/DELETE /api/transcripts/[id]`・`GET /api/history`）が **503 と `e.publicMessage`** を返す（`ClientLookupError` も子なので同じ受け方）。「失敗」だけを表す戻り値（`saveDocument`・`createClientRecord`・`saveEvaluation` の null、`saveTranscript` の `failed`、`deleteRelatedPerson` の `"error"`、`addRelatedPerson` の「登録に失敗しました。」）はそのまま。**見張り** `lib/db/dbFailures.test.ts`: Supabase を偽物にして問い合わせを1つずつ失敗させ、どの関数も「0件・見えない・空」と答えないことを確かめる。`lib/db.ts`・`lib/db/*.ts` の async 関数が一覧（CONTRACTS）に無ければ落ちる（新しい関数は DB が落ちたときの答えを決めて載せる）。入口の 503 は `tests/api/entryErrors.route.test.ts` の `DB_FAILURE_ROUTES`。
+**画面も黙らない（同日）**: 503 を受けた画面が空・0件に見せないよう、`components/clients/RelatedPeople.tsx`（関係者名簿）・`components/clients/SavedTranscripts.tsx`（保存した文字起こし。以前は欄ごと消えていた・「消す」の失敗はサーバの文をそのまま）・`app/(dashboard)/dashboard/page.tsx`（評価の履歴。件数は 0 でなく「—」）が、読めなかったことを `role="alert"` の文字で出す（名簿と文字起こしは「もう一度読む」つき）。検査= `tests/ui/clientListErrors.live.test.tsx`。
 
 実行の前提: ①`supabase/clients_documents.sql`（既存DBは `approval_migration.sql` も）を Supabase で実行 ②`CARENOTE_PII_KEY`(base64 32B) を設定。
 
@@ -254,7 +255,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-24 / lib/db 全体で DB の失敗を `DbAccessError`（`lib/db/errors.ts`）にし、入口は 503。見張り `lib/db/dbFailures.test.ts`（故障の注入・async 関数の抜けの検査）。使われていなかった `getEvaluationById` を削除（S1 の検収の指摘）*
+*最終更新: 2026-09-24 / 関係者名簿・保存した文字起こし・ダッシュボードが、読めなかったとき（503）に空・0件を見せず文字で出す（S1 の検収の指摘）*
+*2026-09-24 / lib/db 全体で DB の失敗を `DbAccessError`（`lib/db/errors.ts`）にし、入口は 503。見張り `lib/db/dbFailures.test.ts`（故障の注入・async 関数の抜けの検査）。使われていなかった `getEvaluationById` を削除（S1 の検収の指摘）*
 *2026-09-24 / 救済モードの一式の保存を途中の失敗から押し直しても、利用者をもう1人作らず・保存済みの帳票を二重に保存しない（`lib/rescue/saveBundle.ts`。S1 の検収の指摘）*
 *2026-09-24 / `getClientById` が DB の失敗を `ClientLookupError` にし、使う入口すべてが 404 でなく 503 を返す。本文は `lib/requestBody.ts` でオブジェクトだけ通す（10の入口）。書類の中身は入れ子32段まで（S1 の検収の指摘）*
 *2026-09-24 / 画面の検査が、隠した部品（共有状態の切り替え・同意のチェック・赤い印）を「出ている」と数えないよう `isReachable` を足した（検収の指摘）*
