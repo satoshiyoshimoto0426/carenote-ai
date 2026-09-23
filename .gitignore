@@ -51,3 +51,8 @@ next-env.d.ts
 **/__*probe*
 **/zz_probe*
 zz_proof/
+# 2026-09-23 追加: 規則の外の名前（__doubt_live4 / __lens3live / zzlens1b.probe）が4回目で残っていた。
+# 名前の中身ではなく「__ か zz で始まるテストファイル」で広く止める（__tests__ フォルダは .test で終わらないので当たらない）。
+**/__*.test.ts
+**/__*.test.tsx
+**/zz*

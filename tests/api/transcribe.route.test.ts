@@ -99,8 +99,9 @@ describe("/api/transcribe の入口", () => {
     clerk.auth.mockResolvedValue({ userId: "runaway", orgId: null });
     let last: Response | undefined;
     for (let i = 0; i < 31; i++) last = await POST(post("call.mp3", 1024));
-    expect(last?.status).toBe(429);
-    expect((await last?.json()).error).toContain("上限");
+    if (!last) throw new Error("1回も応答が返っていない");
+    expect(last.status).toBe(429);
+    expect((await last.json()).error).toContain("上限");
     // 上限に達したあとは外部サービスを呼ばない（30回ぶんで打ち止め）
     expect((fetch as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(30);
   });

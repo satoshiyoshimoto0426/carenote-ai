@@ -67,39 +67,52 @@
   --sp-4: 28px;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/*
+ * 要素そのものに当てる基本の見た目は、必ず `@layer base` の中に置く。
+ *
+ * なぜ（2026-09-23 に発覚した実害バグ）:
+ *   Tailwind v4 の余白指定（p-4 / px-3 / space-y-4 など）は `@layer utilities` に入る。
+ *   CSS の決まりで、**層に入っていない規則は、層に入った規則に必ず勝つ**（詳細度に関係なく）。
+ *   ここにあった `* { margin: 0; padding: 0 }` が層の外にあったため、画面中の余白指定が
+ *   すべて 0 に打ち消されていた ── ボタンの文字が枠に貼り付き、カードの中身が縁に密着し、
+ *   縦の間隔（space-y）も消えて「左上にギュッと集まる」原因になっていた。
+ *   検査: app/globals.test.ts（層の外に要素の余白を0にする規則を置くと落ちる）。
+ */
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 
-body {
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--sans);
-  font-size: var(--t-body);
-  /* 日本語は行間を広めに取らないと字面が詰まって読みにくい（欧文の目安より +0.3 ほど） */
-  line-height: 1.85;
-  letter-spacing: 0.01em;
-  text-rendering: optimizeLegibility;
-}
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--t-body);
+    /* 日本語は行間を広めに取らないと字面が詰まって読みにくい（欧文の目安より +0.3 ほど） */
+    line-height: 1.85;
+    letter-spacing: 0.01em;
+    text-rendering: optimizeLegibility;
+  }
 
-/* 見出しは行間を詰める（本文と同じ 1.85 だと間延びする） */
-h1,
-h2,
-h3 {
-  line-height: 1.45;
-  letter-spacing: 0.01em;
-  text-wrap: balance;
-}
+  /* 見出しは行間を詰める（本文と同じ 1.85 だと間延びする） */
+  h1,
+  h2,
+  h3 {
+    line-height: 1.45;
+    letter-spacing: 0.01em;
+    text-wrap: balance;
+  }
 
-/* Shared focus ring for form controls: green border + soft green halo. */
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: none;
-  border-color: var(--green);
-  box-shadow: 0 0 0 3px rgba(14, 92, 70, 0.13);
+  /* Shared focus ring for form controls: green border + soft green halo. */
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: none;
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(14, 92, 70, 0.13);
+  }
 }
 
 /* 記号（A様）の共通見た目。氏名と見分けがつくよう等幅＋淡い緑の札にする */
