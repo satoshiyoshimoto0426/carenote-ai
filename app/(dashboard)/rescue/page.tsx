@@ -227,6 +227,21 @@ function ErrorNotice({ message }: { message: string }) {
   );
 }
 
+/**
+ * 救済モード（/rescue）。人物像・時系列・参考資料（PDF・画像 最大5件）から、アセスメント〜モニタリングの
+ * 5帳票の下書きを一式で作り、表示・コピーし、選んだ（または新しい）利用者に保存する画面。
+ *
+ * なぜあるか: 書類が揃っていない方でも、手元の情報から一式の下書きをまとめて起こせるようにするため
+ * （情報が足りない部分も AI が想定して埋めるので、画面の amber の注意書きで「下書き・事実の照合が要る」と伝える）。
+ * 作り直し計画では「つくる」の「一式まとめて」へ移す予定（吉本さん決定 2026-09-23・後のマイルストーン）。
+ *
+ * 繋がる先: 資料は POST /api/blob-upload 経由で非公開の Blob へ上げ、POST /api/rescue で一式を生成する。
+ * 保存は GET /api/clients（lib/clients/useClientList.ts で読む）で行き先を選び、新しい利用者なら
+ * POST /api/clients、各帳票は POST /api/documents（source: "rescue"）。
+ * 利用者一覧を読めるまで保存を止める（saveBlocked）── 読めないまま進むと行き先が「新しい利用者として保存」
+ * だけになり、同じ方を黙って二重に登録してしまうため（2026-09-23 作り直し計画 U0 の検収）。
+ * 入口: components/Sidebar.tsx の「救済モード」と、利用者の詳細（/clients/[id]）のボタン。
+ */
 export default function RescuePage() {
   const [persona, setPersona] = useState<PersonaForm>(EMPTY_PERSONA);
   const [timeline, setTimeline] = useState("");
