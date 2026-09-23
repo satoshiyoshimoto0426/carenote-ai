@@ -12,6 +12,7 @@ import {
   PageHeader,
   SectionTitle,
 } from "@/components/ui/primitives";
+import { fetchClientList } from "@/lib/clients/listError";
 import type { ClientRecord } from "@/types/client";
 
 /** 利用者の属性サマリ（年齢・性別・要介護度・世帯）を1行に。 */
@@ -20,9 +21,16 @@ function attrLine(c: ClientRecord): string {
   return [a.age, a.gender, a.careLevel, a.household].filter(Boolean).join(" ・ ");
 }
 
+/**
+ * 利用者の一覧と新規登録（/clients）。一覧は GET /api/clients、登録は POST /api/clients。
+ * 一覧を読めなかったときは「まだ利用者がいません」を出さず、読めなかったことだけを出す
+ * （2026-09-23 作り直し計画 U0 ── 失敗を空の一覧に見せない。U1 で作業台の表に作り直す）。
+ */
 export default function ClientsPage() {
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  /** 一覧の読み込みの失敗（登録の失敗 error とは分ける ── 空の一覧の表示を止めるため） */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -34,16 +42,10 @@ export default function ClientsPage() {
 
   useEffect(() => {
     (async () => {
-      try {
-        const resp = await fetch("/api/clients");
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || "読み込みに失敗しました");
-        setClients(data as ClientRecord[]);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "読み込みに失敗しました");
-      } finally {
-        setLoading(false);
-      }
+      const result = await fetchClientList();
+      if (result.ok) setClients(result.clients);
+      else setLoadError(result.message);
+      setLoading(false);
     })();
   }, []);
 
@@ -170,6 +172,12 @@ export default function ClientsPage() {
         </Card>
       )}
 
+      {loadError && (
+        <div role="alert" className="mb-4 flex items-center gap-2 text-sm text-[var(--clay)]">
+          <IconAlert size={15} className="shrink-0" />
+          {loadError}
+        </div>
+      )}
       {error && (
         <div className="mb-4 flex items-center gap-2 text-sm text-[var(--clay)]">
           <IconAlert size={15} className="shrink-0" />
@@ -183,13 +191,16 @@ export default function ClientsPage() {
           読み込み中…
         </div>
       ) : clients.length === 0 ? (
-        <Card className="flex min-h-[220px] flex-1 flex-col items-center justify-center px-5 py-16 text-center">
-          <div className="mb-1 text-[15px] font-bold text-[var(--ink)]">まだ利用者がいません</div>
-          <p className="max-w-[26rem] text-[13px] leading-relaxed text-[var(--muted)]">
-            右上の「新規」から登録してください。登録した氏名は暗号化して保存し、 画面では{" "}
-            <span className="code-chip">A様</span> のような記号で表示します。
-          </p>
-        </Card>
+        // 読めなかったのに「まだ利用者がいません」と出すと、失敗が空の一覧に化ける
+        loadError === null && (
+          <Card className="flex min-h-[220px] flex-1 flex-col items-center justify-center px-5 py-16 text-center">
+            <div className="mb-1 text-[15px] font-bold text-[var(--ink)]">まだ利用者がいません</div>
+            <p className="max-w-[26rem] text-[13px] leading-relaxed text-[var(--muted)]">
+              右上の「新規」から登録してください。登録した氏名は暗号化して保存し、 画面では{" "}
+              <span className="code-chip">A様</span> のような記号で表示します。
+            </p>
+          </Card>
+        )
       ) : (
         <Card className="overflow-hidden">
           <ul className="divide-y divide-[var(--line-soft)]">

@@ -126,6 +126,54 @@ describe("getClientAliases: 名簿が読めなければ AliasLoadError（送信�
   });
 });
 
+/**
+ * 利用者一覧は、読めなかったら空の一覧を返さず例外にする（2026-09-23 作り直し計画 U0）。
+ * 以前は [] を返し、画面は「まだ利用者がいません」、救済モードの保存は同じ方の二重登録へ進めた。
+ */
+describe("getClients: DB を読めなければ例外（空の一覧に見せない）", () => {
+  beforeEach(() => {
+    results.clear();
+    calls.length = 0;
+  });
+
+  it("DB がエラーを返したら例外を投げ、[] を返さない", async () => {
+    fail("clients", "JWT issued at future");
+    await expect(getClients(SOLO)).rejects.toThrow("JWT issued at future");
+  });
+
+  it("エラーも行も無い応答（本来ありえない）も例外にする", async () => {
+    results.set("clients", { data: null, error: null });
+    await expect(getClients(SOLO)).rejects.toThrow();
+  });
+
+  it("読めたら記録の形に直して返す（0人は [] のまま ── 失敗とは区別する）", async () => {
+    ok("clients", [
+      {
+        id: "c1",
+        org_id: null,
+        code: "A",
+        attributes: { age: "85歳" },
+        created_by: "u1",
+        created_at: "2026-09-01",
+        updated_at: "2026-09-02",
+      },
+    ]);
+    expect(await getClients(SOLO)).toEqual([
+      {
+        id: "c1",
+        orgId: null,
+        code: "A",
+        attributes: { age: "85歳" },
+        createdBy: "u1",
+        createdAt: "2026-09-01",
+        updatedAt: "2026-09-02",
+      },
+    ]);
+    ok("clients", []);
+    expect(await getClients(SOLO)).toEqual([]);
+  });
+});
+
 describe("deleteRelatedPerson: 所有者・利用者で絞り、0件は not_found", () => {
   beforeEach(() => {
     results.clear();

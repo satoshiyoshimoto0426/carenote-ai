@@ -4,7 +4,7 @@
   "_how": "protectedDirs=フォルダごとの最低件数（今日の件数。新しいテストは自動で見張り対象になる）。files=名指しで守るファイルと、守る理由。安全テストを足したらここにも足す。消す・弱めるのは吉本さんの承認（横断規約 §2.7-C）のうえで、同じコミットでここを直す。",
   "protectedDirs": [
     { "dir": "lib/privacy", "minFiles": 13 },
-    { "dir": "tests/api", "minFiles": 8 },
+    { "dir": "tests/api", "minFiles": 9 },
     { "dir": "lib/recording", "minFiles": 3 },
     { "dir": "lib/transcribe", "minFiles": 3 },
     { "dir": "lib/rescue", "minFiles": 1 }
@@ -69,6 +69,10 @@
     {
       "path": "tests/api/orgScope.route.test.ts",
       "why": "すべての入口が、事業所の範囲を名簿の読み込みへ渡す"
+    },
+    {
+      "path": "tests/api/clients.route.test.ts",
+      "why": "利用者一覧: DB を読めなければ 500 と職員向けの文言（空の一覧 [] に見せない）"
     },
     {
       "path": "tests/api/transcribe.route.test.ts",
@@ -148,7 +152,11 @@
     },
     {
       "path": "lib/db/clients.test.ts",
-      "why": "名簿の安全網（範囲の絞り込み・記号の重複・900件で止める）"
+      "why": "名簿の安全網（範囲の絞り込み・記号の重複・900件で止める）と、利用者一覧を読めなければ空の一覧にせず例外にすること"
+    },
+    {
+      "path": "tests/ui/clientListErrors.live.test.tsx",
+      "why": "利用者一覧を読めないとき、画面が「利用者一覧を読めませんでした」を出す・救済モードは「新しい利用者として保存」を止める（同じ方の二重登録を防ぐ）・/clients は「まだ利用者がいません」と出さない"
     },
     {
       "path": "lib/db/transcripts.test.ts",

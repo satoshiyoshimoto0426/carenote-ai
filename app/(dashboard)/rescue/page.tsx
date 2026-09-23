@@ -7,7 +7,6 @@ import {
   type DragEvent,
   Fragment,
   type ReactNode,
-  useEffect,
   useRef,
   useState,
 } from "react";
@@ -38,6 +37,7 @@ import {
   SectionTitle,
   textareaClass,
 } from "@/components/ui/primitives";
+import { useClientList } from "@/lib/clients/useClientList";
 import {
   assessmentToText,
   carePlanToText,
@@ -242,24 +242,19 @@ export default function RescuePage() {
   const [docTypes, setDocTypes] = useState<Record<string, IntakeDocType>>({});
   const fileKey = (f: File) => `${f.name}-${f.size}`;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [clients, setClients] = useState<ClientRecord[]>([]);
+  // 結果が出たら、保存先の利用者候補を読み込む（結果が出るたびに読み直す）
+  const clientList = useClientList(bundle !== null);
+  /**
+   * 一覧を読めるまで保存させない（2026-09-23 検収の指摘）。
+   * 読めないまま進むと、選べる行き先が「新しい利用者として保存」だけになり、同じ方を黙って
+   * 二重に登録してしまう（記録が2か所に分かれる。氏名の表記が少し違うと名簿の安全網が
+   * 事業所全体の送信を止める）。読み込み中も同じ理由で止める。
+   */
+  const saveBlocked = clientList.status !== "ready";
   const [targetClientId, setTargetClientId] = useState("");
   const [newClientName, setNewClientName] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedClientId, setSavedClientId] = useState<string | null>(null);
-
-  // 結果が出たら、保存先の利用者候補を読み込む
-  useEffect(() => {
-    if (!bundle) return;
-    (async () => {
-      try {
-        const resp = await fetch("/api/clients");
-        if (resp.ok) setClients((await resp.json()) as ClientRecord[]);
-      } catch {
-        // 候補の取得失敗は致命的でない（新規利用者として保存できる）
-      }
-    })();
-  }, [bundle]);
 
   const setField = (key: keyof PersonaForm, value: string) =>
     setPersona((p) => ({ ...p, [key]: value }));
@@ -384,7 +379,7 @@ export default function RescuePage() {
 
   // 生成した5帳票を、選択した（または新規の）利用者に保存する
   const saveBundle = async () => {
-    if (!bundle) return;
+    if (!bundle || saveBlocked) return;
     setSaving(true);
     setError(null);
     try {
@@ -747,17 +742,34 @@ export default function RescuePage() {
                   id="save-client"
                   value={targetClientId}
                   onChange={(e) => setTargetClientId(e.target.value)}
+                  disabled={saveBlocked}
                   className={inputClass}
                 >
                   <option value="">新しい利用者として保存</option>
-                  {clients.map((c) => (
+                  {clientList.clients.map((c) => (
                     <option key={c.id} value={c.id} className="code-chip">
                       {c.code}様
                     </option>
                   ))}
                 </select>
               </Field>
-              {!targetClientId && (
+              {clientList.status === "loading" && (
+                <p className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                  <IconLoader size={14} className="animate-spin" />
+                  利用者一覧を読み込み中…
+                </p>
+              )}
+              {clientList.status === "error" && (
+                <div role="alert" className="space-y-3">
+                  <ErrorNotice
+                    message={`${clientList.message} 同じ方を二重に登録しないよう、一覧を読めるまで「新しい利用者として保存」を止めています。`}
+                  />
+                  <button type="button" onClick={clientList.reload} className={btnSecondary}>
+                    一覧をもう一度読む
+                  </button>
+                </div>
+              )}
+              {!targetClientId && !saveBlocked && (
                 <Field
                   label="氏名（任意）"
                   htmlFor="new-client-name"
@@ -773,7 +785,12 @@ export default function RescuePage() {
                 </Field>
               )}
               {error && <ErrorNotice message={error} />}
-              <button type="button" onClick={saveBundle} disabled={saving} className={btnPrimary}>
+              <button
+                type="button"
+                onClick={saveBundle}
+                disabled={saving || saveBlocked}
+                className={btnPrimary}
+              >
                 {saving ? (
                   <>
                     <IconLoader size={16} className="animate-spin" />

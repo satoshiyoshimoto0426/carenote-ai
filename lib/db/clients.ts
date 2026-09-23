@@ -232,7 +232,14 @@ async function nextCodeInScope(
   return nextClientCode(max + 1);
 }
 
-/** 利用者の一覧（事業所に所属していれば事業所ぶん・していなければ自分ぶん）。 */
+/**
+ * 利用者の一覧（事業所に所属していれば事業所ぶん・していなければ自分ぶん）。
+ *
+ * 読めなかったら**例外を投げる**（空の一覧を返さない）。
+ * なぜ（2026-09-23 作り直し計画 U0）: 以前は [] を返していたため、DB の失敗が「まだ利用者がいません」に
+ * 化け、救済モードの保存では同じ方を黙って二重に登録できた（横断規約 §2.7-B②）。
+ * 呼び出し側 app/api/clients/route.ts が受け止めて、職員向けの文言の 500 にする。
+ */
 export async function getClients(scope: DataScope): Promise<ClientRecord[]> {
   const db = createServerClient();
   const { data, error } = await db
@@ -241,9 +248,8 @@ export async function getClients(scope: DataScope): Promise<ClientRecord[]> {
     .or(scopeExpr(scope))
     .order("created_at", { ascending: false })
     .limit(CLIENT_LIST_LIMIT);
-  if (error) {
-    console.error("[db] getClients error:", error.message);
-    return [];
+  if (error || !data) {
+    throw new Error(`getClients: ${error?.message ?? "no data"}`);
   }
   return (data as ClientRow[]).map(toRecord);
 }

@@ -120,6 +120,7 @@
 | `lib/privacy/retention.ts` | 保持期限算出（5年） | 実装・テスト済 |
 | `lib/db/{clients,documents}.ts` | 利用者・帳票のデータアクセス（service role＋アプリ層 created_by スコープ。実名は client_identities に暗号化）。approve/unapproveDocument（G4） | 実装済 |
 | `app/api/clients/`・`app/api/clients/[id]/`・`app/api/documents/`・`app/api/documents/[id]/` | 利用者CRUD（一覧/作成/詳細＋帳票）・帳票保存・帳票承認 PATCH（Clerk認証） | 実装済 |
+| `lib/clients/{listError,useClientList}.ts` | 画面から利用者一覧を読む（`fetchClientList`・`useClientList`）。「0人」と「読めなかった」を分け、読めなかったときの文言（先頭は必ず「利用者一覧を読めませんでした」）を1か所に置く。ブラウザでも読むのでサーバ専用のものを import しない | 実装済（2026-09-23） |
 | `types/{client,document}.ts` | 利用者・帳票の型 | 実装済 |
 | `supabase/clients_documents.sql`・`supabase/approval_migration.sql` | clients / client_identities / documents ＋ RLS（多層防御）。approval_migration は既存DBへの G4 列追加（冪等） | 要適用（SQL Editor） |
 
@@ -129,6 +130,10 @@
 （UI 側で disabled。生成直後・保存前のコピーは従来どおり可）。コピー整形は `lib/draftText.documentContentToText`。
 
 実行の前提: ①`supabase/clients_documents.sql`（既存DBは `approval_migration.sql` も）を Supabase で実行 ②`CARENOTE_PII_KEY`(base64 32B) を設定。
+
+**一覧の失敗の扱い (2026-09-23・作り直し計画 U0)**: `getClients` は DB を読めなければ**例外**（以前は `[]` を返し、失敗が「まだ利用者がいません」に化けていた）→ `GET /api/clients` が受け止めて **500＋職員向けの文言**（`CLIENT_LIST_LOAD_FAILED_MESSAGE`。DB の詳しい理由はサーバのログだけ）。
+一覧を使う画面は3つで、すべて `lib/clients/listError.ts` を通す: ①`/clients`（読めなければ「まだ利用者がいません」を出さない）②`components/create/SaveTranscriptBar.tsx`（保存先を選べないことを出す）③`/rescue` の保存パネル（**一覧を読めるまで保存を止める** ── 読めないまま進むと行き先が「新しい利用者として保存」だけになり、同じ方を黙って二重に登録する。氏名の表記が空白だけ違うと `expandAliasVariants` が別人とみなして事業所全体の送信が止まる）。②③は「一覧をもう一度読む」で読み直せる。
+検査= `lib/db/clients.test.ts`（例外）・`tests/api/clients.route.test.ts`（500）・`lib/clients/listError.test.ts`・`tests/ui/clientListErrors.live.test.tsx`（3画面を jsdom で動かす）。
 
 **B（現行ダークのまま機能追加）完了**: `app/(dashboard)/clients/`（一覧＋新規作成）・`clients/[id]/`（詳細＋保存帳票）、
 Sidebar に「👥 利用者」、救済結果を選択/新規の利用者に5帳票一括保存（`/rescue` の保存パネル）。compile/build 検証済（実行は上記前提が必要・UI見た目はAで刷新）。
@@ -238,7 +243,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-23 / 画面の安全テストを木で読む道具（`tests/helpers/markup.ts`）と共有状態の検査（`components/SharingStatus.test.tsx`）を反映。同日、`textOf` が隠した要素の文字を数えないことと、その限界を追記*
+*最終更新: 2026-09-23 / 利用者一覧の失敗を空の一覧に見せない（`getClients` の例外→`GET /api/clients` の 500→`lib/clients/` 経由で3画面が「利用者一覧を読めませんでした」・救済モードは二重登録を防ぐため保存を止める）*
+*2026-09-23 / 画面の安全テストを木で読む道具（`tests/helpers/markup.ts`）と共有状態の検査（`components/SharingStatus.test.tsx`）を反映。同日、`textOf` が隠した要素の文字を数えないことと、その限界を追記*
 *2026-09-23 / テストの見張り（安全テストの一覧 `tools/safety-tests.json`・判定 `tools/testManifest.mjs`・落ちたときの名指し・ルートのフックの注意喚起との接続）を反映*
 *2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
