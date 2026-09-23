@@ -119,6 +119,10 @@ describe("区画の部品（Pane / PaneHeader / SectionLabel / TextAction）", (
     expect(html(<SectionLabel as="p">書類</SectionLabel>)).toBe(
       '<p class="section-label">書類</p>',
     );
+    // id はまとまり（section aria-labelledby）の名前に使う（利用者の区画 ── A6）
+    expect(html(<SectionLabel id="docs">書類</SectionLabel>)).toBe(
+      '<h3 id="docs" class="section-label">書類</h3>',
+    );
   });
 
   it("TextAction は href ならリンク、onClick なら type=button のボタン（見た目だけの div にしない）", () => {

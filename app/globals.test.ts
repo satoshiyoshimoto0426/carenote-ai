@@ -214,6 +214,23 @@ describe("文字の色が地の色の上で読める（WCAG AA 4.5:1）", () => 
     expect(failures).toEqual([]);
   });
 
+  /**
+   * 利用者の区画（components/clients/ClientPane.tsx・DocumentPanel.tsx）の札に載る文字（2026-09-24 A6）。
+   * 札の地は上の4つの地に入っていないので、ここで組み合わせを縛る。札の色を変えたら、ここも直す。
+   */
+  const CLIENT_PANE_PAIRS: [string, string, string][] = [
+    ["--amber", "--amber-soft", "書類の「下書き」の札"],
+    ["--green", "--green-soft", "書類の「承認済み」の札・頭の「仮名表示中」の札"],
+  ];
+
+  it("利用者の区画の札の文字も 4.5:1 以上", () => {
+    const failures = CLIENT_PANE_PAIRS.filter(
+      ([text, ground]) =>
+        contrastRatio(resolveColor(tokens, text), resolveColor(tokens, ground)) < AA_TEXT,
+    ).map(([text, ground, where]) => `${text} on ${ground}（${where}）`);
+    expect(failures).toEqual([]);
+  });
+
   it("計算そのものが正しい（既知の値と一致する）", () => {
     expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 5);
     // #767676 は白地で AA を満たす最も淡い灰色として知られる値（4.54:1）

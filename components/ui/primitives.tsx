@@ -125,27 +125,34 @@ export function PaneHeader({
  * 区画の中の小見出し・欄の名前（12px の太字・字間 0.06em・--ink-2）。アートボードの「会議のメモ」。
  * htmlFor を渡すと、その入力欄に結んだ <label> になる（押すと欄に入れる・読み上げで欄の名前になる）。
  * 渡さなければ見出し（既定 h3。区画の名前 h2 の下に置くため）。
+ * id を渡すと、まとまり（<section aria-labelledby>）の名前に使える（利用者の区画の「書類」「関係者名簿」など ── A6）。
  * 使う所: Pane と同じ。テスト: components/ui/primitives.test.tsx。
  */
 export function SectionLabel({
   htmlFor,
+  id,
   as: Tag = "h3",
   className,
   children,
 }: {
   htmlFor?: string;
+  id?: string;
   as?: "h2" | "h3" | "p";
   className?: string;
   children: ReactNode;
 }) {
   if (htmlFor) {
     return (
-      <label htmlFor={htmlFor} className={cx("section-label", className)}>
+      <label htmlFor={htmlFor} id={id} className={cx("section-label", className)}>
         {children}
       </label>
     );
   }
-  return <Tag className={cx("section-label", className)}>{children}</Tag>;
+  return (
+    <Tag id={id} className={cx("section-label", className)}>
+      {children}
+    </Tag>
+  );
 }
 
 /**

@@ -26,6 +26,7 @@ import ClientTable, { ClientSearchField } from "./ClientTable";
  * 行を押した（その方の URL を開いた）ときだけ出す（吉本さん決定 2026-09-23 ──
  * 肩越しに見られる場面で、ホームを開いただけで実名が出ないように）。
  * ?new=1 は useSearchParams で読み、「新しい利用者」を押している状態（aria-current）と右の区画の名前に使う。
+ * ?doc= も同じく useSearchParams で読み、選んだ方の書類を開いているあいだは右の区画を 640px に広げる（A6）。
  *
  * 繋がる所: components/clients/ClientsContext.tsx（一覧・探す言葉・登録した利用者を足す口）・
  * ClientTable.tsx（表と探す欄）・NewClientForm.tsx（登録の欄）・components/shell/TopBarSlot.tsx（上の帯への差し込み）・
@@ -48,6 +49,9 @@ function ClientsWorkbench({ children }: { children: ReactNode }) {
   const selectedId = selectedClientIdOf(pathname);
   // 登録の欄を出すのは /clients?new=1 だけ（app/(dashboard)/clients/page.tsx と同じ決まり）
   const isNew = selectedId === null && searchParams.get("new") === "1";
+  // 選んだ方の書類を開いている（/clients/{id}?doc=…）あいだは、右の区画を 640px に広げる。書類の中身（表や長い文）は
+  // 440px では窮屈なため（A6 ＝ 計画 U3b。中身は components/clients/ClientPane.tsx の OpenedDocument）
+  const docOpen = selectedId !== null && Boolean(searchParams.get("doc"));
   const selectedCode = selectedId ? (clients.find((c) => c.id === selectedId)?.code ?? null) : null;
   // 何も選んでいない・登録の欄も開いていない＝右の区画は案内だけ。スマホでは表の下に「左の一覧から…」が出て
   // 向きが合わないので隠す（スマホ用の形は計画 M1 で作る）
@@ -97,7 +101,7 @@ function ClientsWorkbench({ children }: { children: ReactNode }) {
         </Pane>
         <Pane
           as="aside"
-          width={440}
+          width={docOpen ? 640 : 440}
           tinted
           label={paneLabel}
           className={idle ? "max-md:hidden" : undefined}

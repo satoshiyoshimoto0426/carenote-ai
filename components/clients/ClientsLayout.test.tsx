@@ -234,6 +234,29 @@ describe("行を選んだとき（/clients/{id}）", () => {
     expect(slot()?.querySelector('input[aria-label="記号・属性で探す"]')).not.toBeNull();
     expect(slot()?.querySelector('a[href="/clients?new=1"]')).not.toBeNull();
   });
+
+  it("書類を開いている（?doc=）あいだだけ右の区画を 640px に広げ、閉じると 440px に戻る（A6）", async () => {
+    env.pathname = "/clients/c2";
+    await render(<p>B様の詳細</p>);
+    expect(aside()?.classList.contains("pane-440")).toBe(true);
+
+    env.search = "doc=d1";
+    await render(<p>B様の書類</p>);
+    expect(aside()?.classList.contains("pane-640")).toBe(true);
+    expect(aside()?.classList.contains("pane-440")).toBe(false);
+    // 選んでいる行と道しるべは変わらない（書類を開いても、別の方を選んだことにはならない）
+    expect(selectedCodes()).toEqual(["B様"]);
+
+    env.search = "";
+    await render(<p>B様の詳細</p>);
+    expect(aside()?.classList.contains("pane-440")).toBe(true);
+  });
+
+  it("誰も選んでいない一覧では、?doc= が付いていても広げない（選んだ方の書類だけが対象）", async () => {
+    env.search = "doc=d1";
+    await render(await listPage());
+    expect(aside()?.classList.contains("pane-440")).toBe(true);
+  });
 });
 
 describe("新しい利用者の登録（/clients?new=1）", () => {

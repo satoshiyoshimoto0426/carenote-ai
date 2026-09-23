@@ -286,8 +286,17 @@ elements の部品が「押す／押さない／まだ計測していない」�
   読み込み中・読めなかった（「一覧をもう一度読む」）・まだいない（氏名を暗号化して記号で表示する約束の文）・探して当てはまる人がいない（「探す言葉を消す」）の4つの知らせ。`ClientSearchField` が上の帯の探す欄。**実名は描かない**（`ClientRecord` は氏名を持たず、ここは記号・属性・登録日だけ）。
 - **`components/clients/NewClientForm.tsx`**: 右の区画の登録の欄（`/clients?new=1` のとき `app/(dashboard)/clients/page.tsx` が出す）。欄の id（`#c-name` `#c-age` `#c-gender` `#c-care-level` `#c-household`）・名前・「氏名は暗号化して保存し、画面では記号で表示します」は以前と同じ。
   登録できたら表の先頭へ足して、その方の画面（`/clients/{id}`）を開く（以前は欄を閉じて一覧に行が増えるだけ）。**一覧を読めていないあいだは登録を止める**（表が見えないと、もういる方を気づかずに二重に登録できるため ── U0 で救済モードの保存を止めたのと同じ理由）。
-- **`lib/clients/clientList.ts`（純粋）**: `clientAttrLine`（「85歳・女性・要介護2・独居」）・`filterClients`（記号と属性を画面の中だけで絞る・全角半角をそろえる・空白区切りは全部を含む・「B様」は記号そのものと比べる）・`formatRegisteredDate`・`selectedClientIdOf`。`clients/[id]/page.tsx` も属性の1行はここを使う。
-- **`app/(dashboard)/clients/[id]/page.tsx`**: 右の区画の中身になった（`.legacy-page`・幅の上限・道しるべを外し、余白だけ付ける）。**中身はまだ以前の見た目**（関係者名簿・残した文字起こし・書類と承認 ── 作り替えは計画 U3b/U4）。
+- **`lib/clients/clientList.ts`（純粋）**: `clientAttrLine`（「85歳・女性・要介護2・独居」）・`filterClients`（記号と属性を画面の中だけで絞る・全角半角をそろえる・空白区切りは全部を含む・「B様」は記号そのものと比べる）・`formatRegisteredDate`（日本時間の 2026/09/01 ── 登録日の列と、区画の書類の保存日）・`selectedClientIdOf`。`ClientPane.tsx` も属性の1行はここを使う。
+- **`app/(dashboard)/clients/[id]/page.tsx`**（サーバー）: 右の区画の中身。`params` と `searchParams`（`?doc=`）を読み、`components/clients/ClientPane.tsx` を `key={id}` で描く（別の方を選んだら区画の状態を作り直す・`?doc=` だけ変わったときは一覧を読み直さない）。
+- **`components/clients/ClientPane.tsx`**（A6・計画 U3b ── アートボード A-clients の右の区画）: 頭（記号〔等幅 30px の h2〕・「（仮名）」・「仮名表示中」の札・属性の1行・緑の「つくる」→ `/create?client={id}`）→ 書類 → 関係者名簿 → 残した文字起こし。
+  **書類は種類ごとに1行**（`DOC_ORDER` の順）: いちばん新しい版の状態の札・保存した日（等幅・日本時間）・「開く」（→ `?doc={書類の id}`）、まだ無い種類は「まだありません」＋「つくる」（→ `/create?client={id}&type={種類}`）。
+  古い版は「以前の版（n）」（`<details>`）の中に並べ、**どの版も開ける**（振り分けは `lib/clients/documentRows.ts` の `groupDocumentsByType` ── 5種類に無い種類の書類も落とさず行にする）。
+  見出しの下に「ここに出る書類は、自分が保存したものだけです」（書類は `created_by` で絞られ、同僚の書類は出ない ── 事業所で共有しても「まだありません」に見えるため）。書類が1つも無ければ「まだ書類がありません。「つくる」の「一式まとめて」から作って保存できます。」。
+  「一式まとめて」→ `/rescue?client={id}`（救済モードが利用者を受け取って保存先に選ぶのは後の段 ── 計画 C9。`/create` が `client`・`type` を受け取るのも後の段 ── 計画 C2。それまでは素の画面が開く）。
+  `?doc=` のとき: 「書類の一覧へ戻る」・書類の名前・札・日付・`DocumentPanel`（区画の端から端まで）。一覧に無い id なら「この書類を開けませんでした。…」。書類を開いているあいだは関係者名簿も文字起こしも描かない（読みにいかない）。
+  **緑の主ボタンは1つ**: ふだんは頭の「つくる」、下書きを開いているあいだは `DocumentPanel` の「承認する」（「つくる」は脇のボタンの見た目になる）。
+  区画の幅: `components/clients/ClientsLayout.tsx` が `?doc=` を見て、選んだ方の書類を開いているあいだだけ 640px（`.pane-640`）に広げる（書類の中身は 440px では窮屈）。
+  見た目は `app/globals.css` の3つ目の `@layer components`（`.client-pane*`・`.client-doc-older`）。テスト `components/clients/ClientPane.test.tsx`（jsdom・「仮名表示中」・札・つくるの URL・どの版も開ける・頭と書類の行に実名を描かない・緑は1つ・並び順・開けない id・読めなかったとき）、`lib/clients/documentRows.test.ts`、札の文字の 4.5:1 は `app/globals.test.ts`。
 - **`components/clients/DocumentPanel.tsx`**（A6・計画 U3a）: 開いた書類の**承認（G4）の操作と中身**。以前はページに直接書いてあり検査が無かったので、文字も動きも変えずにここへ移した。
   下書き＝「承認する」＋押せない「コピー」＋「承認後にコピーできます」／承認済み＝「コピー」（`lib/draftText.documentContentToText`）・「カイポケ用データ」（**`JSON.stringify(content, null, 2)` そのもの ── 拡張 `extension/src/panel.html` の「下書きJSONを貼り付けて読み込む」との約束**）・「承認を取り消す」。
   承認・取消は `PATCH /api/documents/{id}`、通ったら `onChange` で呼ぶ側が行を差し替える。状態の札 `StatusBadge`（下書き＝黄・承認済み＝緑）もここ。
@@ -299,6 +308,8 @@ elements の部品が「押す／押さない／まだ計測していない」�
   選んだ行の文字の 4.5:1 は `app/globals.test.ts`。利用者の画面の「この画面の使い方」が上の帯の1つだけになったことは `lib/nav.test.ts`。
 - **まだ直していない文書**（D1a/D2 でまとめて）: `lib/manual/content.ts`:102・260（右上の「新規」→「新しい利用者」）・108-110・272-274（登録すると、その方の画面が開く）・280（「利用者 ＞ A様」のパンくずは上の帯の「利用者 / A様」になった）、
   `tools/shoot-plans.mjs`:55・103（`click: "新規"`。本番はまだ「新規」なので、本番に出すまで変えない）、`docs/MANUAL-VIDEO-SPEC.md`:204・224。
+  A6（利用者の区画）で本文と合わなくなった所: `lib/manual/content.ts`:276-277（見出しは頭の「B様（仮名）」＋「仮名表示中」── 形は同じ・場所が区画の頭）・280・326（関係者名簿は頭の上ではなく、書類の下）・1036（「救済モードで一式」ボタン → 区画の「一式まとめて」）・1066（「この方の書類」→ 区画の「書類」・種類ごとの1行と「以前の版」・行を押すのではなく「開く」）、
+  `docs/MANUAL-VIDEO-SPEC.md`:228-231（ch2 #9・10・12 ── 見出しと、パンくずの下の関係者名簿）・302（ch6 #12「この方の書類」に5件並ぶ）、公開中の ch2・ch6 の動画。
 
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
@@ -307,7 +318,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記。同日: 利用者の作業台（一覧の表・右の 440px の区画・上の帯への差し込み・ClientsContext・勝手に選ばない ── A5）を追記し、利用者の2画面を .legacy-page から外した。同日: A5 の検証の直し（表の見出しの行の高さぶん区画の --sticky-top を下げる・氏名を記号で表示する約束の1行を表の上に戻した）を追記。同日: 開いた書類の承認（G4）の操作を components/clients/DocumentPanel.tsx へ中身を変えずに移し、検査を足した（A6 U3a）*
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記。同日: 利用者の作業台（一覧の表・右の 440px の区画・上の帯への差し込み・ClientsContext・勝手に選ばない ── A5）を追記し、利用者の2画面を .legacy-page から外した。同日: A5 の検証の直し（表の見出しの行の高さぶん区画の --sticky-top を下げる・氏名を記号で表示する約束の1行を表の上に戻した）を追記。同日: 開いた書類の承認（G4）の操作を components/clients/DocumentPanel.tsx へ中身を変えずに移し、検査を足した（A6 U3a）。同日: 利用者の区画（ClientPane・書類は種類ごとの1行と以前の版・?doc= で開く・区画を 640px に広げる）を追記（A6 U3b）*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

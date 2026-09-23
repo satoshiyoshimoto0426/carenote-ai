@@ -35,6 +35,9 @@ import type { SupportLogDraft } from "@/types/supportLog";
  *   - 「カイポケ用データ」がコピーする文字は JSON.stringify(content, null, 2) そのもの。カイポケ拡張のサイドパネルの
  *     「下書きJSONを貼り付けて読み込む」（extension/src/panel.html）がこの形を読む ── 形を変えると拡張が読めなくなる。
  *
+ * 見た目: 区画の端から端まで置く前提で、左右の余白を区画（.client-pane）と同じ 16px／768px 以上 28px にした
+ * （A6 U3b。移した時点では以前のカードの中の 20px だった）。
+ *
  * @param doc 開いている書類（GET /api/clients/{id} の documents の1件）。
  * @param onChange 承認・取消が通ったときに、サーバーが返した新しい書類を渡す（呼ぶ側が一覧の同じ行を差し替える）。
  * 使う所: components/clients/ClientPane.tsx（書類を開いたとき）。
@@ -92,7 +95,7 @@ export default function DocumentPanel({
   return (
     <div className="animate-fadeIn border-t border-[var(--line-soft)]">
       {/* 操作行（G4 承認モデル）: draft=承認する＋コピー不可 / approved=コピー＋承認取消 */}
-      <div className="space-y-3 border-b border-[var(--line-soft)] bg-[var(--paper)] px-5 py-4">
+      <div className="space-y-3 border-b border-[var(--line-soft)] bg-[var(--paper)] px-4 py-4 md:px-7">
         {doc.status === "draft" ? (
           <>
             <p className="text-xs leading-relaxed text-[var(--muted)]">
@@ -186,7 +189,7 @@ export default function DocumentPanel({
           </p>
         )}
       </div>
-      <div className="space-y-3 px-5 py-5">
+      <div className="space-y-3 px-4 py-5 md:px-7">
         <SavedDocView doc={doc} />
       </div>
     </div>

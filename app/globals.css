@@ -1156,3 +1156,116 @@
     }
   }
 }
+
+/*
+ * 利用者の区画（/clients/{id} の右の区画の中身・A案「作業台」A6 ── 計画 U3b/U4）。
+ * 部品は components/clients/ClientPane.tsx・RelatedPeople.tsx・SavedTranscripts.tsx。
+ * 寸法はアートボード A-clients の右の区画: 余白 28px（スマホ 16px）・記号 30px の等幅・書類の行 42px・
+ * 行の区切り 1px（--line-faint）。カードの枠は使わず、行を細い線だけで区切る。
+ * @layer components に入れる理由は上の区画と同じ（部品に足した Tailwind の指定が勝てるように）。
+ */
+@layer components {
+  .client-pane {
+    padding: 24px 16px 40px;
+  }
+
+  /* 頭の記号（「B様」）。氏名ではなく符号であることを等幅の書体で示す */
+  .client-pane-code {
+    font-family: var(--mono);
+    font-size: 30px;
+    font-weight: 500;
+    line-height: 1.1;
+    color: var(--ink);
+  }
+
+  /* 記号の後ろの「（仮名）」。本文の書体に戻して小さく */
+  .client-pane-kana {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+
+  /* 区画の中の1行（書類・以前の版・関係者・文字起こし）。下に 1px の線だけ */
+  .client-pane-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    min-height: 42px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--line-faint);
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  /* 保存した日・字数（等幅） */
+  .client-pane-date {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+
+  /* 行の右端の「開く」「つくる」。アートボードの幅 44px・右寄せ */
+  .client-pane-action {
+    min-width: 44px;
+    justify-content: flex-end;
+  }
+
+  /* 「以前の版（n）」の開け閉め。押す場所はスマホで 44px（下の @media） */
+  .client-doc-older > summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    border-bottom: 1px solid var(--line-faint);
+    font-size: 12.5px;
+    color: var(--ink-2);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .client-doc-older > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .client-doc-older > summary svg {
+    transition: transform 0.15s ease;
+  }
+
+  .client-doc-older[open] > summary svg {
+    transform: rotate(90deg);
+  }
+
+  .client-doc-older > summary:hover {
+    color: var(--ink);
+  }
+
+  /* 以前の版の行は、少し字下げして新しい版の行と分ける */
+  .client-doc-older .client-pane-row {
+    padding-left: 20px;
+  }
+
+  /* 区画の左右の端まで広げる物（開いた書類の承認の操作と中身）。区画の余白と同じだけ外へ出す */
+  .client-pane-bleed {
+    margin-inline: -16px;
+  }
+
+  @media (max-width: 767px) {
+    .client-doc-older > summary {
+      min-height: 44px;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .client-pane {
+      padding: 28px 28px 40px;
+    }
+
+    .client-pane-bleed {
+      margin-inline: -28px;
+    }
+  }
+}
