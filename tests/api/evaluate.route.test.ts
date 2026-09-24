@@ -14,6 +14,7 @@ vi.mock("@vercel/blob", () => ({ del: blob.del, get: blob.get }));
 vi.mock("@/lib/db", () => ({ saveEvaluation: vi.fn(async () => undefined) }));
 
 const { POST } = await import("@/app/api/evaluate/route");
+const { EVALUATE_MODEL } = await import("@/lib/evaluate/model");
 
 const PRIVATE_URL = "https://abc.private.blob.vercel-storage.com/evaluate/1.pdf";
 
@@ -70,5 +71,31 @@ describe("POST /api/evaluate（一時保管の扱い）", () => {
     expect(res.status).not.toBe(400);
     expect(blob.get).toHaveBeenCalledWith(PRIVATE_URL, { access: "private" });
     expect(blob.del).toHaveBeenCalledWith(PRIVATE_URL);
+  });
+});
+
+/**
+ * 点検のモデル名（Issue #4・2026-09-25）:
+ *   本番は 2026-09-14 から、存在しない名前 `claude-sonnet-4-5-20250514` を送って API に弾かれ続けていた。
+ *   日付つきの名前は手で書くと間違えるので、公式一覧の「別名（日付なし）」だけを送る、と固定する。
+ */
+describe("POST /api/evaluate（AI に送るモデル名）", () => {
+  it("公式の別名（日付なし）を送る。日付つきの名前は手で書かない", async () => {
+    expect(EVALUATE_MODEL).toMatch(/^claude-[a-z]+-\d+(-\d+)?$/);
+    expect(EVALUATE_MODEL).not.toMatch(/\d{8}$/);
+  });
+
+  it("実際の呼び出しの本文でも、その名前をそのまま使う", async () => {
+    blob.get.mockResolvedValue({
+      statusCode: 200,
+      stream: new Blob([new Uint8Array([1, 2, 3])]).stream(),
+      blob: { contentType: "application/pdf" },
+    });
+    await POST(post({ blobUrl: PRIVATE_URL, fileName: "a.pdf" }));
+    const calls = (fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls;
+    const ai = calls.find(([url]) => String(url).includes("api.anthropic.com"));
+    if (!ai) throw new Error("AI の呼び出しが無い");
+    const sent = JSON.parse(String(ai[1].body)) as { model: string };
+    expect(sent.model).toBe(EVALUATE_MODEL);
   });
 });
