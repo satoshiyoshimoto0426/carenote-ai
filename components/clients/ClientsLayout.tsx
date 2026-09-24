@@ -61,9 +61,10 @@ function ClientsWorkbench({ children }: { children: ReactNode }) {
   return (
     <>
       {/*
-        スマホ（768px 未満）の上の帯は、右に「この画面の使い方」と共有状態があって狭い。探す欄に幅を回すため、
-        見出しは読み上げ用に残して見た目だけ隠し（下のタブが「利用者」を示す）、人数と道しるべは出さない
-        （一覧へ戻るのは下のタブの「利用者」）。スマホ用の形は計画 M1 で作る。
+        スマホ（768px 未満）の上の帯は、右に「この画面の使い方」と共有状態（安全のため必ず出す）があって狭い。
+        2026-09-24 本番で探す欄が潰れて空の箱に見えたため、スマホでは探す欄を出さず見出し「利用者」を見せる
+        （探す欄は ClientTable.tsx の ClientSearchField で max-md:hidden）。人数と道しるべは出さない
+        （一覧へ戻るのは下のタブの「利用者」）。スマホで探せる形は計画 M1 で作る。
       */}
       <TopBarSlot>
         {selectedId === null ? (
@@ -118,7 +119,7 @@ function ClientsHeading() {
   const { status, clients } = useClients();
   return (
     <>
-      <h1 className="clients-title max-md:sr-only">利用者</h1>
+      <h1 className="clients-title">利用者</h1>
       {status === "ready" ? (
         <span className="clients-count max-md:hidden">
           {clients.length}

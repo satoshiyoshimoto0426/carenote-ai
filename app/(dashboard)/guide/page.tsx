@@ -66,6 +66,8 @@ export default function GuidePage() {
         description="はじめての方は ① から順に読んでください。各章の動画は、実際の画面を録画したものです。"
       />
 
+      <RedesignNotice />
+
       <ToolbarCard />
       <PromisesCard />
       <TableOfContents />
@@ -77,6 +79,25 @@ export default function GuidePage() {
       <p className="mt-10 mb-2 text-center text-xs text-[var(--faint)]">
         {MANUAL_META.title} {MANUAL_META.version} ／
         画面が変わったときは、この使い方も同時に直します。
+      </p>
+    </div>
+  );
+}
+
+/**
+ * 画面の作り直し（A案「作業台」）の途中であることの知らせ。2026-09-24 に途中の段階を本番へ出したため、
+ * 本文の写真・動画・ボタンの名前が一部以前のまま。読む人が今の画面と見比べて迷わないよう、名前の対応を先に示す。
+ * 本文（lib/manual/content.ts）と動画を書き直したら外す（計画 D1a〜D2・docs/CONTEXT-MAP.md の「まだ直していない文書」）。
+ */
+function RedesignNotice() {
+  return (
+    <div
+      role="note"
+      className="mb-6 flex items-start gap-2.5 border border-[var(--amber-line)] bg-[var(--amber-soft)] px-4 py-3 text-sm leading-[1.8] text-[var(--amber)]"
+    >
+      <IconAlert size={16} className="mt-1 shrink-0" />
+      <p>
+        画面を新しくしている途中です。この説明の写真や動画、ボタンの名前は一部が以前のままです（例:「作成する」→「つくる」、「救済モード」→「つくる」の中の「一式まとめて（救済モード）」、「評価する」→「点検」、「ダッシュボード」→「点検」の履歴）。
       </p>
     </div>
   );

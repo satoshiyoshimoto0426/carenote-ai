@@ -1,6 +1,7 @@
 "use client";
 
 import { upload } from "@vercel/blob/client";
+import Link from "next/link";
 import { useState } from "react";
 import EvaluationResults from "@/components/EvaluationResults";
 import FileUploader from "@/components/FileUploader";
@@ -128,6 +129,18 @@ export default function EvaluatePage() {
         description="書類一式PDFをアップロードしてAI評価を実行します"
         helpAnchor="ch1"
       />
+      {/*
+        点検の履歴（/dashboard）への入口。左のメニューが4つになり「ダッシュボード」が無くなったため、
+        ここから行けないと職員が過去の点検を見られなくなる（2026-09-24 本番公開の直前に発見）。
+      */}
+      <p className="-mt-3 mb-5 text-[13px]">
+        <Link
+          href="/dashboard"
+          className="text-[var(--green)] underline underline-offset-4 hover:text-[var(--green-deep)]"
+        >
+          これまでの点検（履歴）を見る
+        </Link>
+      </p>
 
       {!result ? (
         <div className="animate-fadeIn">
