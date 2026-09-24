@@ -16,6 +16,12 @@
  *   隠してよいのは読み飛ばせる地の文であって、確かめるべき赤い言葉ではない。
  *   畳んだ欄では「赤い言葉＋その前後」を全部並べ、地の文だけを隠す形に改めた。
  *   さらに、全文を一度も開いていない欄が残ったまま送ろうとしたら、送る前に知らせる。
+ *
+ * 2026-09-23 の検収で足したこと:
+ *   「なぜ赤いか」（敬称の前／施設名の可能性）は、畳んだ欄では各行の末尾に文字で出ていたが、
+ *   開いた欄では <mark title> のふきだしにしか無く、タッチ端末の職員には届いていなかった。
+ *   開いた欄も本文の下に言葉ごとの理由を文字で並べる（本文には差し込まない ── redWordReasons）。
+ *   理由の文字は、読める濃さ（--muted・白地で 7.9:1）にそろえた（--faint は 3.8:1 で足りない）。
  */
 import { useCallback, useMemo, useState } from "react";
 import type { NameCandidate } from "@/lib/privacy/candidates";
@@ -25,8 +31,14 @@ import {
   candidateContexts,
   excerpt,
   fieldOfCandidate,
+  type RedWordReason,
+  redWordReasons,
 } from "@/lib/privacy/previewNav";
 
+/**
+ * /api/preview が返す「AIに送る紙」（app/(dashboard)/create/page.tsx が受け取って渡す）。
+ * fields は黒塗り後の本文そのもの（/api/generate と同じ関数で作る）、candidates は欄ごとの赤い言葉。
+ */
 export interface PreviewData {
   fields: Record<string, string>;
   findings: { names: number; patterns: { kind: string; count: number }[] };
@@ -63,6 +75,11 @@ interface Props {
   secondaryClass: string;
 }
 
+/**
+ * 送る前に見る画面（黒塗りで消せなかった名前を、職員が目で止める最後の関門）。
+ * 使う側 = app/(dashboard)/create/page.tsx。赤い言葉の組み立ては lib/privacy/previewNav.ts、
+ * 既定の見た目の検査は PreSendPreview.test.tsx（安全テストの一覧 tools/safety-tests.json に名指し）。
+ */
 export default function PreSendPreview({
   data,
   loading,
@@ -199,15 +216,18 @@ export default function PreSendPreview({
             </div>
 
             {isOpen ? (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                {field.parts.map((part) =>
-                  part.candidateNo === null ? (
-                    <span key={`${key}-${part.start}`}>{part.text}</span>
-                  ) : (
-                    <Mark key={`${key}-${part.start}`} part={part} current={current} />
-                  ),
-                )}
-              </p>
+              <>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                  {field.parts.map((part) =>
+                    part.candidateNo === null ? (
+                      <span key={`${key}-${part.start}`}>{part.text}</span>
+                    ) : (
+                      <Mark key={`${key}-${part.start}`} part={part} current={current} />
+                    ),
+                  )}
+                </p>
+                <OpenFieldReasons reasons={redWordReasons(field)} />
+              </>
             ) : (
               <CollapsedField
                 contexts={candidateContexts(field)}
@@ -340,9 +360,35 @@ function CollapsedField({
             current={current}
           />
           <span className="text-[var(--muted)]">{c.after}</span>
-          {c.reason && <span className="ml-2 text-xs text-[var(--faint)]">（{c.reason}）</span>}
+          {c.reason && <ReasonText reason={c.reason} className="ml-2" />}
         </li>
       ))}
     </ul>
   );
+}
+
+/**
+ * 開いた欄の下に並べる「なぜ赤いか」。ふきだし（title）はタッチ端末で出ないので、文字で出す。
+ * 本文には差し込まない（「佐藤（敬称の前）さん」のように送る文章が読みにくくなり、画面と送る文章がずれる）。
+ */
+function OpenFieldReasons({ reasons }: { reasons: RedWordReason[] }) {
+  if (reasons.length === 0) return null;
+  return (
+    <div className="mt-3 border-t border-[var(--line)] pt-2">
+      <p className="text-xs font-medium text-[var(--muted)]">なぜ赤いか</p>
+      <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        {reasons.map((r) => (
+          <li key={r.word}>
+            <span className="font-medium text-[var(--ink)]">{r.word}</span>
+            <ReasonText reason={r.reason} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** 赤い言葉の理由「（敬称の前）」。畳んだ欄と開いた欄で、同じ書き方・読める濃さ（--muted）にそろえる。 */
+function ReasonText({ reason, className = "" }: { reason: string; className?: string }) {
+  return <span className={`text-xs text-[var(--muted)] ${className}`}>（{reason}）</span>;
 }

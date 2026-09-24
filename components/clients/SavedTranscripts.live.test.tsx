@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TRANSCRIPT_TABLE_MISSING_MESSAGE } from "@/lib/db/transcripts";
+import { isShown, shownText } from "@/tests/helpers/markup";
 import SavedTranscripts from "./SavedTranscripts";
 
 /**
@@ -16,6 +17,10 @@ import SavedTranscripts from "./SavedTranscripts";
  *     （API の検査 tests/api/transcripts.route.test.ts の意図を、画面の側でも守る）。
  *   - 5年の決まりの正直な文「いまは自動で消えません」を消さない（2026-09-18「画面だけが嘘をついていた」の直し）。
  *   - 「消す」は元に戻せないので、確かめてから消す。
+ *
+ * 「出ている」は tests/helpers/markup.ts の shownText・isShown で見る（隠した要素の文字や部品を数えない ──
+ * 2026-09-24 に2つの枝を取り込んだときに寄せた。jsdom の textContent は隠した文字も数える）。
+ * 「出していない」（本文の実名を出さない など）は textContent・innerHTML のまま（隠して出した文字も拾える）。
  */
 
 // jsdom は起動に十数秒かかる。他のテストと同時に走ると待ち時間が伸びるので広めに取る
@@ -95,6 +100,10 @@ async function render() {
 
 const buttonByText = (text: string) =>
   [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
+/** 画面に出ている文字（隠した要素の文字は数えない）。見つからなければ "" */
+const shown = (el: Element | null | undefined) => shownText(container, el);
+/** 隠されずに出ているか（見つからなければ false） */
+const visible = (el: Element | null | undefined) => isShown(container, el);
 
 async function click(el: HTMLElement | undefined) {
   if (!el) throw new Error("押す物が見つかりません");
@@ -109,18 +118,18 @@ describe("一覧（本文は取りに行かない）", () => {
     await render();
     expect(calls).toEqual(["GET /api/transcripts?clientId=c1"]);
     expect(container.textContent).not.toContain("山田");
-    expect(container.querySelector("h3")?.textContent).toBe("残した文字起こし");
+    expect(shown(container.querySelector("h3"))).toBe("残した文字起こし");
     // 行: 日付・種類・見出し・字数（等幅）と「読む」「消す」
-    expect(container.textContent).toContain("9月の会議");
-    expect(container.querySelector(".client-pane-date")?.textContent).toBe("3,214字");
-    expect(buttonByText("読む")).toBeDefined();
-    expect(buttonByText("消す")).toBeDefined();
+    expect(shown(container)).toContain("9月の会議");
+    expect(shown(container.querySelector(".client-pane-date"))).toBe("3,214字");
+    expect(visible(buttonByText("読む"))).toBe(true);
+    expect(visible(buttonByText("消す"))).toBe(true);
   });
 
   it("実名が入っている注意と、5年の決まりの正直な文（いまは自動で消えません）を出す", async () => {
     await render();
-    expect(container.textContent).toContain("実名が入っているので、画面を人に見せないでください。");
-    expect(container.textContent).toContain(
+    expect(shown(container)).toContain("実名が入っているので、画面を人に見せないでください。");
+    expect(shown(container)).toContain(
       "保存から5年を過ぎたら消す決まりですが、いまは自動で消えません（管理者がまとめて消します）。",
     );
   });
@@ -137,7 +146,7 @@ describe("読む（押したときだけ本文を取り寄せる）", () => {
     await render();
     await click(buttonByText("読む"));
     expect(calls).toEqual(["GET /api/transcripts?clientId=c1", "GET /api/transcripts/t1"]);
-    expect(container.textContent).toContain(BODY);
+    expect(shown(container)).toContain(BODY);
     const close = buttonByText("閉じる");
     expect(close?.getAttribute("aria-expanded")).toBe("true");
     await click(close);
@@ -152,7 +161,7 @@ describe("読む（押したときだけ本文を取り寄せる）", () => {
     ];
     await render();
     await click(buttonByText("読む"));
-    expect(container.textContent).toContain(
+    expect(shown(container)).toContain(
       "保存した文字起こしを読めませんでした。管理者に連絡してください。",
     );
   });
@@ -164,9 +173,10 @@ describe("読めなかったとき（欄を消さない）", () => {
       () => json({ error: TRANSCRIPT_TABLE_MISSING_MESSAGE }, 503),
     ];
     await render();
-    const alert = container.querySelector('[role="alert"]');
-    expect(alert?.textContent).toContain(TRANSCRIPT_TABLE_MISSING_MESSAGE);
-    expect(container.querySelector("h3")?.textContent).toBe("残した文字起こし");
+    expect(shown(container.querySelector('[role="alert"]'))).toContain(
+      TRANSCRIPT_TABLE_MISSING_MESSAGE,
+    );
+    expect(shown(container.querySelector("h3"))).toBe("残した文字起こし");
   });
 
   it("「もう一度読む」で読み直し、読めたら知らせが消えて一覧が出る", async () => {
@@ -177,7 +187,7 @@ describe("読めなかったとき（欄を消さない）", () => {
     await render();
     await click(buttonByText("もう一度読む"));
     expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(container.textContent).toContain("9月の会議");
+    expect(shown(container)).toContain("9月の会議");
   });
 
   it("通信そのものが失敗したら、通信環境を確かめる文を出す", async () => {
@@ -187,7 +197,7 @@ describe("読めなかったとき（欄を消さない）", () => {
       },
     ];
     await render();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("通信環境を確かめて");
+    expect(shown(container.querySelector('[role="alert"]'))).toContain("通信環境を確かめて");
   });
 });
 
@@ -200,7 +210,7 @@ describe("消す（確かめてから）", () => {
       "この文字起こしを消します。元に戻せません。よろしいですか。",
     );
     expect(calls.some((c) => c.startsWith("DELETE"))).toBe(false);
-    expect(container.textContent).toContain("9月の会議");
+    expect(shown(container)).toContain("9月の会議");
   });
 
   it("確かめて「OK」なら DELETE を送り、一覧を読み直す（0件になったら欄は消える）", async () => {
@@ -225,6 +235,6 @@ describe("消す（確かめてから）", () => {
     routes["DELETE /api/transcripts/t1"] = [() => json({ error: message }, 503)];
     await render();
     await click(buttonByText("消す"));
-    expect(container.textContent).toContain(message);
+    expect(shown(container)).toContain(message);
   });
 });

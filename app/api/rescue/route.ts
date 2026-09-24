@@ -24,6 +24,7 @@ import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskDeep } from "@/lib/privacy/maskBody";
 import { maskPii } from "@/lib/privacy/maskPii";
 import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
+import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
 import { MAX_SOURCE_DOCS, parseSourceDocs } from "@/lib/rescue/sourceDocs";
 
 // 5帳票を依存順＋並列で生成するため、通常の生成より長めに確保する。
@@ -59,12 +60,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
-  }
+  const body = await readJsonObject(req);
+  if (!body) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
 
   const sourceDocs = parseSourceDocs(body.sourceDocs);
   if (sourceDocs === null) {

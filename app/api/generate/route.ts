@@ -11,6 +11,7 @@ import { GenerateRequestError, generateFromBody } from "@/lib/generation/dispatc
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskRequestBody } from "@/lib/privacy/maskBody";
 import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
+import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
 
 // Opus + adaptive thinking は時間がかかるため余裕を持たせる
 export const maxDuration = 300;
@@ -29,12 +30,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
-  }
+  const parsed = await readJsonObject(req);
+  if (!parsed) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
+  let body: Record<string, unknown> = parsed;
 
   // 黒塗り（SPEC §7・docs/specs/call-pipeline.md §2.1）: 名簿置換→型置換→自己点検を maskPii で
   // 一括適用してからAIへ送る。名簿が空でも型置換は動く。残っていれば 422 で送信を中止（fail-closed）。

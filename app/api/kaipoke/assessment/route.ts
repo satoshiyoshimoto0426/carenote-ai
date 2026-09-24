@@ -12,6 +12,7 @@ import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskDeep } from "@/lib/privacy/maskBody";
 import { maskPii } from "@/lib/privacy/maskPii";
 import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
+import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
 import type { AssessmentDraft } from "@/types/assessment";
 
 export const maxDuration = 300;
@@ -32,12 +33,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
   }
 
-  let body: { draft?: unknown; notes?: unknown };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
-  }
+  const body = await readJsonObject(req);
+  if (!body) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
   const draft = body.draft as AssessmentDraft | undefined;
   if (!draft || typeof draft !== "object" || !Array.isArray(draft.domains)) {
     return NextResponse.json({ error: "アセスメントの下書きが必要です。" }, { status: 400 });

@@ -3,6 +3,7 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { documentContentToText } from "@/lib/draftText";
+import { isShown, shownText } from "@/tests/helpers/markup";
 import type { CareDocumentRecord } from "@/types/document";
 import type { SupportLogDraft } from "@/types/supportLog";
 import DocumentPanel from "./DocumentPanel";
@@ -17,6 +18,9 @@ import DocumentPanel from "./DocumentPanel";
  *   - 「カイポケ用データ」がコピーする文字は JSON.stringify(content, null, 2) そのもの。
  *     カイポケ拡張の「下書きJSONを貼り付けて読み込む」がこの形を読む（拡張との約束）。
  *   - 承認・取消の失敗は画面に出す（黙って「承認済み」に見せない）。
+ *
+ * 「出ている」は tests/helpers/markup.ts の shownText・isShown で見る（隠した要素の文字や部品を数えない ──
+ * 2026-09-24 に2つの枝を取り込んだときに寄せた。jsdom の textContent は隠した文字も数える）。
  */
 
 // jsdom は起動に十数秒かかる。他のテストと同時に走ると待ち時間が伸びるので広めに取る
@@ -159,7 +163,10 @@ async function render(doc: CareDocumentRecord) {
 const buttons = () => [...container.querySelectorAll("button")];
 /** 見た目の文字がちょうどその文字のボタン（読み込み中の印などの svg は文字を持たない） */
 const buttonByText = (text: string) => buttons().find((b) => b.textContent?.trim() === text);
-const text = () => container.textContent ?? "";
+/** 画面に出ている文字の全体（隠した要素の文字は数えない） */
+const text = () => shownText(container, container);
+/** 隠されずに出ているか（見つからなければ false） */
+const visible = (el: Element | null | undefined) => isShown(container, el);
 
 async function click(el: Element | undefined) {
   if (!el) throw new Error("押す物が見つかりません");
@@ -174,7 +181,7 @@ describe("下書き（G4: 承認するまでコピーできない）", () => {
     await render(DRAFT);
     expect(buttonByText("承認する")?.disabled).toBe(false);
     const copy = buttonByText("コピー");
-    expect(copy).toBeDefined();
+    expect(visible(copy)).toBe(true);
     expect(copy?.hasAttribute("disabled")).toBe(true);
     expect(text()).toContain("承認後にコピーできます");
     expect(text()).toContain(
@@ -199,7 +206,7 @@ describe("下書き（G4: 承認するまでコピーできない）", () => {
     await click(buttonByText("承認する"));
     expect(calls).toEqual([{ call: "PATCH /api/documents/d1", body: { action: "approve" } }]);
     expect(changed).toEqual([APPROVED]);
-    expect(buttonByText("承認を取り消す")).toBeDefined();
+    expect(visible(buttonByText("承認を取り消す"))).toBe(true);
     expect(buttonByText("コピー")?.hasAttribute("disabled")).toBe(false);
   });
 
@@ -209,7 +216,7 @@ describe("下書き（G4: 承認するまでコピーできない）", () => {
     await click(buttonByText("承認する"));
     expect(text()).toContain("書類が見つかりません。");
     expect(changed).toEqual([]);
-    expect(buttonByText("承認する")).toBeDefined();
+    expect(visible(buttonByText("承認する"))).toBe(true);
     expect(buttonByText("コピー")?.hasAttribute("disabled")).toBe(true);
   });
 });
@@ -218,8 +225,8 @@ describe("承認済み", () => {
   it("「コピー」「カイポケ用データ」「承認を取り消す」と、承認した日の札が出る", async () => {
     await render(APPROVED);
     expect(buttonByText("コピー")?.hasAttribute("disabled")).toBe(false);
-    expect(buttonByText("カイポケ用データ")).toBeDefined();
-    expect(buttonByText("承認を取り消す")).toBeDefined();
+    expect(visible(buttonByText("カイポケ用データ"))).toBe(true);
+    expect(visible(buttonByText("承認を取り消す"))).toBe(true);
     // 文字だけの小さいボタンでも、スマホで指で押せる高さ（44px）を約束する（パソコンでは詰める）
     expect(buttonByText("承認を取り消す")?.className.split(/\s+/)).toEqual(
       expect.arrayContaining(["min-h-11", "md:min-h-0"]),
@@ -248,7 +255,7 @@ describe("承認済み", () => {
     await render(APPROVED);
     await click(buttonByText("承認を取り消す"));
     expect(calls).toEqual([{ call: "PATCH /api/documents/d1", body: { action: "unapprove" } }]);
-    expect(buttonByText("承認する")).toBeDefined();
+    expect(visible(buttonByText("承認する"))).toBe(true);
     expect(buttonByText("コピー")?.hasAttribute("disabled")).toBe(true);
   });
 
@@ -257,11 +264,11 @@ describe("承認済み", () => {
     await render(APPROVED);
     await click(buttonByText("承認を取り消す"));
     expect(text()).toContain("ログインが必要です。");
-    expect(buttonByText("カイポケ用データ")).toBeDefined();
+    expect(visible(buttonByText("カイポケ用データ"))).toBe(true);
   });
 });
 
 it("書類の中身は種類に合った表示部品で出す", async () => {
   await render(APPROVED);
-  expect(container.querySelector('[data-view="supportLog"]')).not.toBeNull();
+  expect(visible(container.querySelector('[data-view="supportLog"]'))).toBe(true);
 });

@@ -1,18 +1,31 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  attrOf,
+  elementsOf,
+  hasClass,
+  isReachable,
+  type MarkupElement,
+  textOf,
+} from "@/tests/helpers/markup";
 import SharingStatus from "./SharingStatus";
 
 /**
  * 名簿の共有状態の表示（components/SharingStatus.tsx）を固定する。
  *
- * なぜ必要か（独立審査 2026-09-13 critical）:
- *   黒塗りが事業所ぶんで効くのは、Clerk で事業所を「選んでいる」ときだけ。効いていないのに画面が
- *   普通に見えると、同僚が登録した実名がそのまま AI へ出る。A案で表示を上の帯へ移したとき、
- *   アートボードには「事業所で共有中」の緑しか描かれていなかった。灰（確認中）・黄（自分の登録分のみ）
- *   と、効いていないときの注意、その場で選べる切り替えのどれが消えても、ここで赤くなる。
+ * なぜ必要か（独立審査 2026-09-13 critical・2026-09-23 作り直し計画 F0b）:
+ *   黒塗りは名簿にある名前しか消せない。名簿が事業所ぶんになるのは、Clerk で事業所を「選んでいる」ときだけ。
+ *   効いていないのに職員が気づかないと、同僚が登録した実名がそのまま AI へ出る。その唯一の知らせがこの表示。
+ *   A案で表示を上の帯へ移したとき、アートボードには「事業所で共有中」の緑しか描かれていなかった。
+ *   灰（確認中）・黄（自分の登録分のみ）と、効いていないときの注意、その場で選べる切り替えのどれが消えても、ここで赤くなる。
  *
- * Clerk は偽物に差し替える。useOrganization が返す状態を3通りに変え、OrganizationSwitcher は
+ * 「出ている」は描いた HTML を tests/helpers/markup.ts で木として読んで確かめる（2026-09-24 に2つの枝を取り込んだときに寄せた）:
+ *   文字は textOf（title のふきだしや、隠した要素の中の文字を「出ている」と数えない）、
+ *   切り替えの部品は isReachable（包む要素を hidden や aria-hidden にしたら「出ていない」と数える）。
+ *   「出していない」は、隠して出した文字も拾えるよう、描いた HTML 全体で見る。
+ *
+ * Clerk は偽物に差し替える。useOrganization が返す状態を変え、OrganizationSwitcher は
  * 受け取った設定を data 属性に書き出すだけの代役にする（描かれたこと・行き先・押す場所の大きさを見る）。
  */
 
@@ -45,10 +58,12 @@ function draw(variant: "bar" | "strip"): string {
   return renderToStaticMarkup(createElement(SharingStatus, { variant }));
 }
 
-/** 3つの状態。name は共有中のときの事業所の名前。 */
+const ORG_NAME = "テスト事業所";
+
+/** 3つの状態。shared の organization が共有中の事業所。 */
 const STATES = {
   loading: { isLoaded: false, organization: null },
-  shared: { isLoaded: true, organization: { name: "テスト事業所" } },
+  shared: { isLoaded: true, organization: { name: ORG_NAME } },
   notShared: { isLoaded: true, organization: null },
 } as const;
 
@@ -60,6 +75,25 @@ function setState(name: StateName) {
 
 beforeEach(() => setState("notShared"));
 
+/** 帯（variant bar）を描き、見るところ（言葉・点の色・帯の文字・隠されずに出ている切り替え）を取り出す。 */
+function viewBar() {
+  const html = draw("bar");
+  const els = elementsOf(html);
+  const bar = els.find((el) => hasClass(el, "sharing-bar"));
+  const dot = els.find((el) => hasClass(el, "sharing-dot"));
+  const label = els.find((el) => hasClass(el, "sharing-label"));
+  return {
+    html,
+    /** 帯の中で、見る人にも読み上げにも届く文字（title のふきだしは数えない） */
+    text: bar ? textOf(bar) : "",
+    label: label ? textOf(label) : "",
+    /** 色の点は読み上げない飾り（aria-hidden）なので、見た目の色だけを見る */
+    dotStyle: dot ? (attrOf(dot, "style") ?? "") : "",
+    /** 切り替えは「隠されずに出ている」ものだけ数える（elementsOf は隠した要素も返す ── 2026-09-24 検収） */
+    switchers: els.filter((el) => attrOf(el, "data-org-switcher") !== undefined && isReachable(el)),
+  };
+}
+
 describe("SharingStatus variant bar（上の帯の右側）", () => {
   it.each([
     ["loading", "共有状態を確認中"],
@@ -67,42 +101,51 @@ describe("SharingStatus variant bar（上の帯の右側）", () => {
     ["notShared", "自分の登録分のみ"],
   ] as const)("%s のときは「%s」だけを出す（ほかの2つの言葉は出さない）", (state, label) => {
     setState(state);
-    const html = draw("bar");
-    expect(html).toContain(label);
+    const v = viewBar();
+    expect(v.label).toBe(label);
+    // 隠して出しても落ちるよう、出していない言葉は HTML 全体で見る
     for (const other of ["共有状態を確認中", "事業所で共有中", "自分の登録分のみ"]) {
-      if (other !== label) expect(html).not.toContain(other);
+      if (other !== label) expect(v.html).not.toContain(other);
     }
   });
 
-  it("共有中は事業所の名前を出す（どの事業所と共有しているかを確かめられる）", () => {
+  it("共有中は事業所の名前を画面の文字で出す（title のふきだしだけにしない）", () => {
     setState("shared");
-    expect(draw("bar")).toContain("テスト事業所");
+    expect(viewBar().text).toContain(ORG_NAME);
+  });
+
+  it("読み込み中は、事業所が返っていても名前をまだ出さない（決めつけない）", () => {
+    clerk.state = { isLoaded: false, organization: { name: ORG_NAME } };
+    const v = viewBar();
+    expect(v.label).toBe("共有状態を確認中");
+    expect(v.html).not.toContain(ORG_NAME);
   });
 
   it("点の色で3つの状態を見分けられる（灰・緑・黄）", () => {
     const dot = (state: StateName) => {
       setState(state);
-      return /class="sharing-dot" style="background:([^"]+)"/.exec(draw("bar"))?.[1];
+      return viewBar().dotStyle;
     };
-    expect(dot("loading")).toBe("var(--faint)");
-    expect(dot("shared")).toBe("var(--green)");
-    expect(dot("notShared")).toBe("var(--amber)");
+    expect(dot("loading")).toBe("background:var(--faint)");
+    expect(dot("shared")).toBe("background:var(--green)");
+    expect(dot("notShared")).toBe("background:var(--amber)");
   });
 
   it.each(
     Object.keys(STATES) as StateName[],
-  )("%s のときも事業所の切り替えが出ていて、選んだら利用者の画面へ戻る", (state) => {
+  )("%s のときも事業所の切り替えが隠されずに出ていて、選んだら利用者の画面へ戻る", (state) => {
     setState(state);
-    const html = draw("bar");
-    expect(html).toContain("data-org-switcher");
+    const { switchers } = viewBar();
+    expect(switchers).toHaveLength(1);
     // 個人のアカウントも選べる（事業所を外したことに気づけるように）
-    expect(html).toContain('data-hide-personal="false"');
-    expect(html).toContain('data-after-org="/clients"');
-    expect(html).toContain('data-after-personal="/clients"');
+    expect(attrOf(switchers[0], "data-hide-personal")).toBe("false");
+    expect(attrOf(switchers[0], "data-after-org")).toBe("/clients");
+    expect(attrOf(switchers[0], "data-after-personal")).toBe("/clients");
   });
 
   it("切り替えのボタンはスマホでも押せる大きさ（44px = min-h-11 / min-w-11）", () => {
-    const trigger = /data-trigger="([^"]*)"/.exec(draw("bar"))?.[1] ?? "";
+    const [switcher] = viewBar().switchers;
+    const trigger = switcher ? (attrOf(switcher, "data-trigger") ?? "") : "";
     expect(trigger.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-11", "min-w-11"]));
   });
 
@@ -144,14 +187,23 @@ describe("SharingStatus variant bar（上の帯の右側）", () => {
 });
 
 describe("SharingStatus variant strip（共有していないときだけ帯の下に出る注意）", () => {
-  it("共有していないときは、注意を role=status で畳まずに出す", () => {
+  /** 注意の帯（role="status"）のうち、隠されずに出ているもの */
+  function statusOf(html: string): MarkupElement[] {
+    return elementsOf(html).filter((el) => attrOf(el, "role") === "status" && isReachable(el));
+  }
+
+  it("共有していないときは、注意を role=status で畳まずに、画面の文字で出す", () => {
     setState("notShared");
     const html = draw("strip");
-    expect(html).toContain('role="status"');
+    const [status] = statusOf(html);
+    expect(status).toBeDefined();
     // 意味は旧表示と同じ。切り替えの場所だけ上の帯の右側に変えた（旧: 左メニューの中で「下から」）
-    expect(html).toContain(
-      "ほかの職員が登録した利用者の名前は<strong>置き換わりません</strong>。複数人で使うときは、右上の事業所の切り替えから選んでください。",
+    expect(textOf(status)).toBe(
+      "ほかの職員が登録した利用者の名前は置き換わりません。複数人で使うときは、右上の事業所の切り替えから選んでください。",
     );
+    // 「置き換わりません」は太字で目立たせる（隠さずに）
+    const strong = elementsOf(html).find((el) => el.tagName === "strong");
+    expect(strong && isReachable(strong) ? textOf(strong) : "").toBe("置き換わりません");
     expect(html).not.toContain("下から");
   });
 

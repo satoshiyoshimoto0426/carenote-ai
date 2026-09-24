@@ -51,6 +51,11 @@ CODE=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git add .env.lo
 check "fallback: .env add block" 2 "$CODE"
 CODE=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push -u origin feature"}}' | HOME="$HOME_WITHOUT" bash "$DIR/pre-tool-guard.sh" >/dev/null 2>&1; echo $?)
 check "fallback: 通常 push は通す" 0 "$CODE"
+# 日本語＋\ のパス（2026-09-23・maoucastle-game steering #28 の横展開）: Windows の python は stdin を cp932 で読み、
+# 「プ」の 0x97 と続く \ (0x5C) が1文字に化けて JSON が壊れ、何も検査せず素通ししていた。
+JP_PUSH='{"tool_name":"Bash","tool_input":{"command":"cd \"C:\\Users\\vivid\\OneDrive\\デスクトップ\\MaouCastle\\carenote-ai\" && git push --force origin main"}}'
+CODE=$(printf '%s' "$JP_PUSH" | HOME="$HOME_WITHOUT" bash "$DIR/pre-tool-guard.sh" >/dev/null 2>&1; echo $?)
+check "fallback: 日本語＋\\ のパスの後の force push も block" 2 "$CODE"
 rm -rf "$HOME_WITH" "$HOME_WITHOUT"
 
 echo "[グローバル層契約] 実物 pre-bash-guard.py の応答を確認（委譲先が責務を果たす証拠）"

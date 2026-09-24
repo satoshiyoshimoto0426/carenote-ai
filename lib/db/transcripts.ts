@@ -10,6 +10,10 @@
  *   **親の利用者が見える人だけ**。判定は lib/db/clients.getClientById（org_id または created_by）に
  *   一本化する。この表に独自のスコープ判定を書かない ── 判定が2か所に分かれると、
  *   片方だけ直したときに静かに漏れる（関係者名簿で同じ設計にしてある）。
+ *   getClientById が DB を読めずに投げる ClientLookupError は、ここで握らずにそのまま投げる
+ *   （「見えない」と取り違えない ── 2026-09-24 検収の指摘。入口が 503 にする）。
+ *   この表そのものを読み書きできなかったときも、0件・「見つかりません」と答えず DbAccessError を投げる
+ *   （lib/db/errors.ts。以前は一覧が []、本文と削除が null・false で、入口は 404「見つかりませんでした。」だった）。
  *
  * ⚠ ここで復号した本文を**AIへ渡してはいけない**。黒塗りを通っていない生の実名そのもの。
  *   用途は職員が画面で読み返すことだけ（「言った・言わない」の確認）。
@@ -25,6 +29,7 @@ import { computeRetentionUntil } from "@/lib/privacy/retention";
 import type { TranscriptKind } from "@/lib/privacy/transcriptInput";
 import { createServerClient } from "../supabase/server";
 import { type DataScope, getClientById, MISSING_TABLE_CODES } from "./clients";
+import { dbAccessError, dbFailedMessage, isMalformedIdError } from "./errors";
 /**
  * 表（client_transcripts）が未作成のときに投げる。
  *
@@ -44,6 +49,24 @@ export class TranscriptTableMissingError extends Error {
 /** 職員に見せる文言。職員には直せないので、管理者がやることを名指しする。 */
 export const TRANSCRIPT_TABLE_MISSING_MESSAGE =
   "文字起こしを保存する表が未作成です。管理者が supabase/client_transcripts.sql を Supabase で実行してください。";
+
+/** 文字起こしの一覧を DB から読めなかったとき、職員に見せる文（GET /api/transcripts が 503 で返す）。 */
+export const TRANSCRIPTS_LOAD_FAILED_MESSAGE = dbFailedMessage(
+  "保存した文字起こしの一覧を読み込めませんでした。",
+);
+
+/** 文字起こしの本文を DB から読めなかったとき、職員に見せる文（GET /api/transcripts/[id] が 503 で返す）。 */
+export const TRANSCRIPT_READ_FAILED_MESSAGE = dbFailedMessage(
+  "保存した文字起こしを読み込めませんでした。",
+);
+
+/**
+ * 文字起こしを DB から消せなかったとき、職員に見せる文（DELETE /api/transcripts/[id] が 503 で返す）。
+ * 「消えていません」と言い切る ── 消す前の読み出しか、消す操作そのものが失敗しているので、行は残っている。
+ */
+export const TRANSCRIPT_DELETE_FAILED_MESSAGE = dbFailedMessage(
+  "文字起こしを消せませんでした（消えていません）。",
+);
 
 /** 表が無いときのエラーなら投げる。それ以外は呼び出し側で扱う。 */
 function throwIfTableMissing(error: { code?: string; message?: string } | null): void {
@@ -95,7 +118,9 @@ function toSummary(r: Row): TranscriptSummary {
 
 /**
  * 文字起こしを保存する。親の利用者が見えない人には保存させない。
- * @returns 保存できた概要。利用者が見えない・保存に失敗したときは null。
+ * @returns 保存できたら概要。利用者が見えなければ reason "client_not_visible"、書き込みに失敗したら "failed"。
+ * @throws ClientLookupError 親の利用者を DB から読めなかったとき（書き込まない）。
+ * @throws TranscriptTableMissingError 表が未作成のとき。
  */
 export async function saveTranscript(params: {
   clientId: string;
@@ -132,7 +157,11 @@ export async function saveTranscript(params: {
   return { ok: true, transcript: toSummary(data as Row) };
 }
 
-/** 指定利用者の文字起こし一覧（新しい順）。本文は返さない。 */
+/**
+ * 指定利用者の文字起こし一覧（新しい順）。本文は返さない。利用者が見えなければ空。
+ * @throws ClientLookupError 親の利用者を DB から読めなかったとき（空の一覧に見せない）。
+ * @throws DbAccessError 一覧そのものを DB から読めなかったとき（同じ理由で空にしない）。
+ */
 export async function getTranscriptsByClient(
   clientId: string,
   scope: DataScope,
@@ -147,16 +176,17 @@ export async function getTranscriptsByClient(
     .eq("client_id", clientId)
     .order("created_at", { ascending: false });
   throwIfTableMissing(error);
-  if (error) {
-    console.error("[db] getTranscriptsByClient error:", error.message);
-    return [];
-  }
-  return (data as Row[]).map(toSummary);
+  if (error) throw dbAccessError("getTranscriptsByClient", error, TRANSCRIPTS_LOAD_FAILED_MESSAGE);
+  return ((data ?? []) as Row[]).map(toSummary);
 }
 
 /**
  * 1件の本文を復号して返す。親の利用者が見えない人には返さない。
  * 鍵が違う・中身が改ざんされていれば復号が例外を投げるので、null にして握りつぶさない。
+ * @returns 本文と概要。行が無い・id が uuid の形でない・親の利用者が見えないときは null（入口は 404）。
+ * @throws ClientLookupError 親の利用者を DB から読めなかったとき。
+ * @throws DbAccessError 行を DB から読めなかったとき（0件をエラーにしない maybeSingle で読むので、
+ *   ここに来るのは本当の失敗だけ。以前は single() で読み、失敗も null＝「見つかりませんでした」だった）。
  */
 export async function getTranscriptText(
   id: string,
@@ -167,9 +197,13 @@ export async function getTranscriptText(
     .from("client_transcripts")
     .select(`${SUMMARY_COLUMNS}, text_encrypted`)
     .eq("id", id)
-    .single();
+    .maybeSingle();
   throwIfTableMissing(error);
-  if (error || !data) return null;
+  if (error) {
+    if (isMalformedIdError(error)) return null;
+    throw dbAccessError("getTranscriptText", error, TRANSCRIPT_READ_FAILED_MESSAGE);
+  }
+  if (!data) return null;
 
   const row = data as Row;
   const client = await getClientById(row.client_id, scope);
@@ -181,7 +215,11 @@ export async function getTranscriptText(
 
 /**
  * 1件消す。親の利用者が見えない人には消させない。
- * @returns 消せたら true。
+ * @returns 消せたら true。行が無い・id が uuid の形でない・親の利用者が見えない・消す間際に他の人が消していた
+ *   ときは false（入口は 404「見つかりませんでした。」）。
+ * @throws ClientLookupError 親の利用者を DB から読めなかったとき（消さない・false と答えない）。
+ * @throws DbAccessError 行を読めなかった・消す操作が失敗したとき（以前は false で、消えていないのに
+ *   「見つかりませんでした」＝もう無い、と伝わっていた ── 2026-09-24 検収の指摘）。
  */
 export async function deleteTranscript(id: string, scope: DataScope): Promise<boolean> {
   const db = createServerClient();
@@ -189,17 +227,23 @@ export async function deleteTranscript(id: string, scope: DataScope): Promise<bo
     .from("client_transcripts")
     .select("id, client_id")
     .eq("id", id)
-    .single();
+    .maybeSingle();
   throwIfTableMissing(error);
-  if (error || !data) return false;
+  if (error) {
+    if (isMalformedIdError(error)) return false;
+    throw dbAccessError("deleteTranscript", error, TRANSCRIPT_DELETE_FAILED_MESSAGE);
+  }
+  if (!data) return false;
 
   const client = await getClientById((data as Row).client_id, scope);
   if (!client) return false;
 
-  const { error: delError } = await db.from("client_transcripts").delete().eq("id", id);
-  if (delError) {
-    console.error("[db] deleteTranscript error:", delError.message);
-    return false;
-  }
-  return true;
+  // 消えた行を返させて、本当に消えた件数を見る（Supabase は既定で消した行を返さない）
+  const { data: deleted, error: delError } = await db
+    .from("client_transcripts")
+    .delete()
+    .eq("id", id)
+    .select("id");
+  if (delError) throw dbAccessError("deleteTranscript", delError, TRANSCRIPT_DELETE_FAILED_MESSAGE);
+  return (deleted ?? []).length > 0;
 }

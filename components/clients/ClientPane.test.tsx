@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ClientDetailPage from "@/app/(dashboard)/clients/[id]/page";
 import { DOC_ORDER, DOC_TYPE_LABELS } from "@/lib/create/docTypes";
+import { isShown, shownText } from "@/tests/helpers/markup";
 import type { CareDocumentRecord, CareDocumentType } from "@/types/document";
 import ClientPane from "./ClientPane";
 
@@ -19,6 +20,10 @@ import ClientPane from "./ClientPane";
  *   - つくるへのリンクは利用者と種類を URL で運ぶ（/create?client=…&type=…）。
  *   - 頭と書類の行に実名を描かない（API の応答に氏名が紛れても出さない）。実名は関係者名簿の中だけ。
  *   - 緑の主ボタンは1画面に1つ。
+ *
+ * 「出ている」は tests/helpers/markup.ts の shownText・isShown で見る（隠した要素の文字や部品を数えない ──
+ * 2026-09-24 に2つの枝を取り込んだときに寄せた。jsdom の textContent は隠した文字も数える）。
+ * 「出していない」（実名を描かない など）は textContent のまま（隠して出した文字も拾える）。
  */
 
 // jsdom は起動に十数秒かかる。他のテストと同時に走ると待ち時間が伸びるので広めに取る
@@ -165,6 +170,10 @@ function sectionTitled(title: string): HTMLElement | null {
   }
   return null;
 }
+/** 画面に出ている文字（隠した要素の文字は数えない）。見つからなければ "" */
+const shown = (el: Element | null | undefined) => shownText(container, el);
+/** 隠されずに出ているか（見つからなければ false） */
+const visible = (el: Element | null | undefined) => isShown(container, el);
 const docsSection = () => sectionTitled("書類");
 const header = () => container.querySelector("header");
 const hrefs = (root: ParentNode | null) =>
@@ -190,17 +199,17 @@ describe("頭（記号・仮名・属性・つくる）", () => {
   it("記号（等幅 30px の h2）に（仮名）と「仮名表示中」が付き、属性の1行が出る", async () => {
     await pane();
     const h2 = header()?.querySelector("h2");
-    expect(h2?.textContent).toBe("B様（仮名）");
+    expect(shown(h2)).toBe("B様（仮名）");
     expect(h2?.classList.contains("client-pane-code")).toBe(true);
-    expect(header()?.textContent).toContain("仮名表示中");
-    expect(header()?.textContent).toContain("91歳・男性・要介護3・長女と同居");
+    expect(shown(header())).toContain("仮名表示中");
+    expect(shown(header())).toContain("91歳・男性・要介護3・長女と同居");
   });
 
   it("属性が無ければ「（属性未設定）」", async () => {
     routes["GET /api/clients/c1"] = () =>
       json({ client: { ...CLIENT, attributes: {} }, documents: DOCS });
     await pane();
-    expect(header()?.textContent).toContain("（属性未設定）");
+    expect(shown(header())).toContain("（属性未設定）");
   });
 
   it("「つくる」は利用者を運ぶ /create?client=c1 で、画面の緑の主ボタンはこれ1つ", async () => {
@@ -208,6 +217,7 @@ describe("頭（記号・仮名・属性・つくる）", () => {
     const make = [...(header()?.querySelectorAll("a") ?? [])].find((a) =>
       a.textContent?.includes("つくる"),
     );
+    expect(visible(make)).toBe(true);
     expect(make?.getAttribute("href")).toBe("/create?client=c1");
     expect(greenPrimaries()).toEqual([make]);
   });
@@ -218,32 +228,32 @@ describe("書類（種類ごとに1行・以前の版）", () => {
     await pane();
     const labels = [
       ...(docsSection()?.querySelectorAll(":scope > ul > li > .client-pane-row") ?? []),
-    ].map((row) => row.firstElementChild?.textContent);
+    ].map((row) => shown(row.firstElementChild));
     expect(labels).toEqual(DOC_ORDER.map((t) => DOC_TYPE_LABELS[t].saved));
   });
 
   it("ある種類は、いちばん新しい版の状態の札・保存した日（日本時間）・「開く」（?doc=）", async () => {
     await pane();
     const carePlan = docRow("carePlan");
-    expect(carePlan?.textContent).toContain("下書き");
-    expect(carePlan?.querySelector(".client-pane-date")?.textContent).toBe("2026/08/28");
+    expect(shown(carePlan)).toContain("下書き");
+    expect(shown(carePlan?.querySelector(".client-pane-date"))).toBe("2026/08/28");
     expect(hrefs(carePlan)).toEqual(["/clients/c1?doc=p1"]);
     const assessment = docRow("assessment");
-    expect(assessment?.textContent).toContain("承認済み");
+    expect(shown(assessment)).toContain("承認済み");
     expect(hrefs(assessment)).toEqual(["/clients/c1?doc=a1"]);
   });
 
   it("まだ無い種類は「まだありません」と、種類つきの「つくる」（/create?client=c1&type=…）", async () => {
     await pane();
     const monitoring = docRow("monitoring");
-    expect(monitoring?.textContent).toContain("まだありません");
+    expect(shown(monitoring)).toContain("まだありません");
     expect(hrefs(monitoring)).toEqual(["/create?client=c1&type=monitoring"]);
   });
 
   it("以前の版は「以前の版（n）」の中に新しい順で並び、どの版も開ける", async () => {
     await pane();
     const summary = docsSection()?.querySelector("details.client-doc-older > summary");
-    expect(summary?.textContent).toContain("以前の版（2）");
+    expect(shown(summary)).toContain("以前の版（2）");
     const olderLinks = hrefs(summary?.parentElement ?? null);
     expect(olderLinks).toEqual(["/clients/c1?doc=p0", "/clients/c1?doc=p00"]);
     // 保存した書類はどれも、区画のどこかの「開く」から開ける（1つも落とさない）
@@ -255,7 +265,7 @@ describe("書類（種類ごとに1行・以前の版）", () => {
 
   it("書類が自分の保存した分だけであることを、見出しの下に書く", async () => {
     await pane();
-    expect(docsSection()?.textContent).toContain("ここに出る書類は、自分が保存したものだけです");
+    expect(shown(docsSection())).toContain("ここに出る書類は、自分が保存したものだけです");
   });
 
   it("「一式まとめて」は利用者を運ぶ /rescue?client=c1", async () => {
@@ -263,15 +273,14 @@ describe("書類（種類ごとに1行・以前の版）", () => {
     const bundle = [...(docsSection()?.querySelectorAll("a") ?? [])].find((a) =>
       a.textContent?.includes("一式まとめて"),
     );
+    expect(visible(bundle)).toBe(true);
     expect(bundle?.getAttribute("href")).toBe("/rescue?client=c1");
   });
 
   it("書類が1つも無ければ、5種類とも「つくる」で、作り方の文を出す", async () => {
     routes["GET /api/clients/c1"] = () => json({ client: CLIENT, documents: [] });
     await pane();
-    expect(docsSection()?.textContent).toContain(
-      "「つくる」の「一式まとめて」から作って保存できます",
-    );
+    expect(shown(docsSection())).toContain("「つくる」の「一式まとめて」から作って保存できます");
     for (const type of DOC_ORDER) {
       expect(hrefs(docRow(type))).toEqual([`/create?client=c1&type=${type}`]);
     }
@@ -302,9 +311,9 @@ describe("書類を開いたとき（?doc=）", () => {
   it("下書きなら承認の操作が出て、「承認する」が緑の主ボタン（「つくる」は脇のボタンになる）", async () => {
     await pane("p1");
     const approve = buttonByText("承認する");
-    expect(approve).toBeDefined();
+    expect(visible(approve)).toBe(true);
     expect(greenPrimaries()).toEqual([approve]);
-    expect(container.textContent).toContain("承認後にコピーできます");
+    expect(shown(container)).toContain("承認後にコピーできます");
     expect(hrefs(container)).toContain("/clients/c1");
   });
 
@@ -316,16 +325,16 @@ describe("書類を開いたとき（?doc=）", () => {
 
   it("承認済みなら「承認を取り消す」が出て、緑の主ボタンは頭の「つくる」", async () => {
     await pane("a1");
-    expect(buttonByText("承認を取り消す")).toBeDefined();
+    expect(visible(buttonByText("承認を取り消す"))).toBe(true);
     const primaries = greenPrimaries();
     expect(primaries).toHaveLength(1);
-    expect(primaries[0]?.textContent).toContain("つくる");
+    expect(shown(primaries[0])).toContain("つくる");
   });
 
   it("以前の版も同じように開ける", async () => {
     await pane("p00");
-    expect(container.querySelector("h3")?.textContent).toBe(DOC_TYPE_LABELS.carePlan.saved);
-    expect(container.querySelector(".client-pane-date")?.textContent).toBe("2026/06/01");
+    expect(shown(container.querySelector("h3"))).toBe(DOC_TYPE_LABELS.carePlan.saved);
+    expect(shown(container.querySelector(".client-pane-date"))).toBe("2026/06/01");
   });
 
   it("承認が通ったら、開いたままの書類の札と主ボタンが入れ替わる", async () => {
@@ -336,13 +345,13 @@ describe("書類を開いたとき（?doc=）", () => {
       buttonByText("承認する")?.click();
     });
     await flush();
-    expect(buttonByText("承認を取り消す")).toBeDefined();
-    expect(greenPrimaries()[0]?.textContent).toContain("つくる");
+    expect(visible(buttonByText("承認を取り消す"))).toBe(true);
+    expect(shown(greenPrimaries()[0])).toContain("つくる");
   });
 
   it("一覧に無い書類の id なら、開けなかったことを文字で出す", async () => {
     await pane("nope");
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    expect(shown(container.querySelector('[role="alert"]'))).toContain(
       "この書類を開けませんでした",
     );
   });
@@ -352,9 +361,7 @@ describe("読み込めなかったとき", () => {
   it("サーバーの文と「利用者一覧へ」を出す（空の区画に見せない）", async () => {
     routes["GET /api/clients/c1"] = () => json({ error: "利用者が見つかりません。" }, 404);
     await pane();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
-      "利用者が見つかりません。",
-    );
+    expect(shown(container.querySelector('[role="alert"]'))).toContain("利用者が見つかりません。");
     expect(hrefs(container)).toEqual(["/clients"]);
   });
 
@@ -363,7 +370,7 @@ describe("読み込めなかったとき", () => {
       throw new TypeError("Failed to fetch");
     };
     await pane();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("通信環境を確かめて");
+    expect(shown(container.querySelector('[role="alert"]'))).toContain("通信環境を確かめて");
   });
 });
 
@@ -375,7 +382,7 @@ describe("ページ（/clients/{id}）", () => {
         searchParams: Promise.resolve({ doc: "p1" }),
       }),
     );
-    expect(buttonByText("承認する")).toBeDefined();
+    expect(visible(buttonByText("承認する"))).toBe(true);
   });
 
   it("?doc= が無い・複数ある ときは書類の一覧を出す", async () => {
@@ -385,7 +392,7 @@ describe("ページ（/clients/{id}）", () => {
         searchParams: Promise.resolve({ doc: ["p1", "a1"] }),
       }),
     );
-    expect(docsSection()).not.toBeNull();
+    expect(visible(docsSection())).toBe(true);
     expect(buttonByText("承認する")).toBeUndefined();
   });
 });

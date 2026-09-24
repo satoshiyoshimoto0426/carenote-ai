@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { fetchClientList } from "@/lib/clients/listError";
 import type { ClientRecord } from "@/types/client";
 
 /**
@@ -24,15 +25,11 @@ import type { ClientRecord } from "@/types/client";
  *
  * 一覧を読めなかったときは「0人」にしない: status を "error" にして、画面に
  * 「利用者一覧を読めませんでした」とサーバーの文を出す（まだ利用者がいません、は出さない ── 計画 U0）。
+ * 読み方と文は lib/clients/listError.ts の fetchClientList（文字起こしの保存・救済モードの保存パネルと同じ1つの道。
+ * 2026-09-24 に枝 redesign/a-backend を取り込んだとき、ここに持っていた同じ決まりの写しを消して寄せた）。
  * 繋がる所: GET /api/clients（app/api/clients/route.ts）・components/clients/ClientsLayout.tsx（Provider を置く）・
  * ClientTable.tsx（表と探す欄）・NewClientForm.tsx（登録）。
  */
-
-/** 一覧を読めなかったとき、どの文の先頭にも出す言葉（吉本さん決定 2026-09-23 と同じ文言）。 */
-const LIST_ERROR_HEADLINE = "利用者一覧を読めませんでした";
-
-/** 理由が分からない失敗（通信が切れた・応答が一覧の形でない）のときに出す文。 */
-const LIST_ERROR_FALLBACK = `${LIST_ERROR_HEADLINE}。少し待ってから、もう一度お試しください。直らない場合は管理者にご連絡ください。`;
 
 /** 一覧の読み込みの状態。「読み込み中」「読めた（0人もありうる）」「読めなかった」を分けて持つ。 */
 export type ClientListStatus = "loading" | "ready" | "error";
@@ -57,46 +54,6 @@ export interface ClientsValue {
 
 const ClientsContext = createContext<ClientsValue | null>(null);
 
-/** 読み込みの結果。読めなかったときは、画面にそのまま出せる文を持つ。 */
-type ListResult = { ok: true; clients: ClientRecord[] } | { ok: false; message: string };
-
-/**
- * GET /api/clients を読み、「一覧」か「読めなかった」かのどちらかにする（例外は投げない）。
- * 通信の失敗・200 以外・本文が JSON でない（ログイン画面の HTML など）・本文が配列でない、はすべて「読めなかった」。
- * 200 以外でサーバーが error の文を返していれば、見出しの後ろにそのまま付ける（直し方の案内を消さない）。
- */
-async function loadClientList(): Promise<ListResult> {
-  let res: Response;
-  try {
-    res = await fetch("/api/clients");
-  } catch {
-    return { ok: false, message: LIST_ERROR_FALLBACK };
-  }
-  let body: unknown = null;
-  try {
-    body = await res.json();
-  } catch {
-    body = null;
-  }
-  if (!res.ok) {
-    const serverError =
-      body !== null && typeof body === "object" && "error" in body
-        ? (body as { error: unknown }).error
-        : undefined;
-    if (typeof serverError !== "string" || serverError.trim() === "") {
-      return { ok: false, message: LIST_ERROR_FALLBACK };
-    }
-    return {
-      ok: false,
-      message: serverError.startsWith(LIST_ERROR_HEADLINE)
-        ? serverError
-        : `${LIST_ERROR_HEADLINE}。${serverError}`,
-    };
-  }
-  if (!Array.isArray(body)) return { ok: false, message: LIST_ERROR_FALLBACK };
-  return { ok: true, clients: body as ClientRecord[] };
-}
-
 /** 一覧の中身（status と clients と message をいつも揃えて変える）。 */
 type ListState = Pick<ClientsValue, "status" | "clients" | "message">;
 
@@ -116,7 +73,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
     latest.current += 1;
     const mine = latest.current;
     setList(LOADING);
-    const result = await loadClientList();
+    const result = await fetchClientList();
     if (mine !== latest.current) return;
     setList(
       result.ok

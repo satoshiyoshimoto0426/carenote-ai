@@ -1,0 +1,270 @@
+{
+  "_what": "安全テストの一覧。npm test（tools/run-tests.mjs）が毎回これを読み、tools/testManifest.mjs で判定する。",
+  "_why": "消しても・飛ばしても緑のままだった穴を塞ぐ（2026-09-23 吉本さん決定「安全テストが消えない・飛ばされない見張り」）。テストファイル数の突き合わせだけでは、1つ消すと両方の数が減って合格してしまう。",
+  "_how": "protectedDirs=フォルダごとの最低件数（今日の件数。新しいテストは自動で見張り対象になる）。files=名指しで守るファイルと、守る理由。安全テストを足したらここにも足す。消す・弱めるのは吉本さんの承認（横断規約 §2.7-C）のうえで、同じコミットでここを直す。",
+  "protectedDirs": [
+    { "dir": "lib/privacy", "minFiles": 13 },
+    { "dir": "tests/api", "minFiles": 12 },
+    { "dir": "lib/recording", "minFiles": 3 },
+    { "dir": "lib/transcribe", "minFiles": 3 },
+    { "dir": "lib/rescue", "minFiles": 2 }
+  ],
+  "files": [
+    {
+      "path": "lib/privacy/maskPii.test.ts",
+      "why": "黒塗りの唯一の入口（名簿の置換→番号などの型の置換→自己点検）"
+    },
+    {
+      "path": "lib/privacy/maskBody.test.ts",
+      "why": "送る本文全体の黒塗り（戻した帳票を再び送るときも必ず通す）"
+    },
+    {
+      "path": "lib/privacy/leakCheck.test.ts",
+      "why": "送る直前の漏れ検査（実名や番号が残っていれば送らない）"
+    },
+    {
+      "path": "lib/privacy/patterns.test.ts",
+      "why": "電話・住所・生年月日などの型の置換"
+    },
+    {
+      "path": "lib/privacy/pseudonymize.test.ts",
+      "why": "氏名と記号（A様）の置換と採番"
+    },
+    {
+      "path": "lib/privacy/related.test.ts",
+      "why": "関係者（A様の長女）の記号と黒塗り"
+    },
+    {
+      "path": "lib/privacy/vault.test.ts",
+      "why": "札入れ（〔電話番号1〕の中身を覚えて、返事で戻す）"
+    },
+    {
+      "path": "lib/privacy/restoreNamesDeep.test.ts",
+      "why": "「実名で表示」の復元（記号を実名に戻し、文字以外は触らない）"
+    },
+    {
+      "path": "lib/privacy/crypto.test.ts",
+      "why": "実名の暗号化（鍵が違えば読めない・毎回違う暗号文）"
+    },
+    {
+      "path": "lib/privacy/retention.test.ts",
+      "why": "保持期限（5年）の計算"
+    },
+    {
+      "path": "lib/privacy/candidates.test.ts",
+      "why": "送る前の画面で赤く示す「名前らしい語」の拾い方"
+    },
+    {
+      "path": "lib/privacy/previewNav.test.ts",
+      "why": "送る前の画面で、畳んだ欄の赤い言葉も全部出す・通し番号を振る・開いた欄の「なぜ赤いか」を言葉ごとにまとめる"
+    },
+    {
+      "path": "lib/privacy/transcriptInput.test.ts",
+      "why": "文字起こしを保存するときの入力の決まり（長さ・見出し）"
+    },
+    {
+      "path": "tests/api/generate.route.test.ts",
+      "why": "送る前に見る／AIへ送る: 名簿が読めなければ503、実名が残れば422で送らない"
+    },
+    {
+      "path": "tests/api/orgScope.route.test.ts",
+      "why": "すべての入口が、事業所の範囲を名簿の読み込みへ渡す"
+    },
+    {
+      "path": "tests/api/clients.route.test.ts",
+      "why": "利用者一覧: DB を読めなければ 500 と職員向けの文言（空の一覧 [] に見せない）"
+    },
+    {
+      "path": "tests/api/transcribe.route.test.ts",
+      "why": "文字起こし: ログインしていなければ外へ送らない・回数の上限"
+    },
+    {
+      "path": "tests/api/documents.route.test.ts",
+      "why": "書類の保存: ログイン中の範囲で見えない利用者には404で書かない・利用者を DB から読めなければ503（404 にしない）・範囲を決められなければ503・常に下書き・中身はオブジェクトで200KB・32段まで"
+    },
+    {
+      "path": "tests/api/latestDocs.route.test.ts",
+      "why": "利用者一覧の書類の日付: 失敗（401・範囲を決められない503・DB を読めない503・そのほか500）を空の答えにせず文で返す・範囲の外の利用者の日付を返さない・保存に残させない（no-store）"
+    },
+    {
+      "path": "lib/db/documents.test.ts",
+      "why": "書類の日付の材料: PostgREST が1回1000行で切っても全部読む（満杯のページの次も読む）・自分が保存した書類だけ（created_by）・中身は読まない・途中で失敗したら途中までを返さずに投げる"
+    },
+    {
+      "path": "tests/api/entryErrors.route.test.ts",
+      "why": "入口をまたいで: 本文がオブジェクトでなければ400（JSON の無い500にしない）・利用者を DB から読めなければ503（「見つかりません」と答えて二重登録へ進ませない）・書類・文字起こし・関係者・評価の履歴を DB から読み書きできなければ503（「ありません・見つかりません」と答えない）"
+    },
+    {
+      "path": "tests/api/transcripts.route.test.ts",
+      "why": "文字起こしの保存: 見えない利用者は404、表が無ければ503"
+    },
+    {
+      "path": "tests/api/rescue.route.test.ts",
+      "why": "一式まとめて: 許可外のURLを拒否・黒塗り・資料を必ず消す"
+    },
+    {
+      "path": "tests/api/evaluate.route.test.ts",
+      "why": "点検: 非公開ストア以外のURLを拒否し、PDFを必ず消す"
+    },
+    {
+      "path": "tests/api/kaipokeAssessment.route.test.ts",
+      "why": "カイポケの欄に合わせる: 戻した下書きを黒塗りし直してから送る"
+    },
+    {
+      "path": "tests/api/extensionGenerate.route.test.ts",
+      "why": "拡張の入口: トークンが違えば401、番号が残れば422で送らない"
+    },
+    {
+      "path": "lib/recording/config.test.ts",
+      "why": "録音の上限（区切りの長さ・回数）を値そのもので固定"
+    },
+    {
+      "path": "lib/recording/segments.test.ts",
+      "why": "録音の状態の移り変わり（止めたら未送信の分を諦める・止めた理由）"
+    },
+    {
+      "path": "lib/recording/mimeType.test.ts",
+      "why": "録音の形式と、送るファイル名に実名や日時を入れないこと"
+    },
+    {
+      "path": "lib/transcribe/validate.test.ts",
+      "why": "音声の大きさ（4MB）と形式の上限、職員向けのエラーの言葉"
+    },
+    {
+      "path": "lib/transcribe/appendTranscript.test.ts",
+      "why": "文字起こしを欄に足すとき、前の文章を消さない"
+    },
+    {
+      "path": "lib/transcribe/provider.test.ts",
+      "why": "文字起こしサービスの呼び出しと、外のエラーの言い換え"
+    },
+    {
+      "path": "lib/rescue/sourceDocs.test.ts",
+      "why": "資料のURLは非公開ストアだけ許す（外部のURLを読みに行かない）"
+    },
+    {
+      "path": "lib/rescue/saveBundle.test.ts",
+      "why": "一式の保存を途中の失敗から押し直しても、利用者をもう1人作らず・保存済みの帳票を二重に保存しない（同じ方の二重登録を防ぐ）"
+    },
+    {
+      "path": "components/drafts/PreSendPreview.test.tsx",
+      "why": "送る前の画面: 赤い言葉の印（隠した印は数えない）と数、畳んでも赤は全部出す、理由「敬称の前」を畳んだ欄でも開いた欄でも文字で出す（本文には差し込まない）、赤があれば前へ/次への帯と合計の数を出す"
+    },
+    {
+      "path": "components/recording/RecordingPanel.test.tsx",
+      "why": "録音: 表示スイッチは既定で出さない・同意の文（隠さずに、チェックの印と同じ label の中）・同意するまで「録音を始める」は押せない（disabled 属性）・一時停止・音声は保存しない"
+    },
+    {
+      "path": "components/SharingStatus.test.tsx",
+      "why": "名簿の共有状態（上の帯）: 確認中（灰）／事業所で共有中＋事業所名（画面の文字で）／自分の登録分のみ（黄）＋帯のすぐ下に「置き換わりません」の注意（role=status・畳まない）＋その場で選べる切り替え（隠されずに出ている・押す場所 44px）"
+    },
+    {
+      "path": "components/shell/TopBar.test.tsx",
+      "why": "上の帯: ページが何も差し込まなくても、共有状態と事業所の切り替えを出し、共有していなければ注意を帯のすぐ下に出す（A案で共有状態をページではなく外枠へ移した）"
+    },
+    {
+      "path": "app/(dashboard)/layout.test.tsx",
+      "why": "ログイン後の全画面の外枠: 共有状態と注意・4項目のナビ・AI の送り先の表示「Powered by Claude API」を、どの画面にも出す（外枠から外れると、どのページにも出なくなる）"
+    },
+    {
+      "path": "components/clients/ClientsLayout.test.tsx",
+      "why": "利用者の画面: 一覧を開いただけでは誰も選ばない（関係者名簿の実名は行を押した後だけ）・一覧を読めないあいだは新しい利用者の登録を止める（同じ方の二重登録を防ぐ）"
+    },
+    {
+      "path": "components/clients/ClientTable.test.tsx",
+      "why": "利用者の一覧の表: API の応答に氏名が紛れても表に出さない・氏名を記号で表示する約束の1行・読めなかったら「利用者一覧を読めませんでした」とサーバーの文（「まだ利用者がいません」に見せない）"
+    },
+    {
+      "path": "components/clients/ClientPane.test.tsx",
+      "why": "利用者の区画: 「仮名表示中」を出す・頭と書類の行に実名を描かない・どの版の書類も開ける・書類を開いているあいだは関係者名簿（実名）を読みにいかない"
+    },
+    {
+      "path": "components/clients/DocumentPanel.live.test.tsx",
+      "why": "書類の承認（G4）: 下書きは「コピー」を押せない＋「承認後にコピーできます」・承認済みだけ「カイポケ用データ」（JSON.stringify(content, null, 2) そのもの ── 拡張との約束）・承認／取消の失敗を画面に出す"
+    },
+    {
+      "path": "components/clients/RelatedPeople.test.tsx",
+      "why": "関係者名簿: 登録の欄と「削除」がある・説明の文は保証できることだけ・読めなかったら空の名簿に見せない"
+    },
+    {
+      "path": "components/clients/SavedTranscripts.live.test.tsx",
+      "why": "残した文字起こし: 一覧では本文（実名）を取りに行かない・実名の注意と5年の正直な文・表が未作成（503）なら管理者向けの文を出す・消す前に確かめる"
+    },
+    {
+      "path": "tests/helpers/markup.test.ts",
+      "why": "画面の検査が使う HTML の読み取り道具（属性の中身や隠した要素の文字を「読める文字」に数えたり、隠した部品を「出ている」と数えたりすると、上の画面の検査が黙って空振りする）"
+    },
+    {
+      "path": "tests/helpers/markupDom.live.test.ts",
+      "why": "jsdom で動かす画面の検査（利用者の画面・上の帯）が「出ている」を読む橋（markupOf・shownText・isShown）: 祖先の隠す印を落とさない・読み直した木の別の要素を返さない・見つからない要素を画面全体に読み替えない"
+    },
+    {
+      "path": "components/recording/RecordingPanel.live.test.tsx",
+      "why": "録音を実際に動かし、止めたら録音もマイクも離れることを確かめる"
+    },
+    {
+      "path": "app/globals.test.ts",
+      "why": "層の外の CSS が全画面の余白を 0 にしない（2026-09-23 の実害）"
+    },
+    {
+      "path": "lib/db/clients.test.ts",
+      "why": "名簿の安全網（範囲の絞り込み・記号の重複・900件で止める）と、利用者一覧・利用者1件を読めなければ空や「見えない」にせず例外にすること"
+    },
+    {
+      "path": "lib/db/dbFailures.test.ts",
+      "why": "lib/db の関数は、DB の問い合わせを1つ失敗させても「0件・見えない・空」と答えない（投げるか、失敗だけを表す値）。async 関数が一覧に無ければ落ちる"
+    },
+    {
+      "path": "lib/requestBody.test.ts",
+      "why": "入口が受け取る本文はオブジェクトだけ（JSON の null・配列・文字列を通さない）"
+    },
+    {
+      "path": "tests/ui/clientListErrors.live.test.tsx",
+      "why": "利用者一覧を読めないとき、画面が「利用者一覧を読めませんでした」を出す・救済モードは「新しい利用者として保存」を止める（同じ方の二重登録を防ぐ）・/clients は「まだ利用者がいません」と出さない・救済モードの保存を途中の失敗から押し直しても利用者をもう1人作らず、作り直した一式を「保存しました」と見せない・関係者名簿／保存した文字起こし／ダッシュボードの評価の履歴も、読めなかったとき（503）に空・0件に見せない"
+    },
+    {
+      "path": "lib/db/transcripts.test.ts",
+      "why": "文字起こしの保存: 暗号化・見える範囲・5年・親の利用者や行を DB から読めない・消せないときは投げる（「見えない」「見つからない」と答えない）"
+    },
+    {
+      "path": "lib/manual/videoScript.test.ts",
+      "why": "再生ページに字幕のタグを足さない（字幕の二重表示を防ぐ）"
+    },
+    {
+      "path": "lib/manual/manualHtml.test.ts",
+      "why": "ログイン無しで読めるマニュアルに検索避け（noindex）を入れる"
+    },
+    {
+      "path": "lib/extensionAuth.test.ts",
+      "why": "拡張のトークン認可（未設定なら全部拒否）・送信元の許可・回数の上限"
+    },
+    {
+      "path": "lib/generation/dispatch.test.ts",
+      "why": "入力の大きさの上限（大きすぎれば413で止める）"
+    },
+    {
+      "path": "lib/generation/rescueIntake.test.ts",
+      "why": "資料の読み取りで、氏名などを書き写さない指示"
+    },
+    {
+      "path": "lib/generation/supportLogAppointments.test.ts",
+      "why": "予定の抜き出しで、個人情報を書かせない指示"
+    },
+    {
+      "path": "lib/generation/kaipokeAssessment.test.ts",
+      "why": "カイポケの欄に合わせるとき、氏名・住所・電話番号・医療機関名・事業所名を書かせない指示"
+    },
+    {
+      "path": "lib/calendar/links.test.ts",
+      "why": "カレンダーへ渡す文字に番号が混ざっても札に変える（二重の安全網）"
+    },
+    {
+      "path": "extension/src/adapters/kaipoke.dom.test.ts",
+      "why": "カイポケの欄に既にある文章を消さない・再ログイン画面を見分ける"
+    },
+    {
+      "path": "tools/testManifest.test.ts",
+      "why": "この見張り自身の検査（消えると見張りが黙って効かなくなる）"
+    }
+  ]
+}

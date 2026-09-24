@@ -4,6 +4,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type CssNode, parseCss, stripCssComments } from "@/tests/helpers/cssTokens";
+import {
+  attrOf,
+  elementsOf,
+  hasClass,
+  isReachable,
+  type MarkupElement,
+  textOf,
+} from "@/tests/helpers/markup";
 import TopBar, { SHELL_HEAD_HEIGHT_VAR } from "./TopBar";
 
 /**
@@ -16,6 +24,10 @@ import TopBar, { SHELL_HEAD_HEIGHT_VAR } from "./TopBar";
  *   - 「この画面の使い方」の行き先は lib/nav.ts の helpAnchorOf が決める。古い URL（/rescue）と
  *     一式まとめて（/create?mode=bundle）が正しい章へ飛ぶことを、画面の <a> で確かめる。
  * 差し込み（TopBarSlot）で中身が入れ替わる動きは TopBarSlot.live.test.tsx が見る。
+ *
+ * 「出ている」は描いた HTML を tests/helpers/markup.ts で木として読んで確かめる（2026-09-24 に2つの枝を取り込んだときに寄せた）:
+ * 文字は textOf（隠した要素の中の文字を数えない）、切り替えや注意の帯は isReachable（自分や祖先が隠れていたら数えない）。
+ * 「出していない」は、隠して出した物も拾えるよう、描いた HTML 全体で見る。
  */
 
 const env = vi.hoisted(() => ({
@@ -40,12 +52,35 @@ function draw(pathname: string, search = ""): string {
   return renderToStaticMarkup(createElement(TopBar));
 }
 
-/** 「この画面の使い方」のリンクの行き先（無ければ null）。 */
+/**
+ * 描いた帯を木として読み、見るところ（帯全体の届く文字・隠されずに出ている切り替えと注意の帯・左の項目名）を取り出す。
+ * 帯全体 = いちばん外側の要素（.shell-head。上の帯と、その下の注意の帯を包む）。
+ */
+function view(html: string) {
+  const els = elementsOf(html);
+  const shown = (el: MarkupElement | undefined) => (el && isReachable(el) ? el : undefined);
+  const section = shown(els.find((el) => hasClass(el, "topbar-section")));
+  return {
+    /** 帯の中で、見る人にも読み上げにも届く文字 */
+    text: els.length > 0 ? textOf(els[0]) : "",
+    /** 隠されずに出ている事業所の切り替えの数 */
+    switchers: els.filter((el) => attrOf(el, "data-org-switcher") !== undefined && isReachable(el))
+      .length,
+    /** 隠されずに出ている注意の帯（role="status"） */
+    strip: shown(
+      els.find((el) => attrOf(el, "role") === "status" && hasClass(el, "sharing-strip")),
+    ),
+    /** 左に出ている項目の名前（出ていなければ ""） */
+    section: section ? textOf(section) : "",
+  };
+}
+
+/** 「この画面の使い方」のリンクの行き先（隠されずに出ていなければ null）。 */
 function helpHref(html: string): string | null {
-  for (const m of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)) {
-    if (m[2].includes("この画面の使い方")) return /href="([^"]*)"/.exec(m[1])?.[1] ?? "";
-  }
-  return null;
+  const link = elementsOf(html).find(
+    (el) => el.tagName === "a" && textOf(el).includes("この画面の使い方"),
+  );
+  return link ? (attrOf(link, "href") ?? "") : null;
 }
 
 beforeEach(() => {
@@ -54,30 +89,35 @@ beforeEach(() => {
 
 describe("TopBar（上の帯）", () => {
   it("ページが何も差し込まなくても、共有状態と事業所の切り替えを出す", () => {
-    const html = draw("/create");
-    expect(html).toContain("自分の登録分のみ");
-    expect(html).toContain("data-org-switcher");
+    const v = view(draw("/create"));
+    expect(v.text).toContain("自分の登録分のみ");
+    expect(v.switchers).toBe(1);
   });
 
   it("共有していないときは、帯のすぐ下に注意を role=status で出す", () => {
     const html = draw("/clients");
+    // 置き場所: 上の帯（header）のすぐ後ろ
     expect(html).toMatch(/<\/header><div role="status" class="sharing-strip">/);
-    expect(html).toContain("置き換わりません");
-    expect(html).toContain("右上の事業所の切り替えから選んでください");
+    const { strip } = view(html);
+    expect(strip).toBeDefined();
+    const said = strip ? textOf(strip) : "";
+    expect(said).toContain("置き換わりません");
+    expect(said).toContain("右上の事業所の切り替えから選んでください");
   });
 
   it("共有中は注意を出さず、事業所の名前を出す", () => {
     env.org = { isLoaded: true, organization: { name: "テスト事業所" } };
     const html = draw("/clients");
-    expect(html).toContain("事業所で共有中");
-    expect(html).toContain("テスト事業所");
+    const v = view(html);
+    expect(v.text).toContain("事業所で共有中");
+    expect(v.text).toContain("テスト事業所");
     expect(html).not.toContain("sharing-strip");
   });
 
   it("読み込み中は「共有状態を確認中」で、注意は出さない（決めつけない）", () => {
     env.org = { isLoaded: false, organization: null };
     const html = draw("/clients");
-    expect(html).toContain("共有状態を確認中");
+    expect(view(html).text).toContain("共有状態を確認中");
     expect(html).not.toContain("sharing-strip");
   });
 
@@ -88,7 +128,7 @@ describe("TopBar（上の帯）", () => {
     ["/dashboard", "点検"],
     ["/guide", "使い方"],
   ])("差し込みが無いとき、%s では項目の名前「%s」を左に出す", (pathname, label) => {
-    expect(draw(pathname)).toContain(`<span class="topbar-section">${label}</span>`);
+    expect(view(draw(pathname)).section).toBe(label);
   });
 
   it.each([
@@ -107,9 +147,10 @@ describe("TopBar（上の帯）", () => {
 
   it("使い方の画面では「この画面の使い方」を出さない", () => {
     const html = draw("/guide");
-    expect(helpHref(html)).toBeNull();
+    // 隠して出しても落ちるよう、HTML 全体で見る
+    expect(html).not.toContain("この画面の使い方");
     // それでも共有状態は出る
-    expect(html).toContain("自分の登録分のみ");
+    expect(view(html).text).toContain("自分の登録分のみ");
   });
 });
 

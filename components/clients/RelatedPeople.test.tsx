@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isShown, shownText } from "@/tests/helpers/markup";
 import RelatedPeople from "./RelatedPeople";
 
 /**
@@ -13,6 +14,10 @@ import RelatedPeople from "./RelatedPeople";
  *     落とすと、家族の名前を置き換える手段が画面から消える。撮影の道具（tools/shoot-plans.mjs）も欄の形を使う。
  *   - 名簿を読めなかったとき、空の名簿に見せると「家族はまだ登録されていない」と取り違え、同じ方を登録し直させる。
  *   - 説明の文は保証できることだけ（計画の指摘 CRITIQUE・U4 ──「実名はこの画面にだけ表示します」とは書かない）。
+ *
+ * 「出ている」は tests/helpers/markup.ts の shownText・isShown で見る（隠した要素の文字や部品を数えない ──
+ * 2026-09-24 に2つの枝を取り込んだときに寄せた。jsdom の textContent は隠した文字も数える）。
+ * 「出していない」は textContent のまま（隠して出した文字も拾える）。
  */
 
 // jsdom は起動に十数秒かかる。他のテストと同時に走ると待ち時間が伸びるので広めに取る
@@ -75,6 +80,10 @@ async function render() {
 }
 
 const q = <E extends Element = Element>(selector: string) => container.querySelector<E>(selector);
+/** 画面に出ている文字（隠した要素の文字は数えない）。見つからなければ "" */
+const shown = (el: Element | null | undefined) => shownText(container, el);
+/** 隠されずに出ているか（見つからなければ false） */
+const visible = (el: Element | null | undefined) => isShown(container, el);
 const buttonByText = (text: string) =>
   [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
 const relationInput = () => q<HTMLInputElement>('input[list="relation-hints"]');
@@ -101,11 +110,11 @@ describe("名簿の行と登録の欄", () => {
   it("行は 続柄 | 実名 | → 置き換わる記号 | 削除", async () => {
     await render();
     const row = q("ul > li");
-    const cells = [...(row?.children ?? [])].map((el) => el.textContent?.trim());
+    const cells = [...(row?.children ?? [])].map((el) => shown(el).trim());
     expect(cells).toEqual(["長女", "佐藤 花子", "→ B様の長女", "削除"]);
     // 「削除」は読み上げでどの行のものか分かる（続柄のセルに結ぶ）
     const describedBy = buttonByText("削除")?.getAttribute("aria-describedby") ?? "";
-    expect(document.getElementById(describedBy)?.textContent).toBe("長女");
+    expect(shown(document.getElementById(describedBy))).toBe("長女");
   });
 
   it("登録の欄: 続柄の候補（datalist）・氏名の例・名前つきの欄。「登録」は両方入れるまで押せない", async () => {
@@ -120,6 +129,7 @@ describe("名簿の行と登録の欄", () => {
     // 欄は label で名前が付いている（placeholder だけにしない）
     const labelled = [...container.querySelectorAll("label")].map((l) => l.htmlFor);
     for (const input of [relationInput(), nameInput()]) {
+      expect(visible(input)).toBe(true);
       expect(input?.id).toBeTruthy();
       expect(labelled).toContain(input?.id);
     }
@@ -154,7 +164,7 @@ describe("名簿の行と登録の欄", () => {
     await type(relationInput(), "長女");
     await type(nameInput(), "佐藤 一郎");
     await click(buttonByText("登録"));
-    expect(q('[role="alert"]')?.textContent).toBe(message);
+    expect(shown(q('[role="alert"]'))).toBe(message);
   });
 
   it("「削除」は確かめずにその行を消し（使い方の本文どおり）、消せなかったらサーバーの文を出す", async () => {
@@ -163,12 +173,12 @@ describe("名簿の行と登録の欄", () => {
     await render();
     await click(buttonByText("削除"));
     expect(calls.map((c) => c.call)).toContain("DELETE /api/clients/c1/related?relatedId=r1");
-    expect(q('[role="alert"]')?.textContent).toBe(message);
+    expect(shown(q('[role="alert"]'))).toBe(message);
   });
 
   it("説明の文は保証できることだけ（この画面にだけ表示、とは書かない）", async () => {
     await render();
-    expect(container.textContent).toContain(
+    expect(shown(container)).toContain(
       "ここに登録した名前は、AIへ送る前に「B様の長女」のような記号に置き換わります。この名簿の実名はAIには送りません。",
     );
     expect(container.textContent).not.toContain("この画面にだけ");
@@ -182,7 +192,7 @@ describe("読めなかったとき（空の名簿に見せない）", () => {
   it("一覧が 503 なら、サーバーの文を role=alert で出す", async () => {
     routes["GET /api/clients/c1/related"] = [() => json({ error: DOWN }, 503)];
     await render();
-    expect(q('[role="alert"]')?.textContent).toContain(DOWN);
+    expect(shown(q('[role="alert"]'))).toContain(DOWN);
   });
 
   it("「もう一度読む」で読み直し、読めたら知らせが消えて名簿が出る", async () => {
@@ -193,7 +203,7 @@ describe("読めなかったとき（空の名簿に見せない）", () => {
     await render();
     await click(buttonByText("もう一度読む"));
     expect(q('[role="alert"]')).toBeNull();
-    expect(container.textContent).toContain("佐藤 花子");
+    expect(shown(container)).toContain("佐藤 花子");
   });
 
   it("通信そのものが失敗したら、通信環境を確かめる文を出す", async () => {
@@ -203,7 +213,7 @@ describe("読めなかったとき（空の名簿に見せない）", () => {
       },
     ];
     await render();
-    expect(q('[role="alert"]')?.textContent).toContain("通信環境を確かめて");
+    expect(shown(q('[role="alert"]'))).toContain("通信環境を確かめて");
   });
 
   it("0人で読めたときは知らせを出さず、登録の欄は出す", async () => {
@@ -211,6 +221,6 @@ describe("読めなかったとき（空の名簿に見せない）", () => {
     await render();
     expect(q('[role="alert"]')).toBeNull();
     expect(container.textContent).not.toContain("読み込めませんでした");
-    expect(relationInput()).not.toBeNull();
+    expect(visible(relationInput())).toBe(true);
   });
 });

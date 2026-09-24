@@ -5,6 +5,7 @@ import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type CssNode, parseCss } from "@/tests/helpers/cssTokens";
+import { shownText } from "@/tests/helpers/markup";
 import { ClientsProvider } from "./ClientsContext";
 import ClientTable, { ClientSearchField } from "./ClientTable";
 
@@ -18,6 +19,9 @@ import ClientTable, { ClientSearchField } from "./ClientTable";
  *   - 一覧を読めなかったのに「まだ利用者がいません」と出すと、失敗が空の一覧に化ける（計画 U0 と同じ壊れ方）。
  *   - 実名を表に出さない。API の応答に氏名が紛れ込んでも、表は記号・属性・登録日しか描かない。
  *   - まだ利用者がいないときの文は、氏名を暗号化して記号で表示することを約束する文（消さない）。
+ *
+ * 「出ている」は tests/helpers/markup.ts の shownText で見る（隠した要素の文字を数えない ── 2026-09-24 に2つの枝を
+ * 取り込んだときに寄せた。jsdom の textContent は隠した文字も数える）。「出していない」は textContent・innerHTML のまま。
  */
 
 // jsdom は起動に十数秒かかる。他のテストと同時に走ると待ち時間が伸びるので広めに取る
@@ -125,9 +129,14 @@ async function render(selectedId: string | null = null) {
   await flush();
 }
 
+/** 画面に出ている文字（隠した要素の文字は数えない ── tests/helpers/markup.ts）。見つからなければ "" */
+const shown = (el: Element | null | undefined) => shownText(container, el);
 const rows = () => [...container.querySelectorAll("tbody tr")];
-const rowCodes = () => rows().map((tr) => tr.querySelector("th")?.textContent);
+const rowCodes = () => rows().map((tr) => shown(tr.querySelector("th")));
+/** 画面の文字をすべて（隠した要素の文字も）。「出していない」を確かめるときに使う */
 const text = () => container.textContent ?? "";
+/** 画面に出ている文字の全体。「出ている」を確かめるときに使う */
+const shownAll = () => shownText(container, container);
 
 /** React が拾えるよう、ブラウザと同じ手順で探す欄に言葉を入れる */
 async function search(word: string) {
@@ -158,9 +167,7 @@ async function click(el: HTMLElement) {
 describe("一覧の表（読めたとき）", () => {
   it("列は 記号・属性・登録日", async () => {
     await render();
-    const heads = [...container.querySelectorAll('thead th[scope="col"]')].map(
-      (th) => th.textContent,
-    );
+    const heads = [...container.querySelectorAll('thead th[scope="col"]')].map((th) => shown(th));
     expect(heads).toEqual(["記号", "属性", "登録日"]);
   });
 
@@ -182,12 +189,12 @@ describe("一覧の表（読めたとき）", () => {
       "/clients/c2",
       "/clients/c3",
     ]);
-    expect(links.map((a) => a?.textContent)).toEqual(["A様", "B様", "F様"]);
+    expect(links.map((a) => shown(a))).toEqual(["A様", "B様", "F様"]);
   });
 
   it("属性は「・」区切りの1行、無ければ「（属性未設定）」。登録日は日本時間の年月日", async () => {
     await render();
-    const cells = rows().map((tr) => [...tr.querySelectorAll("td")].map((td) => td.textContent));
+    const cells = rows().map((tr) => [...tr.querySelectorAll("td")].map((td) => shown(td)));
     expect(cells).toEqual([
       ["85歳・女性・要介護2・独居", "2026/09/01"],
       ["91歳・男性・要介護3・長女と同居", "2026/08/20"],
@@ -207,9 +214,8 @@ describe("一覧の表（読めたとき）", () => {
     // （検証の指摘）。まだいないときの文と登録の欄の添え書きだけでは、一覧を使っている職員の目に入らない
     await render();
     const lead = container.querySelector(".client-table-lead");
-    expect(lead?.textContent).toBe("利用者ごとに書類が貯まります（氏名は記号で表示）");
-    // 読み上げ用に隠した物ではない（見える1行）
-    expect(lead?.closest(".sr-only, [hidden], [aria-hidden='true']")).toBeNull();
+    // 読み上げ用に隠した物ではない（見える1行 ── 自分と祖先の隠す印を tests/helpers/markup.ts の判定で見る）
+    expect(shown(lead)).toBe("利用者ごとに書類が貯まります（氏名は記号で表示）");
     // 表の直前に置き、表を箱で包まない（表は区画の直下 ── globals.css の `.pane:has(> .client-table)` が効く形）
     expect(lead?.nextElementSibling?.tagName).toBe("TABLE");
   });
@@ -224,7 +230,7 @@ describe("一覧の表（読めたとき）", () => {
     await render("c2");
     const selected = [...container.querySelectorAll("tr[data-selected]")];
     expect(selected).toHaveLength(1);
-    expect(selected[0].querySelector("th")?.textContent).toBe("B様");
+    expect(shown(selected[0].querySelector("th"))).toBe("B様");
     const current = [...container.querySelectorAll('[aria-current="page"]')];
     expect(current.map((a) => a.getAttribute("href"))).toEqual(["/clients/c2"]);
   });
@@ -246,7 +252,7 @@ describe("記号・属性で探す", () => {
     await render();
     await search("要介護5");
     expect(rows()).toHaveLength(0);
-    expect(text()).toContain("「要介護5」に当てはまる利用者はいません");
+    expect(shownAll()).toContain("「要介護5」に当てはまる利用者はいません");
     // 読めた一覧の絞り込みの結果なので、「まだ利用者がいません」とは言わない
     expect(text()).not.toContain("まだ利用者がいません");
     await click(buttonByText("探す言葉を消す"));
@@ -258,9 +264,9 @@ describe("まだ利用者がいないとき", () => {
   it("「まだ利用者がいません」と、氏名を暗号化して記号で表示する約束の文を出す（表は出さない）", async () => {
     listResponses = [() => json([])];
     await render();
-    expect(text()).toContain("まだ利用者がいません");
-    expect(text()).toContain("右上の「新しい利用者」から登録してください。");
-    expect(text()).toContain(
+    expect(shownAll()).toContain("まだ利用者がいません");
+    expect(shownAll()).toContain("右上の「新しい利用者」から登録してください。");
+    expect(shownAll()).toContain(
       "登録した氏名は暗号化して保存し、画面では A様 のような記号で表示します。",
     );
     expect(container.querySelector("table")).toBeNull();
@@ -273,9 +279,9 @@ describe("まだ利用者がいないとき", () => {
 describe("一覧を読めなかったとき（「まだ利用者がいません」に見せない）", () => {
   /** 読めなかったときの画面の決まり: 知らせ（role="alert"）に見出しとサーバーの文。空の一覧の文も表も出さない */
   function expectLoadError(serverMessage?: string) {
-    const alert = container.querySelector('[role="alert"]');
-    expect(alert?.textContent).toContain("利用者一覧を読めませんでした");
-    if (serverMessage) expect(alert?.textContent).toContain(serverMessage);
+    const alert = shown(container.querySelector('[role="alert"]'));
+    expect(alert).toContain("利用者一覧を読めませんでした");
+    if (serverMessage) expect(alert).toContain(serverMessage);
     // 隠して出しても「出ていない」と取り違えないよう、HTML 全体で見る
     expect(container.innerHTML).not.toContain("まだ利用者がいません");
     expect(container.querySelector("table")).toBeNull();

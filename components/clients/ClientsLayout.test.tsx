@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ClientsPage from "@/app/(dashboard)/clients/page";
 import TopBar from "@/components/shell/TopBar";
 import { TopBarSlotProvider } from "@/components/shell/TopBarSlot";
+import { isShown, shownText } from "@/tests/helpers/markup";
 import ClientsLayout from "./ClientsLayout";
 
 /**
@@ -18,6 +19,10 @@ import ClientsLayout from "./ClientsLayout";
  *   - 選んでいる行の印は URL に付いてくる。選び替えても表は消えず、一覧も読み直さない（layout に置いた理由）。
  *   - 新しい利用者は右の区画（/clients?new=1）で登録し、読み直さずに表へ出る（計画 U2 の指摘 ── 表と登録の欄は別の部品）。
  *   - 一覧を読めないあいだは登録を止める（もういる方を気づかずに二重に登録しないため）。
+ *
+ * 「出ている」は tests/helpers/markup.ts の shownText・isShown で見る（隠した要素の文字や部品を数えない ──
+ * 2026-09-24 に2つの枝を取り込んだときに寄せた。jsdom の textContent は隠した文字も数える）。
+ * 「出していない」は textContent・innerHTML のまま（隠して出した文字も拾える）。
  */
 
 // jsdom は起動に十数秒かかる。他のテストと同時に走ると待ち時間が伸びるので広めに取る
@@ -134,14 +139,16 @@ async function listPage(newParam?: string) {
 }
 
 const q = <E extends Element = Element>(selector: string) => container.querySelector<E>(selector);
+/** 画面に出ている文字（隠した要素の文字は数えない）。見つからなければ "" */
+const shown = (el: Element | null | undefined) => shownText(container, el);
+/** 隠されずに出ているか（見つからなければ false） */
+const visible = (el: Element | null | undefined) => isShown(container, el);
 const aside = () => q("main aside");
 const slot = () => q(".topbar-slot");
 const selectedCodes = () =>
-  [...container.querySelectorAll("tr[data-selected]")].map(
-    (tr) => tr.querySelector("th")?.textContent,
-  );
+  [...container.querySelectorAll("tr[data-selected]")].map((tr) => shown(tr.querySelector("th")));
 const tableCodes = () =>
-  [...container.querySelectorAll("tbody tr")].map((tr) => tr.querySelector("th")?.textContent);
+  [...container.querySelectorAll("tbody tr")].map((tr) => shown(tr.querySelector("th")));
 
 async function type(selector: string, value: string) {
   const input = q<HTMLInputElement>(selector);
@@ -166,19 +173,22 @@ describe("一覧を開いたとき（/clients）", () => {
     expect(selectedCodes()).toEqual([]);
     expect(container.querySelectorAll('tbody [aria-current="page"]')).toHaveLength(0);
     expect(aside()?.getAttribute("aria-label")).toBe("利用者の詳細");
-    expect(aside()?.textContent).toBe("左の一覧から利用者を選ぶと、書類と関係者名簿がここに出ます");
+    expect(shown(aside())).toBe("左の一覧から利用者を選ぶと、書類と関係者名簿がここに出ます");
     // 一覧の問い合わせだけ（/api/clients/{id} や関係者名簿 /api/clients/{id}/related は呼ばない）
     expect(calls).toEqual(["GET /api/clients"]);
   });
 
   it("上の帯に 見出し「利用者」と人数・「記号・属性で探す」・「新しい利用者」（本文には置かない）", async () => {
     await render(await listPage());
-    expect(slot()?.querySelector("h1")?.textContent).toBe("利用者");
-    expect(slot()?.querySelector(".clients-count")?.textContent).toBe("2人");
+    expect(shown(slot()?.querySelector("h1"))).toBe("利用者");
+    // 見える数は「2」。「人」は読み上げだけに添える（sr-only）ので、読み上げでは「2人」
+    const count = slot()?.querySelector(".clients-count");
+    expect(shown(count)).toBe("2");
+    expect(count?.textContent).toBe("2人");
     const search = slot()?.querySelector('input[aria-label="記号・属性で探す"]');
     expect(search?.getAttribute("placeholder")).toBe("記号・属性で探す");
     const add = slot()?.querySelector('a[href="/clients?new=1"]');
-    expect(add?.textContent).toBe("新しい利用者");
+    expect(shown(add)).toBe("新しい利用者");
     expect(add?.getAttribute("aria-current")).toBeNull();
     // 見出しは画面に1つ（本文側に2つ目の h1 を置かない）
     expect(container.querySelectorAll("h1")).toHaveLength(1);
@@ -199,7 +209,7 @@ describe("一覧を開いたとき（/clients）", () => {
     listResponse = () => json({ error: "ログインが必要です。" }, 401);
     await render(await listPage());
     expect(slot()?.querySelector(".clients-count")).toBeNull();
-    expect(q('[role="alert"]')?.textContent).toContain("利用者一覧を読めませんでした");
+    expect(shown(q('[role="alert"]'))).toContain("利用者一覧を読めませんでした");
   });
 });
 
@@ -208,7 +218,7 @@ describe("行を選んだとき（/clients/{id}）", () => {
     env.pathname = "/clients/c2";
     await render(<p>B様の詳細</p>);
     expect(selectedCodes()).toEqual(["B様"]);
-    expect(aside()?.textContent).toBe("B様の詳細");
+    expect(shown(aside())).toBe("B様の詳細");
     expect(aside()?.getAttribute("aria-label")).toBe("B様");
 
     env.pathname = "/clients/c1";
@@ -228,11 +238,13 @@ describe("行を選んだとき（/clients/{id}）", () => {
     await render(<p>B様の詳細</p>);
     const crumbs = slot()?.querySelector('nav[aria-label="現在地"]');
     expect(crumbs?.querySelector("a")?.getAttribute("href")).toBe("/clients");
+    // 区切りの「/」は飾り（aria-hidden）なので、見る人にも読み上げにも届く文字は「利用者B様」
+    expect(shown(crumbs)).toBe("利用者B様");
     expect(crumbs?.textContent).toBe("利用者/B様");
-    expect(crumbs?.querySelector('[aria-current="page"]')?.textContent).toBe("B様");
+    expect(shown(crumbs?.querySelector('[aria-current="page"]'))).toBe("B様");
     expect(slot()?.querySelector("h1")).toBeNull();
-    expect(slot()?.querySelector('input[aria-label="記号・属性で探す"]')).not.toBeNull();
-    expect(slot()?.querySelector('a[href="/clients?new=1"]')).not.toBeNull();
+    expect(visible(slot()?.querySelector('input[aria-label="記号・属性で探す"]'))).toBe(true);
+    expect(visible(slot()?.querySelector('a[href="/clients?new=1"]'))).toBe(true);
   });
 
   it("書類を開いている（?doc=）あいだだけ右の区画を 640px に広げ、閉じると 440px に戻る（A6）", async () => {
@@ -266,9 +278,9 @@ describe("新しい利用者の登録（/clients?new=1）", () => {
     for (const id of ["c-name", "c-age", "c-gender", "c-care-level", "c-household"]) {
       expect(q(`main aside #${id}`)).not.toBeNull();
     }
-    const labels = [...container.querySelectorAll("main aside label")].map((l) => l.textContent);
+    const labels = [...container.querySelectorAll("main aside label")].map((l) => shown(l));
     expect(labels).toEqual(["氏名（任意）", "年齢", "性別", "要介護度", "世帯"]);
-    expect(aside()?.textContent).toContain("氏名は暗号化して保存し、画面では記号で表示します");
+    expect(shown(aside())).toContain("氏名は暗号化して保存し、画面では記号で表示します");
     expect(aside()?.getAttribute("aria-label")).toBe("新しい利用者");
     const add = slot()?.querySelector('a[href="/clients?new=1"]');
     expect(add?.getAttribute("aria-current")).toBe("page");
@@ -296,7 +308,7 @@ describe("新しい利用者の登録（/clients?new=1）", () => {
     expect(calls.filter((c) => c === "GET /api/clients")).toHaveLength(1);
     expect(env.push).toHaveBeenCalledWith("/clients/c9");
     expect(q("table")?.textContent).not.toContain("山田");
-    expect(slot()?.querySelector(".clients-count")?.textContent).toBe("3人");
+    expect(shown(slot()?.querySelector(".clients-count"))).toBe("3");
   });
 
   it("一覧を読めないあいだは登録を止める（もういる方を気づかずに二重に登録しないため）", async () => {
@@ -304,7 +316,7 @@ describe("新しい利用者の登録（/clients?new=1）", () => {
     env.search = "new=1";
     await render(await listPage("1"));
     expect(submitButton().disabled).toBe(true);
-    expect(aside()?.textContent).toContain("同じ方を二重に登録しないよう、登録を止めています");
+    expect(shown(aside())).toContain("同じ方を二重に登録しないよう、登録を止めています");
     await type("#c-name", "山田 花子");
     await act(async () => {
       submitButton().click();
@@ -328,7 +340,7 @@ describe("新しい利用者の登録（/clients?new=1）", () => {
       submitButton().click();
     });
     await flush();
-    expect(q('main aside [role="alert"]')?.textContent).toContain("利用者の作成に失敗しました。");
+    expect(shown(q('main aside [role="alert"]'))).toContain("利用者の作成に失敗しました。");
     expect(env.push).not.toHaveBeenCalled();
     expect(tableCodes()).toEqual(["A様", "B様"]);
   });

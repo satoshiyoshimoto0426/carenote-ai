@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { attrOf, elementsOf, hasClass, isReachable, textOf, within } from "@/tests/helpers/markup";
 import Rail, { emailLocalPart } from "./Rail";
 
 /**
@@ -13,6 +14,9 @@ import Rail, { emailLocalPart } from "./Rail";
  *   ここではそれが画面の aria-current と緑の太い線に正しく出ることを確かめる。
  *
  * 偽物にするもの: next/navigation の usePathname（開いている URL）と、Clerk の UserButton / useUser。
+ *
+ * 描いた HTML は tests/helpers/markup.ts で木として読む（2026-09-24 に2つの枝を取り込んだときに寄せた）。
+ * 項目の名前・短い名前は textOf（隠した要素の中の文字を数えない）、アカウントのボタンは isReachable で「出ている」を見る。
  */
 
 const env = vi.hoisted(() => ({
@@ -37,20 +41,31 @@ vi.mock("@clerk/nextjs", () => ({
   }),
 }));
 
-/** 描いた HTML からナビの項目（<a>）を取り出す。label は中の文字（タグを除いたもの）。 */
-function navLinks(html: string): { href: string; label: string; current: boolean; svg: string }[] {
-  const out: { href: string; label: string; current: boolean; svg: string }[] = [];
-  for (const m of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)) {
-    const attrs = m[1];
-    const inner = m[2];
-    out.push({
-      href: /href="([^"]*)"/.exec(attrs)?.[1] ?? "",
-      label: inner.replace(/<[^>]+>/g, "").trim(),
-      current: /aria-current="page"/.test(attrs),
-      svg: /<svg\b[^>]*>/.exec(inner)?.[0] ?? "",
+/** ナビの項目の線の印（svg の属性）。光っているかは stroke-width、読み上げない飾りかは aria-hidden で見る。 */
+type SvgMarks = { strokeWidth: string | undefined; ariaHidden: string | undefined };
+
+/**
+ * 描いた HTML からナビの項目（<a>）を取り出す。label は見る人にも読み上げにも届く文字（textOf）。
+ * 隠された項目（自分や祖先に隠す印がある）は shown が false になる。
+ */
+function navLinks(
+  html: string,
+): { href: string; label: string; current: boolean; shown: boolean; svg: SvgMarks }[] {
+  return elementsOf(html)
+    .filter((el) => el.tagName === "a")
+    .map((a) => {
+      const [svg] = within(a, (el) => el.tagName === "svg");
+      return {
+        href: attrOf(a, "href") ?? "",
+        label: textOf(a).trim(),
+        current: attrOf(a, "aria-current") === "page",
+        shown: isReachable(a),
+        svg: {
+          strokeWidth: svg ? attrOf(svg, "stroke-width") : undefined,
+          ariaHidden: svg ? attrOf(svg, "aria-hidden") : undefined,
+        },
+      };
     });
-  }
-  return out;
 }
 
 function draw(pathname: string): string {
@@ -66,6 +81,7 @@ beforeEach(() => {
 describe("Rail（左の縦の帯・スマホでは下のタブ）", () => {
   it("利用者・つくる・点検・使い方の4項目を、この順と行き先で出す", () => {
     const links = navLinks(draw("/clients"));
+    expect(links.every((l) => l.shown)).toBe(true);
     expect(links.map(({ label, href }) => [label, href])).toEqual([
       ["利用者", "/clients"],
       ["つくる", "/create"],
@@ -94,8 +110,8 @@ describe("Rail（左の縦の帯・スマホでは下のタブ）", () => {
     expect(current.map((l) => l.label)).toEqual([label]);
     // 光っている項目の線は 1.8、ほかは 1.6
     for (const link of links) {
-      expect(link.svg).toContain(`stroke-width="${link.current ? "1.8" : "1.6"}"`);
-      expect(link.svg).toContain('aria-hidden="true"');
+      expect(link.svg.strokeWidth).toBe(link.current ? "1.8" : "1.6");
+      expect(link.svg.ariaHidden).toBe("true");
     }
   });
 
@@ -105,8 +121,12 @@ describe("Rail（左の縦の帯・スマホでは下のタブ）", () => {
 
   it("下端に Clerk のアカウントのボタンと、メールの「@」より前を文字で出す", () => {
     const html = draw("/clients");
-    expect(html).toContain("data-user-button");
+    const els = elementsOf(html);
+    const button = els.find((el) => attrOf(el, "data-user-button") !== undefined);
+    expect(button && isReachable(button)).toBe(true);
     // 目で見える短い名前（読み上げには「ログイン中:」を添える）
+    const id = els.find((el) => hasClass(el, "rail-user-id"));
+    expect(id && textOf(id)).toBe("satoshi.test");
     expect(html).toMatch(/class="rail-user-id"[^>]*>.*ログイン中: <\/span>satoshi\.test<\/span>/);
     // aria-label を div に付けない（Biome useAriaPropsSupportedByRole が error・中身の文字で名前が付く）
     expect(html).not.toMatch(/<div\b[^>]*aria-label=/);
@@ -115,7 +135,8 @@ describe("Rail（左の縦の帯・スマホでは下のタブ）", () => {
   it("まだログイン情報が読めていないときは、短い名前の欄を出さない（空の欄を作らない）", () => {
     env.email = null;
     const html = draw("/clients");
-    expect(html).toContain("data-user-button");
+    const button = elementsOf(html).find((el) => attrOf(el, "data-user-button") !== undefined);
+    expect(button && isReachable(button)).toBe(true);
     expect(html).not.toContain("rail-user-id");
   });
 });

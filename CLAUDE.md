@@ -28,7 +28,27 @@
 
 ## Test Strategy
 - `vitest` 導入済（`npm run test`）。純粋ロジックからテスト追加（例: `lib/parseEvaluationJson.test.ts`）
-- React コンポーネントテスト: `@testing-library/react` は必要時に追加
+- **安全テストの一覧 `tools/safety-tests.json`**（2026-09-23 吉本さん決定）: `npm test`（`tools/run-tests.mjs`）が毎回照らし合わせ、
+  名指しのファイルが消えた・名前が変わった／守るフォルダ（`lib/privacy` `tests/api` `lib/recording` `lib/transcribe` `lib/rescue`）が
+  最低件数を下回った／守るファイルに `.skip(` `.only(` `.todo(` など飛ばす書き方がある（`const s = it.skip` のように括弧なしで別名へ入れる形も）／集計に skipped・todo が1件でもある、のどれかで失敗する
+  （判定は `tools/testManifest.mjs`、その検査は `tools/testManifest.test.ts`）。
+  集計行は **stdout だけ**から読む（テストが `console.error` で書いた偽の集計行を本物と取り違えないため）。
+  引数なしの実行では vitest の JSON レポートでも「全ファイルが走り・全テストが合格」かを確かめ（2つ目の判定・読めなければ失敗）、
+  落ちたときは JSON レポートから、飛ばされたテスト・走らなかったファイルを**ファイル名とテスト名で**挙げる。
+  入口を書き換えて見張りごと飛ばす変更（`package.json` の test を `vitest run` にする・CI の `npm run test` を変える・
+  `quality-gates.yml` に `continue-on-error` や `if:` を足す）も、同じ検査が落とす。
+  安全テストを足したら一覧にも足す。消す・弱めるときは吉本さんの承認（横断規約 §2.7-C）のうえで、一覧も同じコミットで直す
+- React コンポーネントテスト: `@testing-library/react` は必要時に追加。`renderToStaticMarkup` で描いた HTML は
+  `tests/helpers/markup.ts`（parse5）で**木として読む**。文字列の正規表現・`toContain` で属性や押せる/押せないを見ない
+  （class の `disabled:` や title のふきだしで満たされ、壊れても緑になる ── 2026-09-23 steering-log）。新しい検査は部品をわざと壊して赤になるのを確かめる。
+  `textOf` は属性の中身と、隠す印（`hidden` 属性・`aria-hidden="true"`・class の `hidden`/`invisible`/`sr-only`・style の `display:none`/`visibility:hidden`）の
+  ある要素の文字を数えない。CSS ファイル側の見え方（色・overflow・`md:hidden` など）は判定しない。「出していない」は `textOf` でなく HTML 全体で見る。
+  `elementsOf` は隠した要素も返すので、**部品が出ていること**（切り替え・チェックの印・赤い印）を数えるときは `isReachable` でも絞る（2026-09-24 steering-log）。
+  jsdom で動かす検査（`*.live.test.tsx`・`components/clients/*.test.tsx` など）も、「出ている」は `textContent` でなく
+  `shownText(container, 要素)`・`isShown(container, 要素)`（同じ判定の橋 ── jsdom の `textContent` は隠した文字も数える）で見る。
+  「出していない」は `textContent`・`innerHTML` のまま（2026-09-24 に2つの枝を取り込んだときに寄せた）。
+  **検査の名前は、検査した場合だけを言う**（畳んだ欄だけを見て「なぜ赤いかが文字で読める」と名付けたため、開いた欄では
+  ふきだしにしか理由が無い穴が隠れていた ── 2026-09-23 steering-log）。画面が場合分けしているなら、場合ごとに検査を置く
 - E2E: `Playwright` 導入予定（P2 のブラウザ拡張フローで）
 - カバレッジ目標: 80%
 
@@ -36,6 +56,11 @@
 - ✅ React Server Components を基本とし、`"use client"` は最小限
 - ✅ Server Actions は `app/actions/` に集約
 - ✅ Supabase クエリは `lib/supabase/` の関数経由のみ
+- ✅ **lib/db の読み書きは「0件」と「DB の失敗」を分ける**（2026-09-24 steering-log ── 同じ種類を3回踏んだ）:
+  1件を読むときは `maybeSingle`（`single()` は0件にもエラーを返す）。0件・uuid の形でない id（`isMalformedIdError`）は
+  null / [] / false、それ以外の失敗は `lib/db/errors.ts` の `DbAccessError`（職員向けの `publicMessage` つき）を投げ、
+  入口は 503 と `e.publicMessage` を返す（DB の詳しい理由はログだけ）。「失敗」だけを表す戻り値（保存の null など）を
+  使うときは、`lib/db/dbFailures.test.ts` の CONTRACTS に理由つきで載せる（載っていない async 関数があると落ちる）
 - ✅ 認証チェックは middleware.ts または `auth()` を使用
 - ✅ 環境変数の型は `env.ts` で zod 検証（導入予定）
 - ✅ コンポーネントは Server-first、Tailwind は arbitrary value より theme tokens を優先

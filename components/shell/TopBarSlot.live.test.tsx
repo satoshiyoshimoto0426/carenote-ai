@@ -2,6 +2,7 @@
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isShown, shownText } from "@/tests/helpers/markup";
 import TopBar, { SHELL_HEAD_HEIGHT_VAR } from "./TopBar";
 import TopBarSlot, { TopBarSlotProvider } from "./TopBarSlot";
 
@@ -14,6 +15,9 @@ import TopBarSlot, { TopBarSlotProvider } from "./TopBarSlot";
  *   外したら名前に戻ること ── そしてその間も共有状態が消えないことを、ここで動かして見る。
  *   帯の高さ（--shell-head-h）は「前へ／次へ」の帯（.presend-nav）が帯の裏に潜らないための値で、
  *   注意の帯が出ると高くなる。測った値が書かれ、変われば書き直され、外すと消えることも見る。
+ *
+ * 「出ている」は tests/helpers/markup.ts の shownText・isShown で見る（隠した要素の文字や部品を数えない ──
+ * 2026-09-24 に2つの枝を取り込んだときに寄せた。jsdom の textContent は隠した文字も数える）。
  */
 
 // jsdom は起動に十数秒かかる。他のテストと同時に走ると待ち時間が伸びるので広めに取る
@@ -103,31 +107,33 @@ function render(slot: ReactNode) {
 }
 
 const q = (selector: string) => container.querySelector(selector);
+/** 画面に出ている文字（隠した要素の文字は数えない）。見つからなければ "" */
+const shown = (el: Element | null | undefined) => shownText(container, el);
 
 describe("TopBarSlot（ページが上の帯の左に差し込む）", () => {
   it("差し込みが無いときは項目の名前を出し、共有状態も出す", () => {
     render(null);
-    expect(q(".topbar-section")?.textContent).toBe("利用者");
-    expect(q(".sharing-bar")?.textContent).toContain("自分の登録分のみ");
-    expect(q("[data-org-switcher]")).not.toBeNull();
+    expect(shown(q(".topbar-section"))).toBe("利用者");
+    expect(shown(q(".sharing-bar"))).toContain("自分の登録分のみ");
+    expect(isShown(container, q("[data-org-switcher]"))).toBe(true);
   });
 
   it("ページが差し込むと中身が帯の左に入り、項目の名前は消え、本文には残らない", () => {
     render(createElement(TopBarSlot, null, createElement("h1", null, "利用者 8")));
     const slot = q(".topbar-slot");
-    expect(slot?.querySelector("h1")?.textContent).toBe("利用者 8");
+    expect(shown(slot?.querySelector("h1"))).toBe("利用者 8");
     expect(q(".topbar-section")).toBeNull();
     expect(q("main h1")).toBeNull();
     // 差し込んでいる間も、共有状態と注意は外枠に出たまま
-    expect(q(".sharing-bar")?.textContent).toContain("自分の登録分のみ");
-    expect(q('[role="status"].sharing-strip')?.textContent).toContain("置き換わりません");
+    expect(shown(q(".sharing-bar"))).toContain("自分の登録分のみ");
+    expect(shown(q('[role="status"].sharing-strip'))).toContain("置き換わりません");
   });
 
   it("差し込みを外すと、項目の名前に戻る", () => {
     render(createElement(TopBarSlot, null, createElement("h1", null, "利用者 8")));
     render(null);
     expect(q(".topbar-slot")?.childElementCount).toBe(0);
-    expect(q(".topbar-section")?.textContent).toBe("利用者");
+    expect(shown(q(".topbar-section"))).toBe("利用者");
   });
 
   it("Provider の外で使っても壊れない（何も描かない）", () => {
