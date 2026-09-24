@@ -502,3 +502,19 @@ describe("見張りを通らずにテストを走らせる抜け道が無いこ�
     expect(readQualityGates()).not.toMatch(/^\s*(-\s+)?(continue-on-error|if)\s*:/m);
   });
 });
+describe("日本語を含む置き場所でも、見張りが最後まで走ること", () => {
+  it("tools の道具は fs の rmSync を使わない（Node v24.4.1 の Windows では日本語のパスで黙って落ちる・消さない）", () => {
+    // なぜ（2026-09-24 実測）: repo は OneDrive\デスクトップ\… にある。tools/run-tests.mjs が一時レポートを
+    // rmSync で消した瞬間にプロセスごと終了コード 127 で落ち、全テスト合格でも合否の表示が出ず手元のゲートが
+    // いつも赤だった（別の日本語の場所では、消さないまま成功を返した）。unlinkSync は同じパスで消せる。
+    // CI は英数字だけのパスで起きないので、動かして見つける代わりに、書き方そのものをここで止める。
+    const tools = join(process.cwd(), "tools");
+    const offenders = readdirSync(tools)
+      .filter((name) => /\.m?js$/.test(name))
+      .filter((name) => {
+        const source = readFileSync(join(tools, name), "utf8");
+        return /\brmSync\s*\(/.test(source) || /import\s*\{[^}]*\brmSync\b[^}]*\}/.test(source);
+      });
+    expect(offenders).toEqual([]);
+  });
+});

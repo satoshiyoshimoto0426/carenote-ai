@@ -27,7 +27,7 @@
  * 使い方: npm test（package.json の test スクリプトがこれを呼ぶ）。引数はそのまま vitest へ渡す。
  */
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync, rmSync } from "node:fs";
+import { readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -61,6 +61,23 @@ function findTestFiles(dir) {
     }
   }
   return out;
+}
+
+/**
+ * 一時ファイル（vitest の JSON レポート）を消す。もう無ければ何もしない。
+ *
+ * なぜ fs の rmSync を使わないか（2026-09-24 実測・Node v24.4.1・Windows）:
+ *   日本語を含むパスでは、rmSync がプロセスごと黙って落ちる（repo の置き場所 OneDrive\デスクトップ\… で
+ *   終了コード 127・exit イベントも来ない）か、消さないまま成功を返す。npm test は全テストが合格した後、
+ *   合否の表示を出す前にここで死に、手元のゲートがいつも赤だった（CI は英数字だけのパスなので起きない）。
+ *   unlinkSync は同じパスで消せる。道具に rmSync を戻さない見張りは tools/testManifest.test.ts。
+ */
+function removeTempFile(path) {
+  try {
+    unlinkSync(path);
+  } catch (e) {
+    if (!(e instanceof Error && "code" in e && e.code === "ENOENT")) throw e;
+  }
 }
 
 const args = process.argv.slice(2);
@@ -135,7 +152,7 @@ if (fullRun) {
   } catch (e) {
     detailsProblem = `JSON レポートを読めませんでした（${e instanceof Error ? e.message : String(e)}）`;
   }
-  rmSync(reportPath, { force: true });
+  removeTempFile(reportPath);
 }
 
 // NO_COLOR を渡しても、別経路で色が付く可能性に備えて照合前に ESC 列を落とす（二重の備え）。

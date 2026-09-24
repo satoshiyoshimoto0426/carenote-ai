@@ -359,7 +359,8 @@ npm test ─> tools/run-tests.mjs
    │       （lib/privacy・tests/api・lib/recording・lib/transcribe・lib/rescue）
    │     ・守るファイルに .skip( .only( .todo( skipIf runIf fails xit などの書き方が無い
    │       （`const s = it.skip` のように括弧なしで別名へ入れる形も ── 引数つきの実行ではここが唯一の見張り）
-   ├─ ① vitest run（NO_COLOR）。引数なしのときは JSON レポートも一時ファイルへ書かせる（落ちたときの名指し用・読んだら消す）
+   ├─ ① vitest run（NO_COLOR）。引数なしのときは JSON レポートも一時ファイルへ書かせる（落ちたときの名指し用・読んだら unlinkSync で消す ──
+   │     rmSync は日本語を含む置き場所でプロセスごと黙って落ちた・2026-09-24。tools の道具に rmSync があれば tools/testManifest.test.ts が落ちる）
    ├─ ②③ ディスク上のテストファイル数＝走った数・`Errors` 行が無い・vitest の終了コード 0（2026-09-13 から）
    ├─ ④ 集計行 Test Files / Tests に skipped・todo・expected fail が1件でもあれば失敗
    │     集計行は stdout だけから読む（テストが console.error で書いた偽の集計行が、つなぐと本物より後ろに来て勝っていた ── 2026-09-23 検収）
@@ -385,7 +386,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-24 / 枝 `redesign/a-backend`（API・DB の失敗の扱い・安全テストの見張り・書類の日付の API）を `redesign/a` へ取り込んだ。利用者の一覧の読み方を `lib/clients/listError.ts` の `fetchClientList` に1つにし、利用者の画面の検査6つを安全テストの一覧へ足した。利用者の画面・外枠の検査の「出ている」を `tests/helpers/markup.ts`（jsdom の橋 `shownText`・`isShown` を足した）で読む形に寄せた*
+*最終更新: 2026-09-24 / 見張り（tools/run-tests.mjs）が一時レポートを消す所で、日本語を含む置き場所だとプロセスごと落ちていた（合否を出さずに 127）のを unlinkSync に直し、tools の道具に rmSync を戻さない検査を足した*
+*2026-09-24 / 枝 `redesign/a-backend`（API・DB の失敗の扱い・安全テストの見張り・書類の日付の API）を `redesign/a` へ取り込んだ。利用者の一覧の読み方を `lib/clients/listError.ts` の `fetchClientList` に1つにし、利用者の画面の検査6つを安全テストの一覧へ足した。利用者の画面・外枠の検査の「出ている」を `tests/helpers/markup.ts`（jsdom の橋 `shownText`・`isShown` を足した）で読む形に寄せた*
 *2026-09-24 / 利用者一覧の書類の日付の API（`GET /api/clients/latest-docs`・`getLatestDocMeta`・`lib/documents/latest.ts`）を足した（作り直し計画 U5 の API 部分。画面の列は統合の後）。範囲を使うルートは 12ファイル・17ハンドラ*
 *2026-09-24 / 本文を直接読んでいた blob-upload（壊れた JSON で JSON の無い 500）と evaluate も `lib/requestBody.ts` に寄せた（12の入口。blob-upload は handleUpload の形も確かめる）。「唯一の道」の言い過ぎを直した（S1 の検収の指摘）*
 *2026-09-24 / 関係者名簿・保存した文字起こし・ダッシュボードが、読めなかったとき（503）に空・0件を見せず文字で出す（S1 の検収の指摘）*

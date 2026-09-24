@@ -83,6 +83,10 @@
     `git diff <ファイル>` が空なのを確かめてから `git add <ファイル>` で消す。中身も変えたファイルは、いつもどおり自分の変更として扱う。
   - 根本の直し（repo の根の `.gitattributes` に `* text=auto eol=lf`）は枝 `harness/stop-gates` で進行中（2026-09-23 時点・コミット前）。
     main に入り、main をこの枝に取り込んだら、この項目は消す（経緯と未了の追跡= `.claude/steering-log.md` 2026-09-23「git が書き出したファイルが CRLF になり」）。
+- **道具（`tools/*.mjs` など）で `fs.rmSync` を使わない**。この PC の Node v24.4.1 は、日本語を含むパス（repo の置き場所
+  `OneDrive\デスクトップ\…`）で `rmSync` を呼ぶと、プロセスごと黙って落ちる（終了コード 127・出力なし）か、消さないまま成功を返す。
+  ファイルは `unlinkSync`（無ければ `ENOENT` を無視）で消す。`npm test` が全テスト合格の後に合否の1行を出さずに 127 で終わっていた
+  （2026-09-24 steering-log）。見張り= `tools/testManifest.test.ts`（tools の道具に `rmSync` があれば落ちる）。
 - **`npm run build` が `EPERM: operation not permitted, unlink '…\carenote-ai\.next\…'` で落ちたら、コードではなく OneDrive を疑う**（2026-09-23〜24 に3回）。
   repo が OneDrive の中にあり、ビルドの作業場所 `.next` も同期されている。Next はビルドの最初に `.next` の中（cache 以外）を消すが、
   フォルダをファイルとして消そう（unlink）として止まる。OneDrive が書き出した直後のフォルダを同期している最中に起きる、と推定（未確認）。
