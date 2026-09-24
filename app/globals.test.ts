@@ -41,6 +41,8 @@ vi.mock("@clerk/nextjs", () => ({
  *   見ていたので、`<link rel="stylesheet">` の行を消しても緑のままだった（URL の定数が残るため）。
  *   今は RootLayout を描き、出てきた HTML に「その書体と太さを載せた rel="stylesheet" の <link>」が
  *   あることを確かめる。
+ *
+ * ④ 使い方が色で指している見た目（送る前の「緑の帯」と「赤い枠」）が消えていないか（2026-09-24・下の describe）。
  */
 
 const CSS = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
@@ -240,6 +242,8 @@ describe("文字の色が地の色の上で読める（WCAG AA 4.5:1）", () => 
     ["--ink", "--amber-soft", "下書きの注意の帯（.create-band-caution）"],
     ["--amber", "--amber-soft", "要確認事項・全文を開いていない欄の知らせ・追記案の見出し"],
     ["--ink-2", "--amber-soft", "全文を開いていない欄の知らせの説明・追記案の理由と札"],
+    ["--green", "--green-soft", "送る前の見出しの緑の帯の1行目（.presend-head）"],
+    ["--muted", "--green-soft", "緑の帯の「置き換えたもの:」の行"],
   ];
 
   it("つくるの帯の文字も 4.5:1 以上", () => {
@@ -256,6 +260,59 @@ describe("文字の色が地の色の上で読める（WCAG AA 4.5:1）", () => 
     expect(contrastRatio("#767676", "#ffffff")).toBeCloseTo(4.54, 2);
     // 飾り専用の --dash の値は、文字に使うと基準を満たさない（検査が落とせることの確認）
     expect(contrastRatio("#a9b0b7", "#f5f6f7")).toBeLessThan(AA_TEXT);
+  });
+});
+
+/** 選択子がちょうど selector の規則（@layer / @media の中も含む）の宣言を、1つずつに分けて返す。 */
+function declarationsOf(selector: string): { property: string; value: string }[] {
+  const out: { property: string; value: string }[] = [];
+  const visit = (nodes: ReturnType<typeof parseCss>) => {
+    for (const node of nodes) {
+      if (node.prelude.startsWith("@")) {
+        visit(node.children);
+        continue;
+      }
+      if (node.prelude.trim().replace(/\s+/g, " ") !== selector) continue;
+      for (const decl of node.declarations.split(";")) {
+        const at = decl.indexOf(":");
+        if (at < 0) continue;
+        out.push({ property: decl.slice(0, at).trim(), value: decl.slice(at + 1).trim() });
+      }
+    }
+  };
+  visit(parseCss(CSS));
+  return out;
+}
+
+/**
+ * ④ 使い方が指す見た目が、送る前に見る画面にあるか（R1 の検証 2026-09-24 blocker）:
+ *   使い方（lib/manual/content.ts と公開中の public/manual/index.html）は、送る前に見る画面を
+ *   「緑の帯が出ている画面」（135・429・477）、赤い言葉の知らせを「赤い枠」（433・1165）と呼んで見分けさせている。
+ *   R1 はこの2つを線だけの見た目に変え、FAQ の「赤い枠が出ていなければ、そのまま「この内容でAIに送る」を
+ *   押して構いません」が**赤い言葉があっても送ってよい**と読める状態になった。テストは文字を見るが枠や地の色は
+ *   見ないので、どこも赤くならなかった。使い方を書き直す（D1b）までは、この2つの色を消させない。
+ *   書き直して呼び方を変えたときは、ここも一緒に直す。
+ */
+describe("使い方が指す見た目（緑の帯・赤い枠）が送る前の画面にある", () => {
+  it("赤い言葉の知らせ（.presend-nav）は --red-word の 1px の線で四方を囲む（打ち消す指定もない）", () => {
+    const borders = declarationsOf(".presend-nav").filter((d) => d.property.startsWith("border"));
+    expect(borders).toEqual([{ property: "border", value: "1px solid var(--red-word)" }]);
+  });
+
+  it("送る前の見出し（.presend-head）は淡い緑の地と緑の線の帯", () => {
+    const decls = declarationsOf(".presend-head");
+    const colours = decls.filter(
+      (d) => d.property.startsWith("background") || d.property.startsWith("border"),
+    );
+    expect(colours).toEqual([
+      { property: "border", value: "1px solid var(--green-line)" },
+      { property: "background", value: "var(--green-soft)" },
+    ]);
+  });
+
+  it("検査そのものが壊れていない（規則が無ければ空になり、入れ子の中の規則も拾う）", () => {
+    expect(declarationsOf(".no-such-class-for-test")).toEqual([]);
+    expect(declarationsOf(".red-word").some((d) => d.value === "var(--red-word)")).toBe(true);
   });
 });
 

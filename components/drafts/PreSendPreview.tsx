@@ -140,15 +140,21 @@ export default function PreSendPreview({
   );
 
   /*
-   * A案（R1・2026-09-24）の見た目: 色つきの箱を積むのをやめ、見出しの行 → 「前へ／次へ」の帯 → 欄 を 1px の線で区切る。
+   * A案（R1・2026-09-24）の見た目: 角の丸い箱を積むのをやめ、見出しの帯 → 「前へ／次へ」の帯 → 欄 を 1px の線で区切る。
    * 赤い言葉だけを赤（--red-word ── 吉本さん決定 2026-09-23）にし、全文を開いていない欄の知らせは注意の黄色にした。
    * 文字・数え方・畳み方・押したときの動き・テストが見る形（presend-nav のクラス、`<span class="tnum">N</span>か所`、
    * `N字</span>`、畳んだ欄の理由の文字）は以前のまま。
+   *
+   * 見出しの「緑の帯」（.presend-head）と「前へ／次へ」の「赤い枠」（.presend-nav）は残す（R1 の検証 2026-09-24）。
+   * 使い方（lib/manual/content.ts:135・429・433・477・1165 と公開中の public/manual/）が、この2つの色で
+   * 「送る前の画面かどうか」「赤い言葉が残っているかどうか」を見分けさせている。とくに FAQ の
+   * 「赤い枠が出ていなければ、そのまま送って構いません」は、枠が無くなると赤い言葉があっても送ってよいと読める。
+   * 見た目は app/globals.css、消えていないことは app/globals.test.ts と PreSendPreview.test.tsx が見張る。
    */
   return (
     <div className="animate-fadeIn">
-      <div className="border-b border-[var(--line)] pb-3">
-        <p className="text-[14px] font-bold leading-[1.6] text-[var(--ink)]">
+      <div className="presend-head">
+        <p className="text-[14px] font-bold leading-[1.6] text-[var(--green)]">
           これがAIに送られる文章です。名前と番号は置き換え済みです。
         </p>
         <p className="mt-0.5 text-xs text-[var(--muted)]">
@@ -159,7 +165,7 @@ export default function PreSendPreview({
       </div>
 
       {highlights.total > 0 && (
-        <div className="presend-nav border-b border-[var(--line)] py-3">
+        <div className="presend-nav">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <p className="text-[13px] font-medium leading-[1.7] text-[var(--red-word)]">
               赤い言葉は「名前かもしれないのに消せなかったもの」です（

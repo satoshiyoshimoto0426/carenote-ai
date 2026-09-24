@@ -30,7 +30,7 @@
  * v2 の考え方（吉本さん決定 2026-09-23・原寸の案は Main / A-clients のアートボード）:
  *   カードを積むのをやめ、画面いっぱいの区画（ペイン）を 1px の細い線で区切る「道具」の見た目。
  *   地は冷たい灰色、文字は 4 段（--ink → --ink-2 → --muted → --faint）、線も 3 段。
- *   緑は「主ボタン」と「選択中の印」だけ、赤（--red-word）は「赤い言葉」だけに使う。
+ *   緑は「主ボタン」と「選択中の印」と「置き換え済み（仮名）の印」だけ、赤（--red-word）は「赤い言葉」だけに使う。
  *   注意の黄色（--amber*）とエラーのレンガ色（--clay*）は v1 のまま残す（色の役割を変えない）。
  *
  * v1（2026-09-16）からの経緯: v0 の「温かいクリーム色の地＋明朝体の見出し」は生成AIの定番で
@@ -539,8 +539,31 @@
   position: sticky;
   top: calc(var(--sticky-top, var(--shell-head-h, var(--topbar-h))) + 8px);
   z-index: 10;
-  /* A案（R1）で箱をやめ、線で区切った帯にした。貼りついたとき下の本文が透けないよう、置き場所の地で塗る */
+  margin-top: 12px;
+  padding: 12px 14px;
+  /*
+   * 「赤い枠」。使い方（lib/manual/content.ts:433・1165）が「赤い枠が出ていたら／出ていなければ」で
+   * 赤い言葉が残っているかを見分けさせているので、枠を消さない（R1 で一度消して、FAQ が
+   * 「赤い言葉があっても送ってよい」と読める状態になった ── 2026-09-24 検証の blocker）。
+   * 角は丸めず影も付けない（A案の帯）。赤はこの帯が赤い言葉の知らせだから使える（--red-word の役割のまま）。
+   * 見張り: app/globals.test.ts「使い方が指す見た目」。
+   */
+  border: 1px solid var(--red-word);
+  /* 貼りついたとき下の本文が透けないよう、置き場所の地で塗る */
   background: var(--pane-bg, var(--paper));
+}
+
+/*
+ * 送る前に見る画面の見出しの「緑の帯」（components/drafts/PreSendPreview.tsx）。
+ * 使い方（lib/manual/content.ts:135・429・477・docs/MANUAL-VIDEO-SPEC.md）が「緑の帯が出ている画面」で
+ * 送る前の確認画面を見分けさせ、「その帯の中にある「置き換えたもの:」の行」を読ませている。
+ * 緑は「置き換え済み（仮名）」の印（記号の札 .code-chip・「仮名表示中」と同じ役割）。角は丸めず影も付けない。
+ * 見張り: app/globals.test.ts「使い方が指す見た目」。
+ */
+.presend-head {
+  padding: 12px 14px;
+  border: 1px solid var(--green-line);
+  background: var(--green-soft);
 }
 
 /* スマホ: 左の帯を画面の下のタブにする（4項目・文字つき・押す場所は 56px） */

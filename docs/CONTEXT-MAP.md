@@ -319,21 +319,23 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - **`components/create/DocTypeTabs.tsx`**: 文字のタブ（`role="tablist"`・`aria-selected`・選んだタブは太字＋下に 2px の線 `--ink`）。並びと文字は `lib/create/docTypes.ts` のまま、押すと以前と同じ `switchDocType`。
   キーボードは選んだタブだけが Tab の並びに入り、←/→・Home/End で移って Enter/スペースで選ぶ（移るだけでは選ばない ── 選ぶと結果の下書きが消えるので）。スマホではタブを1行のまま横に動かす。
 - **一式まとめて（救済モード）への入口**: タブの行の右端の文字のリンク「一式まとめて（救済モード）」→ `/rescue`（左の帯から救済モードの項目が無くなったので、ここから行く）。**タブの並び（tablist）の外**に置く（中に入れると読み上げでタブの1つに数えられる ── 計画の指摘）。
-- **部品の見た目**（文字・並び順・テストが見る形は以前のまま）: `components/drafts/PreSendPreview.tsx`（見出しの行 → 「前へ／次へ」の帯〔`.presend-nav`・置き場所の地で塗る〕→ 欄を 1px の線で区切る。赤い言葉の印は `.red-word`〔`--red-word` の文字＋波線・いま見ている所は 1.5px の枠〕。全文を開いていない欄の知らせは注意の黄色）、
+- **部品の見た目**（文字・並び順・テストが見る形は以前のまま）: `components/drafts/PreSendPreview.tsx`（見出しの**緑の帯**〔`.presend-head`・淡い緑の地＋緑の線〕→ 「前へ／次へ」の**赤い枠**の帯〔`.presend-nav`・`--red-word` の 1px の線で四方を囲む・置き場所の地で塗る〕→ 欄を 1px の線で区切る。
+  緑の帯と赤い枠は、使い方〔`lib/manual/content.ts`:135・429・433・477・1165〕がこの色で「送る前の画面か」「赤い言葉が残っているか」を見分けさせているので残す ── R1 で一度線だけにして、FAQ が「赤い言葉があっても送ってよい」と読める状態になった〔2026-09-24 検証の blocker〕。見張りは `app/globals.test.ts`「使い方が指す見た目」と `PreSendPreview.test.tsx`。赤い言葉の印は `.red-word`〔`--red-word` の文字＋波線・いま見ている所は 1.5px の枠〕。全文を開いていない欄の知らせは注意の黄色）、
   `components/drafts/*View.tsx`・`DraftSection.tsx`（白いカードをやめ `.draft-section`／`.draft-item` の 1px の線。項目の名前は緑・黄色でなく `--ink-2`）、`ItemsToConfirm`・`AssessmentUpdatesPanel`（細い線で囲んだ黄色の帯）、`AppointmentsPanel`・`KaipokeSheetView`（線で区切った行。つくるでは緑の主ボタンを1つにするため `primaryClass` に脇のボタンを渡す）、
   `components/recording/RecordingPanel.tsx`（上に 1px の線・マイクの印。同意のチェックは帯の中で最初の checkbox のまま）、`components/create/SaveTranscriptBar.tsx`・`NotesField.tsx`（上に 1px の線・欄の名前は `.section-label`）。
   救済モード（`rescue/page.tsx`）は、左だけ太い線で飾った注意・エラーの帯を細い線で囲む帯にしただけ（文字は同じ）。
 - **トークンとクラス** `app/globals.css`: `--t-title` 24px → 20px、`--clay-line`（エラーの帯の縁）、`.mono`（数字と記号だけの文字列を等幅に ── 日本語の字には使わない）、4つ目の `@layer components`（`.create-*`・`.doc-tab*`・`.draft-*`・`.red-word`）。
   `components/ui/primitives.tsx`: `textareaClass` を 14.5px・行の高さ 1.9 に、1行に並べる小さな欄 `inlineFieldClass`（34px／スマホ 44px）を追加（`inputClass` に高さ・余白を足して上書きすると、どちらが勝つかが出力の順で決まり、選ぶ欄の文字が切れていた）。
 - テスト: `app/(dashboard)/create/page.test.tsx`（一式まとめてのリンク〔`/rescue`・タブの並びの外〕・タブ5つの並びと文字・選んだタブは1つでケアプラン・Tab の並びに入るのはそのタブだけ・中身の名前・送る前の約束の一文）。エラーの帯の文字の 4.5:1 は `app/globals.test.ts`。
-  `components/drafts/PreSendPreview.test.tsx`・`components/recording/RecordingPanel*.test.tsx` は1文字も変えずに通る。
-- **まだ直していない文書**（D1b でまとめて）: `lib/manual/content.ts`:135・429・477（「緑の帯」── 送る前の見出しは色の帯でなく線で区切った見出しの行になった）・225（「赤い帯の「次へ」」）・433（「赤い枠が出ていたら」── 赤い言葉の説明は線で区切った帯の赤い文字）・413（「上に並んだ5つのボタン」── 文字のタブ）・
+  送る前の見出しの緑の帯の文字の 4.5:1 も `app/globals.test.ts`。`components/recording/RecordingPanel*.test.tsx` は1文字も変えずに通る。
+  `components/drafts/PreSendPreview.test.tsx` は以前の検査を1文字も変えず、緑の帯と赤い枠の帯に文字が入っていることの検査を1つ足した。
+- **使い方と合っている所**（R1 の検証の直しで戻した）: 送る前の画面の「緑の帯」（`lib/manual/content.ts`:135・429・477、`docs/MANUAL-VIDEO-SPEC.md`:209・243・267）、
+  赤い言葉の知らせの「赤い枠」「赤い帯」（`lib/manual/content.ts`:225・433・1165〔FAQ「赤い枠が出ていなければ、そのまま送って構いません」〕、`docs/MANUAL-VIDEO-SPEC.md`:244）。
+  エラーの帯（`.create-error`）も細い線で囲んだ枠なので、ch7 の「赤い枠」（`lib/manual/content.ts`:1082・1139、`docs/MANUAL-VIDEO-SPEC.md`:320・327）もそのまま通じる。
+- **まだ直していない文書**（D1b でまとめて）: `lib/manual/content.ts`:413（「上に並んだ5つのボタン」── 文字のタブ）・
   913・1036（救済モードへは、つくるのタブの行の右端「一式まとめて（救済モード）」から入る）、
-  `docs/MANUAL-VIDEO-SPEC.md`:207（ch1 #6「画面の上に並ぶ帳票の種類」── 形が文字のタブに）・209（ch1 #8）・243（ch3 #6）・267（ch4 #10）（どれも送る前に見る画面を「緑の帯」と書いている）、公開中の ch1・ch3・ch4 の動画（旧い送る前の画面が映っている）。
-- **安全に関わる古い文（発表する人にも伝える）**: `lib/manual/content.ts`:1165（FAQ「置き換えたものはありません」の答え「赤い枠が出ていなければ、そのまま「この内容でAIに送る」を押して構いません」）。
-  R1 の前は赤い言葉の知らせ（`.presend-nav`）がレンガ色の線で囲んだ箱だったが、いまは枠でなく線で区切った帯の赤い文字なので、**文字どおり読むと赤い言葉があっても送ってよいことになる**。
-  書き直しは D1b だが、それまでは口頭で「赤い文字の知らせが出ていなければ」と読み替えて伝える。
-  なお、エラーの帯（`.create-error`）は細い線で囲んだ枠のままなので、ch7 の「赤い枠」（`lib/manual/content.ts`:1082・1139、`docs/MANUAL-VIDEO-SPEC.md`:320・327）はエラーの説明としてそのまま通じる。
+  `docs/MANUAL-VIDEO-SPEC.md`:207（ch1 #6「画面の上に並ぶ帳票の種類」）・239（ch3 #2「5つの書類ボタン」）（形が文字のタブに）、
+  公開中の ch1・ch3 の動画（書類の種類がボタンの並びで、送る前の画面の帯と枠が角の丸い箱で映っている ── 色の呼び方〔緑の帯・赤い枠〕と文字は今と同じ）。
 
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
@@ -342,7 +344,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記。同日: 利用者の作業台（一覧の表・右の 440px の区画・上の帯への差し込み・ClientsContext・勝手に選ばない ── A5）を追記し、利用者の2画面を .legacy-page から外した。同日: A5 の検証の直し（表の見出しの行の高さぶん区画の --sticky-top を下げる・氏名を記号で表示する約束の1行を表の上に戻した）を追記。同日: 開いた書類の承認（G4）の操作を components/clients/DocumentPanel.tsx へ中身を変えずに移し、検査を足した（A6 U3a）。同日: 利用者の区画（ClientPane・書類は種類ごとの1行と以前の版・?doc= で開く・区画を 640px に広げる）を追記（A6 U3b）。同日: つくるの見た目（文字のタブ・一式まとめての入口・線で区切る部品・Card と PageHeader の見た目 ── R1）を追記し、つくるを .legacy-page から外した。同日: R1 の検証の直し（つくるの「まだ直していない文書」の行番号を正し、動画台本の「緑の帯」3か所を足し、赤い言葉があっても送ってよいと読める FAQ〔content.ts:1165〕を安全に関わる古い文として別に挙げた）*
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記。同日: 利用者の作業台（一覧の表・右の 440px の区画・上の帯への差し込み・ClientsContext・勝手に選ばない ── A5）を追記し、利用者の2画面を .legacy-page から外した。同日: A5 の検証の直し（表の見出しの行の高さぶん区画の --sticky-top を下げる・氏名を記号で表示する約束の1行を表の上に戻した）を追記。同日: 開いた書類の承認（G4）の操作を components/clients/DocumentPanel.tsx へ中身を変えずに移し、検査を足した（A6 U3a）。同日: 利用者の区画（ClientPane・書類は種類ごとの1行と以前の版・?doc= で開く・区画を 640px に広げる）を追記（A6 U3b）。同日: つくるの見た目（文字のタブ・一式まとめての入口・線で区切る部品・Card と PageHeader の見た目 ── R1）を追記し、つくるを .legacy-page から外した。同日: R1 の検証の直し（つくるの「まだ直していない文書」の行番号を正し、動画台本の「緑の帯」3か所を足し、赤い言葉があっても送ってよいと読める FAQ〔content.ts:1165〕を安全に関わる古い文として別に挙げた）。同日: R1 の検証の直し②（使い方が色で指している送る前の画面の「緑の帯」〔.presend-head〕と「赤い枠」〔.presend-nav の --red-word の線〕を戻し、消えないよう globals.test / PreSendPreview.test で見張る。FAQ〔content.ts:1165〕を含む「緑の帯」「赤い枠」の文は書き直さずに正しい文へ戻ったので、まだ直していない文書の一覧から外した）*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*
