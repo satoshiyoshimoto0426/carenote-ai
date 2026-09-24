@@ -129,7 +129,8 @@ export default function ClientTable({ selectedId }: { selectedId: string | null 
 export function ClientSearchField() {
   const { query, setQuery } = useClients();
   return (
-    <label className="clients-search">
+    // スマホ（768px 未満）では上の帯が狭く、欄が潰れて空の箱に見えたので出さない（2026-09-24。ClientsLayout.tsx の説明を参照）
+    <label className="clients-search max-md:hidden">
       <IconSearch size={15} />
       <input
         type="search"
