@@ -14,10 +14,12 @@
  * 何と繋がるか:
  *   保存先 = /api/transcripts（暗号化して client_transcripts へ）
  *   読み返し = components/clients/SavedTranscripts.tsx（利用者の画面）
+ *   保存先の候補 = GET /api/clients（lib/clients/useClientList.ts 経由。読めなければ
+ *   「利用者一覧を読めませんでした」を出す ── 以前は黙って選択肢が空になっていた・2026-09-23）
  */
 import { useEffect, useState } from "react";
+import { useClientList } from "@/lib/clients/useClientList";
 import { TITLE_MAX_CHARS, type TranscriptKind } from "@/lib/privacy/transcriptInput";
-import type { ClientRecord } from "@/types/client";
 
 interface Props {
   /** 保存する本文（メモ欄の中身） */
@@ -27,30 +29,17 @@ interface Props {
   secondaryClass: string;
 }
 
+/**
+ * 「この欄の内容を記録として残す（任意）」の欄（保存先の利用者・見出し・残すボタン）。text が空なら何も描かない。
+ * 呼ぶ側: components/create/NotesField.tsx（/create の録音の入口がある欄の下）。
+ */
 export default function SaveTranscriptBar({ text, kind, inputClass, secondaryClass }: Props) {
-  const [clients, setClients] = useState<ClientRecord[]>([]);
+  const clientList = useClientList();
   const [clientId, setClientId] = useState("");
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const res = await fetch("/api/clients");
-        if (!res.ok) return;
-        const list = (await res.json()) as ClientRecord[];
-        if (alive) setClients(list);
-      } catch {
-        // 一覧が取れなければ保存先を選べないだけ。画面は壊さない
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   // 本文が変わったら「保存しました」を取り下げる（別の内容を保存済みに見せない）
   // biome-ignore lint/correctness/useExhaustiveDependencies: 理由: 本文の変化そのものが合図なので text を依存に入れる
@@ -81,23 +70,24 @@ export default function SaveTranscriptBar({ text, kind, inputClass, secondaryCla
   if (text.trim().length === 0) return null;
 
   return (
-    <div className="mt-2 rounded-[8px] border border-[var(--line)] bg-[var(--surface)] p-2.5">
-      <p className="text-xs font-medium text-[var(--ink)]">この欄の内容を記録として残す（任意）</p>
-      <p className="mt-1 text-xs text-[var(--muted)]">
+    // A案（R1・2026-09-24）: 角を丸めた箱をやめ、上に 1px の線を引いた区切りにした。文字と並びは以前のまま
+    <div className="mt-4 border-t border-[var(--line-inner)] pt-3.5">
+      <p className="section-label">この欄の内容を記録として残す（任意）</p>
+      <p className="mt-1.5 text-xs leading-[1.8] text-[var(--muted)]">
         あとで「言った・言わない」を確かめたいときに残します。いま上の欄に書かれている全文
         （録音から起こした文章も、手で書き足した部分も）を、実名が入ったまま暗号化して保存します。
         保存から5年を過ぎたら消す決まりですが、いまは自動で消えません（管理者がまとめて消します）。
         残さない場合は、画面を離れた時点で消えます。
       </p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
         <select
           value={clientId}
           onChange={(e) => setClientId(e.target.value)}
-          className={`${inputClass} h-9 w-auto py-0`}
+          className={`${inputClass} max-w-full`}
           aria-label="保存先の利用者"
         >
           <option value="">保存先の利用者を選ぶ</option>
-          {clients.map((c) => (
+          {clientList.clients.map((c) => (
             <option key={c.id} value={c.id}>
               {c.code}様
             </option>
@@ -109,7 +99,7 @@ export default function SaveTranscriptBar({ text, kind, inputClass, secondaryCla
           onChange={(e) => setTitle(e.target.value)}
           maxLength={TITLE_MAX_CHARS}
           placeholder="見出し（例: 9月17日 担当者会議）"
-          className={`${inputClass} h-9 w-56 py-0`}
+          className={`${inputClass} w-72 max-w-full`}
           aria-label="見出し"
         />
         <button
@@ -122,6 +112,16 @@ export default function SaveTranscriptBar({ text, kind, inputClass, secondaryCla
         </button>
         {done && <span className="text-xs font-medium text-[var(--green)]">保存しました</span>}
       </div>
+      {clientList.status === "error" && (
+        <div role="alert" className="mt-1.5 flex flex-wrap items-center gap-2">
+          <p className="text-xs font-medium text-[var(--clay)]">
+            {clientList.message} 保存先の利用者を選べないため、いまは記録として残せません。
+          </p>
+          <button type="button" onClick={clientList.reload} className={secondaryClass}>
+            一覧をもう一度読む
+          </button>
+        </div>
+      )}
       <p className="mt-1.5 text-xs text-[var(--faint)]">
         見出しには実名を書かないでください（一覧にそのまま出ます）。
       </p>

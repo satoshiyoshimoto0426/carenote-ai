@@ -5,6 +5,7 @@ import { readPrivateBlob } from "@/lib/blob/readPrivate";
 import { saveEvaluation } from "@/lib/db";
 import { EVALUATION_CRITERIA } from "@/lib/evaluationCriteria";
 import { parseEvaluationJson } from "@/lib/parseEvaluationJson";
+import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
 import { isBlobUrl } from "@/lib/rescue/sourceDocs";
 
 export const maxDuration = 120;
@@ -26,21 +27,26 @@ export async function POST(req: NextRequest) {
   let blobUrl: string | null = null;
   let fileName: string;
 
+  // 本文は lib/requestBody.ts の readJsonObject で読む（オブジェクトでなければ 400。2026-09-24 検収の指摘で他の入口と揃えた）
+  const body = await readJsonObject(req);
+  if (!body) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
+
   try {
-    const body = await req.json();
-    fileName = body.fileName || "document.pdf";
+    fileName =
+      typeof body.fileName === "string" && body.fileName !== "" ? body.fileName : "document.pdf";
 
     if (body.blobUrl) {
       // ── Vercel Blob 経由（本番） ──
-      blobUrl = body.blobUrl as string;
+      // 文字列でなければ空にして、下の許可リストで止める（読みに行かない）
+      blobUrl = typeof body.blobUrl === "string" ? body.blobUrl : "";
       // 自前の非公開ストア以外は読みに行かない（SSRF 対策）。非公開なので認証つき get() で読む
       if (!isBlobUrl(blobUrl)) throw new Error("Blob URL not allowed");
       const arrayBuffer = await readPrivateBlob(blobUrl);
       if (!arrayBuffer) throw new Error("Blob not found");
       base64 = Buffer.from(arrayBuffer).toString("base64");
-    } else if (body.pdf) {
+    } else if (typeof body.pdf === "string" && body.pdf !== "") {
       // ── base64 直接送信（ローカル開発用フォールバック） ──
-      base64 = body.pdf as string;
+      base64 = body.pdf;
     } else {
       return NextResponse.json({ error: "PDFデータがありません。" }, { status: 400 });
     }

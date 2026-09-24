@@ -7,7 +7,6 @@ import {
   type DragEvent,
   Fragment,
   type ReactNode,
-  useEffect,
   useRef,
   useState,
 } from "react";
@@ -38,6 +37,8 @@ import {
   SectionTitle,
   textareaClass,
 } from "@/components/ui/primitives";
+import { useClientList } from "@/lib/clients/useClientList";
+import { DOC_ORDER, DOC_TYPE_LABELS } from "@/lib/create/docTypes";
 import {
   assessmentToText,
   carePlanToText,
@@ -53,12 +54,11 @@ import {
   type IntakeResult,
 } from "@/lib/generation/intakeTypes";
 import type { RescueBundle } from "@/lib/generation/rescue";
+import { type BundleSaveProgress, saveBundleDocuments } from "@/lib/rescue/saveBundle";
 import { safeExtension } from "@/lib/rescue/sourceDocs";
 
 /** 受け付ける資料の形式（blob-upload・rescueIntake と一致） */
 const ACCEPTED_TYPES: readonly string[] = INTAKE_MEDIA_TYPES;
-
-import type { ClientRecord } from "@/types/client";
 
 type DocKey = keyof RescueBundle;
 
@@ -81,14 +81,17 @@ const TIMELINE_PLACEHOLDER = [
   "5月 自宅で転倒、通所を週2に増回",
 ].join("\n");
 
-/** 表示順とラベル（ケアマネジメントの流れ順）。 */
-const DOC_ORDER: { key: DocKey; label: string }[] = [
-  { key: "assessment", label: "アセスメント（課題分析）" },
-  { key: "carePlan", label: "ケアプラン 第1・2表" },
-  { key: "meetingSummary", label: "第4表 サービス担当者会議の要点" },
-  { key: "supportLog", label: "第5表 支援経過" },
-  { key: "monitoring", label: "モニタリング" },
-];
+/**
+ * 表示順とラベル（ケアマネジメントの流れ順）。順と名前の正本は lib/create/docTypes.ts
+ * （この画面の見出しは DocTypeLabels の bundle）。
+ */
+const BUNDLE_DOCS: { key: DocKey; label: string }[] = DOC_ORDER.map((key) => ({
+  key,
+  label: DOC_TYPE_LABELS[key].bundle,
+}));
+
+/** 保存する順（表示順と同じ）。lib/rescue/saveBundle.ts へ渡す。 */
+const DOC_KEYS: readonly DocKey[] = BUNDLE_DOCS.map((d) => d.key);
 
 /** 帳票カード内のコピー用・小さめのセカンダリボタン（primitives の小サイズ版）。 */
 const btnSecondarySmall =
@@ -208,25 +211,45 @@ function DocView({ docKey, bundle }: { docKey: DocKey; bundle: RescueBundle }) {
   }
 }
 
-/** 救済モード共通の注意書き。amber の左ボーダー帯（下書き・要事実照合の明示）。 */
+/**
+ * 救済モード共通の注意書き。注意の黄色（amber）の帯（下書き・要事実照合の明示）。
+ * A案（R1・2026-09-24）で左だけ太い線の飾りをやめ、細い線で囲む帯にした（文字は以前のまま）。
+ */
 function AmberNotice({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-r-[8px] border-l-4 border-[var(--amber)] bg-[var(--amber-soft)] px-4 py-3">
+    <div className="border border-[var(--amber-line)] bg-[var(--amber-soft)] px-4 py-3">
       <p className="text-xs leading-relaxed text-[var(--amber)]">{children}</p>
     </div>
   );
 }
 
-/** エラー表示帯。clay の枠＋アイコンで明瞭に。 */
+/** エラー表示帯。レンガ色（clay）の地＋細い線＋アイコンで明瞭に（A案 R1 で角の丸みを外した）。 */
 function ErrorNotice({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2.5 rounded-[8px] border border-[var(--clay)] bg-[var(--clay-soft)] px-4 py-3">
+    <div className="flex items-start gap-2.5 border border-[var(--clay-line)] bg-[var(--clay-soft)] px-4 py-3">
       <IconAlert size={16} className="mt-0.5 shrink-0 text-[var(--clay)]" />
       <p className="text-sm leading-relaxed text-[var(--clay)]">{message}</p>
     </div>
   );
 }
 
+/**
+ * 救済モード（/rescue）。人物像・時系列・参考資料（PDF・画像 最大5件）から、アセスメント〜モニタリングの
+ * 5帳票の下書きを一式で作り、表示・コピーし、選んだ（または新しい）利用者に保存する画面。
+ *
+ * なぜあるか: 書類が揃っていない方でも、手元の情報から一式の下書きをまとめて起こせるようにするため
+ * （情報が足りない部分も AI が想定して埋めるので、画面の amber の注意書きで「下書き・事実の照合が要る」と伝える）。
+ * 作り直し計画では「つくる」の「一式まとめて」へ移す予定（吉本さん決定 2026-09-23・後のマイルストーン）。
+ *
+ * 繋がる先: 資料は POST /api/blob-upload 経由で非公開の Blob へ上げ、POST /api/rescue で一式を生成する。
+ * 保存は GET /api/clients（lib/clients/useClientList.ts で読む）で行き先を選び、新しい利用者なら
+ * POST /api/clients、各帳票は POST /api/documents（source: "rescue"）。保存の順と押し直しは
+ * lib/rescue/saveBundle.ts が受け持つ（途中で失敗したら、押し直しは同じ利用者へ残りの帳票だけ ── 2026-09-24 検収）。
+ * 利用者一覧を読めるまで保存を止める（saveBlocked）── 読めないまま進むと行き先が「新しい利用者として保存」
+ * だけになり、同じ方を黙って二重に登録してしまうため（2026-09-23 作り直し計画 U0 の検収）。
+ * 入口: 利用者の区画（components/clients/ClientPane.tsx）の「一式まとめて」（/rescue?client={id}）。
+ * 左のナビ（lib/nav.ts）に項目は無く、/rescue は「つくる」の中として光る（以前の左メニュー Sidebar.tsx は A案で外した）。
+ */
 export default function RescuePage() {
   const [persona, setPersona] = useState<PersonaForm>(EMPTY_PERSONA);
   const [timeline, setTimeline] = useState("");
@@ -242,24 +265,31 @@ export default function RescuePage() {
   const [docTypes, setDocTypes] = useState<Record<string, IntakeDocType>>({});
   const fileKey = (f: File) => `${f.name}-${f.size}`;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [clients, setClients] = useState<ClientRecord[]>([]);
+  // 結果が出たら、保存先の利用者候補を読み込む（結果が出るたびに読み直す）
+  const clientList = useClientList(bundle !== null);
+  /**
+   * 一覧を読めるまで保存させない（2026-09-23 検収の指摘）。
+   * 読めないまま進むと、選べる行き先が「新しい利用者として保存」だけになり、同じ方を黙って
+   * 二重に登録してしまう（記録が2か所に分かれる。氏名の表記が少し違うと名簿の安全網が
+   * 事業所全体の送信を止める）。読み込み中も同じ理由で止める。
+   */
+  const saveBlocked = clientList.status !== "ready";
   const [targetClientId, setTargetClientId] = useState("");
   const [newClientName, setNewClientName] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedClientId, setSavedClientId] = useState<string | null>(null);
+  /**
+   * 保存の途中経過（2026-09-24 検収の指摘）。途中の1枚で失敗したら、作った利用者と保存済みの帳票をここに残し、
+   * 押し直しでは同じ利用者へ残りの帳票だけを保存する（もう1人作らない・二重に保存しない）。
+   * 一式を作り直したら捨てる（前の一式の途中経過を、別の一式に当てない）。
+   */
+  const [saveProgress, setSaveProgress] = useState<BundleSaveProgress<DocKey> | null>(null);
 
-  // 結果が出たら、保存先の利用者候補を読み込む
-  useEffect(() => {
-    if (!bundle) return;
-    (async () => {
-      try {
-        const resp = await fetch("/api/clients");
-        if (resp.ok) setClients((await resp.json()) as ClientRecord[]);
-      } catch {
-        // 候補の取得失敗は致命的でない（新規利用者として保存できる）
-      }
-    })();
-  }, [bundle]);
+  /** 一式が変わるときに、前の一式の保存の結果と途中経過を捨てる（別の一式を「保存しました」と見せない）。 */
+  const resetSave = () => {
+    setSavedClientId(null);
+    setSaveProgress(null);
+  };
 
   const setField = (key: keyof PersonaForm, value: string) =>
     setPersona((p) => ({ ...p, [key]: value }));
@@ -314,6 +344,7 @@ export default function RescuePage() {
     setError(null);
     setBundle(null);
     setIntake(null);
+    resetSave();
     try {
       // ── Step 1: 参考資料を Vercel Blob へアップロード（evaluate と同じ経路） ──
       let sourceDocs: SourceDoc[] | undefined;
@@ -374,7 +405,7 @@ export default function RescuePage() {
 
   const copyAll = async () => {
     if (!bundle) return;
-    const all = DOC_ORDER.map(
+    const all = BUNDLE_DOCS.map(
       ({ key, label }) => `==== ${label} ====\n${docToText(key, bundle)}`,
     ).join("\n\n\n");
     await navigator.clipboard.writeText(all);
@@ -382,35 +413,23 @@ export default function RescuePage() {
     setTimeout(() => setCopiedKey(null), 1500);
   };
 
-  // 生成した5帳票を、選択した（または新規の）利用者に保存する
+  // 生成した5帳票を、選択した（または新規の）利用者に保存する。途中で失敗したら、押し直しは
+  // 同じ利用者へ残りの帳票だけを保存する（lib/rescue/saveBundle.ts・2026-09-24 検収の指摘）
   const saveBundle = async () => {
-    if (!bundle) return;
+    if (!bundle || saveBlocked) return;
     setSaving(true);
     setError(null);
     try {
-      let clientId = targetClientId;
-      if (!clientId) {
-        const resp = await fetch("/api/clients", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: newClientName.trim() || undefined }),
-        });
-        const created = await resp.json();
-        if (!resp.ok) throw new Error(created.error || "利用者の作成に失敗しました");
-        clientId = (created as ClientRecord).id;
-      }
-      for (const { key } of DOC_ORDER) {
-        const resp = await fetch("/api/documents", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientId, docType: key, content: bundle[key], source: "rescue" }),
-        });
-        if (!resp.ok) {
-          const d = await resp.json();
-          throw new Error(d.error || "保存に失敗しました");
-        }
-      }
-      setSavedClientId(clientId);
+      const done = await saveBundleDocuments({
+        bundle,
+        keys: DOC_KEYS,
+        targetClientId,
+        targetClientCode: clientList.clients.find((c) => c.id === targetClientId)?.code ?? null,
+        newClientName,
+        progress: saveProgress,
+        onProgress: setSaveProgress,
+      });
+      setSavedClientId(done.clientId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存に失敗しました");
     } finally {
@@ -419,7 +438,7 @@ export default function RescuePage() {
   };
 
   return (
-    <div className="app-page">
+    <div className="legacy-page app-page">
       <PageHeader
         title="書類一式をつくる"
         description="利用者の人物像・診療情報などを入力すると、アセスメントからモニタリングまで5帳票の下書きを一括で作成します。"
@@ -644,7 +663,7 @@ export default function RescuePage() {
 
               {/* 資料どうしの食い違い（人が確かめる） */}
               {(intake.conflicts?.length ?? 0) > 0 && (
-                <div className="rounded-r-[8px] border-l-4 border-[var(--clay)] bg-[var(--clay-soft)] px-4 py-3">
+                <div className="border border-[var(--clay-line)] bg-[var(--clay-soft)] px-4 py-3">
                   <p className="text-xs font-semibold text-[var(--clay)]">
                     資料どうしの食い違い（<span className="tnum">{intake.conflicts.length}</span>
                     件・確かめてから使う）
@@ -700,7 +719,7 @@ export default function RescuePage() {
                 </details>
               )}
               {intake.cautions.length > 0 && (
-                <div className="rounded-r-[8px] border-l-4 border-[var(--amber)] bg-[var(--amber-soft)] px-4 py-3">
+                <div className="border border-[var(--amber-line)] bg-[var(--amber-soft)] px-4 py-3">
                   <p className="text-xs font-semibold text-[var(--amber)]">要注意点</p>
                   <ul className="mt-1.5 space-y-1">
                     {intake.cautions.map((c) => (
@@ -742,43 +761,93 @@ export default function RescuePage() {
           ) : (
             <div className="space-y-4 rounded-[10px] border border-[var(--green-line)] bg-[var(--green-soft)] p-5">
               <SectionTitle>利用者に保存</SectionTitle>
-              <Field label="保存先の利用者" htmlFor="save-client">
-                <select
-                  id="save-client"
-                  value={targetClientId}
-                  onChange={(e) => setTargetClientId(e.target.value)}
-                  className={inputClass}
-                >
-                  <option value="">新しい利用者として保存</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id} className="code-chip">
-                      {c.code}様
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              {!targetClientId && (
-                <Field
-                  label="氏名（任意）"
-                  htmlFor="new-client-name"
-                  hint="暗号化して保存し、画面には記号で表示されます"
-                >
-                  <input
-                    id="new-client-name"
-                    value={newClientName}
-                    onChange={(e) => setNewClientName(e.target.value)}
-                    placeholder="例: 山田 花子"
-                    className={inputClass}
-                  />
-                </Field>
+              {saveProgress ? (
+                // 途中まで保存した後は、保存先を選び直させない（一式を2人に分けない・もう1人作らない）
+                <p className="text-sm leading-relaxed text-[var(--ink)]">
+                  保存先は
+                  {saveProgress.clientCode ? (
+                    <span className="code-chip mx-1">{saveProgress.clientCode}様</span>
+                  ) : saveProgress.createdClient ? (
+                    "この保存で新しく登録した利用者"
+                  ) : (
+                    "選んだ利用者"
+                  )}
+                  {saveProgress.clientCode && saveProgress.createdClient
+                    ? "（この保存で新しく登録）"
+                    : ""}
+                  に決まっています。保存済みは
+                  <span className="tnum mx-1">{saveProgress.savedKeys.length}</span>
+                  帳票です。もう一度押すと、残りの
+                  <span className="tnum mx-1">
+                    {DOC_KEYS.length - saveProgress.savedKeys.length}
+                  </span>
+                  帳票を同じ利用者に保存します。
+                </p>
+              ) : (
+                <>
+                  <Field label="保存先の利用者" htmlFor="save-client">
+                    <select
+                      id="save-client"
+                      value={targetClientId}
+                      onChange={(e) => setTargetClientId(e.target.value)}
+                      disabled={saveBlocked}
+                      className={inputClass}
+                    >
+                      <option value="">新しい利用者として保存</option>
+                      {clientList.clients.map((c) => (
+                        <option key={c.id} value={c.id} className="code-chip">
+                          {c.code}様
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {clientList.status === "loading" && (
+                    <p className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                      <IconLoader size={14} className="animate-spin" />
+                      利用者一覧を読み込み中…
+                    </p>
+                  )}
+                  {clientList.status === "error" && (
+                    <div role="alert" className="space-y-3">
+                      <ErrorNotice
+                        message={`${clientList.message} 同じ方を二重に登録しないよう、一覧を読めるまで「新しい利用者として保存」を止めています。`}
+                      />
+                      <button type="button" onClick={clientList.reload} className={btnSecondary}>
+                        一覧をもう一度読む
+                      </button>
+                    </div>
+                  )}
+                  {!targetClientId && !saveBlocked && (
+                    <Field
+                      label="氏名（任意）"
+                      htmlFor="new-client-name"
+                      hint="暗号化して保存し、画面には記号で表示されます"
+                    >
+                      <input
+                        id="new-client-name"
+                        value={newClientName}
+                        onChange={(e) => setNewClientName(e.target.value)}
+                        placeholder="例: 山田 花子"
+                        className={inputClass}
+                      />
+                    </Field>
+                  )}
+                </>
               )}
               {error && <ErrorNotice message={error} />}
-              <button type="button" onClick={saveBundle} disabled={saving} className={btnPrimary}>
+              <button
+                type="button"
+                onClick={saveBundle}
+                disabled={saving || saveBlocked}
+                className={btnPrimary}
+              >
                 {saving ? (
                   <>
                     <IconLoader size={16} className="animate-spin" />
                     保存中…
                   </>
+                ) : saveProgress ? (
+                  `残りの${DOC_KEYS.length - saveProgress.savedKeys.length}帳票を保存`
                 ) : (
                   "この利用者に5帳票を保存"
                 )}
@@ -813,7 +882,7 @@ export default function RescuePage() {
             </button>
           </div>
 
-          {DOC_ORDER.map(({ key, label }) => (
+          {BUNDLE_DOCS.map(({ key, label }) => (
             <Card key={key} className="space-y-4 p-6">
               <div className="flex items-center justify-between gap-3">
                 <SectionTitle>{label}</SectionTitle>

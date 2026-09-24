@@ -7,7 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * なぜ必要か:
  *   範囲の作り方（lib/db/clients.ts の scopeExpr）はテスト済みでも、**ルートが orgId を渡し忘れる**と
  *   事業所の名簿が読まれず、同僚が登録した利用者の実名が黒塗りされないまま AI へ出る。
- *   ルートは9本あり、1本落ちても他のテストは緑のままなので、ここでまとめて縛る。
+ *   範囲を使うルートは **12ファイル・17ハンドラ**（2026-09-24 に書類の日付の入口を足した。2026-09-23 の数え直しで
+ *   11ファイル・16ハンドラ。以前の「9本」は数え違い）。
+ *   1本落ちても他のテストは緑のままなので、ここでまとめて縛る。
+ *   範囲を使うルートを足したら、ここにも足して上の数を直す（`grep -rl resolveScope app/api` で数える）。
  */
 
 const SCOPE = { userId: "user_abc", orgId: "org_xyz" };
@@ -41,6 +44,12 @@ vi.mock("@/lib/db/transcripts", async (importOriginal) => {
   return { ...orig, ...transcripts };
 });
 
+const documents = vi.hoisted(() => ({ saveDocument: vi.fn(), getLatestDocMeta: vi.fn() }));
+vi.mock("@/lib/db/documents", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/lib/db/documents")>();
+  return { ...orig, ...documents };
+});
+
 const clerk = await import("@clerk/nextjs/server");
 const { AliasLoadError } = await import("@/lib/db/clients");
 const { GET: listClients, POST: createClient } = await import("@/app/api/clients/route");
@@ -59,6 +68,8 @@ const { POST: saveTranscript, GET: listTranscripts } = await import("@/app/api/t
 const { GET: readTranscript, DELETE: deleteTranscript } = await import(
   "@/app/api/transcripts/[id]/route"
 );
+const { POST: saveDocument } = await import("@/app/api/documents/route");
+const { GET: latestDocs } = await import("@/app/api/clients/latest-docs/route");
 
 function post(path: string, body: unknown) {
   return new NextRequest(`http://localhost${path}`, {
@@ -88,6 +99,8 @@ beforeEach(() => {
   transcripts.getTranscriptsByClient.mockResolvedValue([]);
   transcripts.getTranscriptText.mockResolvedValue(null);
   transcripts.deleteTranscript.mockResolvedValue(false);
+  documents.saveDocument.mockResolvedValue(null);
+  documents.getLatestDocMeta.mockResolvedValue([]);
 });
 
 describe("AI へ送る4つの入口は、事業所の範囲で名簿を読む", () => {
@@ -120,7 +133,15 @@ describe("ログイン情報が壊れていたら、どの入口も同じ形で�
   it.each([
     ["/api/generate", () => generate(post("/api/generate", { documentType: "supportLog" }))],
     ["/api/clients", () => listClients()],
+    ["GET /api/clients/latest-docs", () => latestDocs()],
     ["/api/clients/[id]", () => getClient(new NextRequest("http://localhost/api/clients/c1"), ctx)],
+    [
+      "POST /api/documents",
+      () =>
+        saveDocument(
+          post("/api/documents", { clientId: "c1", docType: "assessment", content: { a: 1 } }),
+        ),
+    ],
   ])("%s は 503 と JSON を返す", async (_name, call) => {
     const res = await call();
     expect(res.status).toBe(503);
@@ -130,6 +151,8 @@ describe("ログイン情報が壊れていたら、どの入口も同じ形で�
     expect(db.getClientAliases).not.toHaveBeenCalled();
     expect(db.getClients).not.toHaveBeenCalled();
     expect(db.getClientById).not.toHaveBeenCalled();
+    expect(documents.saveDocument).not.toHaveBeenCalled();
+    expect(documents.getLatestDocMeta).not.toHaveBeenCalled();
   });
 });
 
@@ -186,7 +209,7 @@ describe("名簿を見せる・書き換える入口も同じ範囲を使う", (
 /**
  * 文字起こしの入口（2026-09-17 追加）。
  * ここは**黒塗りが効かない生の実名**を出し入れする経路なので、範囲を渡し忘れると
- * 他事業所の会議録が読めてしまう。上の9本と同じ見張りに入れる。
+ * 他事業所の会議録が読めてしまう。上の入口と同じ見張りに入れる。
  */
 describe("保存した文字起こしの入口も、同じ範囲を使う", () => {
   it("POST /api/transcripts", async () => {
@@ -209,5 +232,47 @@ describe("保存した文字起こしの入口も、同じ範囲を使う", () =
   it("DELETE /api/transcripts/[id]", async () => {
     await deleteTranscript(new NextRequest("http://localhost/api/transcripts/t1"), ctx);
     expect(transcripts.deleteTranscript).toHaveBeenCalledWith("c1", SCOPE);
+  });
+});
+
+/**
+ * 書類を利用者に保存する入口（2026-09-23 追加・作り直し計画 S1）。
+ * 以前は範囲を使わず、保存先の利用者が見えるかも確かめていなかった（他事業所の利用者に書類を紐づけられた）。
+ * 見えるかどうかの判定を名簿と同じ getClientById に一本化したので、範囲がそこまで届くことを縛る。
+ */
+describe("書類を保存する入口も、同じ範囲で保存先の利用者を確かめる", () => {
+  it("POST /api/documents", async () => {
+    const res = await saveDocument(
+      post("/api/documents", { clientId: "c1", docType: "assessment", content: { a: 1 } }),
+    );
+    expect(db.getClientById).toHaveBeenCalledWith("c1", SCOPE);
+    // 見えない利用者（この偽物の既定は null）には保存しない
+    expect(res.status).toBe(404);
+    expect(documents.saveDocument).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 利用者一覧の日付の列の入口（2026-09-24 追加・作り直し計画 U5）。
+ * 利用者は名簿と同じ範囲（getClients）、書類はログイン中の職員が保存したもの（created_by）だけを読む。
+ * 範囲を渡し忘れると、他事業所の利用者の書類の日付が一覧に出る。
+ */
+describe("書類の日付の入口も、同じ範囲の利用者だけを見る", () => {
+  it("GET /api/clients/latest-docs", async () => {
+    db.getClients.mockResolvedValue([
+      {
+        id: "c1",
+        orgId: SCOPE.orgId,
+        code: "A",
+        attributes: {},
+        createdBy: "user_other",
+        createdAt: "2026-09-01T00:00:00+00:00",
+        updatedAt: "2026-09-01T00:00:00+00:00",
+      },
+    ]);
+    const res = await latestDocs();
+    expect(res.status).toBe(200);
+    expect(db.getClients).toHaveBeenCalledWith(SCOPE);
+    expect(documents.getLatestDocMeta).toHaveBeenCalledWith(["c1"], SCOPE.userId);
   });
 });

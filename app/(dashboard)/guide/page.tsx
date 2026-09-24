@@ -60,7 +60,7 @@ const CALLOUT_STYLE: Record<
 
 export default function GuidePage() {
   return (
-    <div className="app-page">
+    <div className="legacy-page app-page">
       <PageHeader
         title="使い方"
         description="はじめての方は ① から順に読んでください。各章の動画は、実際の画面を録画したものです。"
@@ -159,8 +159,10 @@ function TableOfContents() {
 
 function ChapterBlock({ chapter }: { chapter: ManualChapter }) {
   return (
-    // モバイルは上の固定バー（約59px）に隠れるので余白を多めに取る
-    <section id={chapter.id} className="mb-10 scroll-mt-[76px] md:scroll-mt-6">
+    // 章へ飛んだとき、見出しは上に貼りつく帯（どの幅でも出る）の 8px 下に止まる。
+    // 章ごとの指定は要らない ── globals.css の html の scroll-padding-top（帯の実際の高さ＋8px）が効く
+    // （旧: 章ごとの .shell-anchor、その前はスマホだけ固定の 76px）
+    <section id={chapter.id} className="mb-10">
       <div className="mb-3 flex items-baseline gap-2">
         <span className="text-lg text-[var(--faint)]">{chapter.no}</span>
         <h2 className="text-[20px] font-bold leading-snug text-[var(--ink)]">{chapter.title}</h2>

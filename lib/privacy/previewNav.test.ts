@@ -9,6 +9,7 @@ import {
   excerpt,
   fieldOfCandidate,
   type PreviewHighlights,
+  redWordReasons,
 } from "./previewNav";
 
 /**
@@ -211,5 +212,36 @@ describe("赤い言葉とその前後: candidateContexts", () => {
   it("赤い言葉が無ければ空（出すものが無い）", () => {
     const h = buildHighlights(ORDER, { meetingNotes: "本人から電話。" }, {});
     expect(candidateContexts(h.byField.meetingNotes)).toEqual([]);
+  });
+});
+
+/**
+ * 2026-09-23 の検収:
+ *   開いた欄（3000字以下の欄と、全文を表示した欄）では、理由が <mark title> のふきだしにしか無く、
+ *   タッチ端末の職員は「なぜ赤いか」を読めなかった。欄の下に文字で並べる一覧の作り方を固定する。
+ */
+describe("開いた欄の「なぜ赤いか」: redWordReasons", () => {
+  it("言葉ごとに1行にまとめ、本文に出てくる順に理由と並べる（候補の並び順には従わない）", () => {
+    const h = buildHighlights(
+      ORDER,
+      { meetingNotes: "佐々木さんとひまわり病院へ。帰りに佐々木さん。" },
+      {
+        meetingNotes: [
+          { word: "ひまわり病院", reason: "施設名の可能性" },
+          { word: "佐々木", reason: "敬称の前" },
+        ],
+      },
+    );
+    // 前提: 佐々木は2回出るので、赤い印（番号）は3つ
+    expect(h.total).toBe(3);
+    expect(redWordReasons(h.byField.meetingNotes)).toEqual([
+      { word: "佐々木", reason: "敬称の前" },
+      { word: "ひまわり病院", reason: "施設名の可能性" },
+    ]);
+  });
+
+  it("赤い言葉が無ければ空（出すものが無い）", () => {
+    const h = buildHighlights(ORDER, { meetingNotes: "本人から電話。" }, {});
+    expect(redWordReasons(h.byField.meetingNotes)).toEqual([]);
   });
 });

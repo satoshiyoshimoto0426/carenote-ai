@@ -21,6 +21,9 @@ const calls = vi.hoisted(() => ({
   deleted: [] as string[],
   selectError: null as { code?: string; message?: string } | null,
   insertError: null as { code?: string; message?: string } | null,
+  deleteError: null as { code?: string; message?: string } | null,
+  /** 消す操作が消した行の数（既定 1。0 は「消す間際に他の人が消していた」） */
+  deletedCount: 1,
   row: null as Record<string, unknown> | null,
   rows: [] as Record<string, unknown>[],
 }));
@@ -48,11 +51,26 @@ vi.mock("../supabase/server", () => ({
             error: calls.insertError ?? calls.selectError,
           });
         },
+        // 0件はエラーにしない（行が無ければ data が null）。PostgREST の maybeSingle と同じ
+        maybeSingle() {
+          return Promise.resolve({
+            data: calls.selectError ? null : calls.row,
+            error: calls.selectError,
+          });
+        },
         delete() {
           return {
             eq(_col: string, id: string) {
-              calls.deleted.push(id);
-              return Promise.resolve({ error: null });
+              return {
+                // 消えた行を返させて件数を見る（lib/db/transcripts.ts の deleteTranscript）
+                select() {
+                  if (calls.deleteError)
+                    return Promise.resolve({ data: null, error: calls.deleteError });
+                  calls.deleted.push(id);
+                  const data = Array.from({ length: calls.deletedCount }, () => ({ id }));
+                  return Promise.resolve({ data, error: null });
+                },
+              };
             },
           };
         },
@@ -63,13 +81,23 @@ vi.mock("../supabase/server", () => ({
 }));
 
 const { decryptString, getPiiKey } = await import("@/lib/privacy/crypto");
+const { ClientLookupError } = await import("./clients");
+const { DbAccessError } = await import("./errors");
 const {
   deleteTranscript,
   getTranscriptsByClient,
   getTranscriptText,
   saveTranscript,
+  TRANSCRIPT_DELETE_FAILED_MESSAGE,
+  TRANSCRIPT_READ_FAILED_MESSAGE,
+  TRANSCRIPTS_LOAD_FAILED_MESSAGE,
   TranscriptTableMissingError,
 } = await import("./transcripts");
+
+/** DB につながらないときの失敗（PostgreSQL の connection_failure）。0件や表の未作成とは別物 */
+const DOWN = { code: "08006", message: "connection failure" };
+/** uuid の形でない id を渡したときの失敗。どの行にも当たらないので 0件と同じ扱い */
+const MALFORMED_ID = { code: "22P02", message: "invalid input syntax for type uuid" };
 
 const SCOPE = { userId: "u1", orgId: "org_1" };
 const OTHER = { userId: "u2", orgId: "org_2" };
@@ -93,6 +121,8 @@ beforeEach(() => {
   calls.deleted = [];
   calls.selectError = null;
   calls.insertError = null;
+  calls.deleteError = null;
+  calls.deletedCount = 1;
   calls.rows = [];
   calls.row = { ...rowFor("dummy") };
   clients.getClientById.mockResolvedValue({ id: "c1", code: "A" });
@@ -190,6 +220,15 @@ describe("一覧: getTranscriptsByClient", () => {
       TranscriptTableMissingError,
     );
   });
+
+  it("一覧を DB から読めなければ投げる（空の一覧に見せない ── 2026-09-24 検収の指摘）", async () => {
+    calls.selectError = DOWN;
+    const err = await getTranscriptsByClient("c1", SCOPE).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DbAccessError);
+    expect((err as InstanceType<typeof DbAccessError>).publicMessage).toBe(
+      TRANSCRIPTS_LOAD_FAILED_MESSAGE,
+    );
+  });
 });
 
 describe("本文を読む: getTranscriptText", () => {
@@ -215,11 +254,63 @@ describe("本文を読む: getTranscriptText", () => {
     expect(clients.getClientById).toHaveBeenCalledWith("c-other", SCOPE);
   });
 
+  it("行が無ければ null（0件はエラーにしない maybeSingle で読む）", async () => {
+    calls.row = null;
+    expect(await getTranscriptText("t1", SCOPE)).toBeNull();
+    expect(clients.getClientById).not.toHaveBeenCalled();
+  });
+
+  it("id が uuid の形でなければ null（どの行にも当たらない）", async () => {
+    calls.selectError = MALFORMED_ID;
+    expect(await getTranscriptText("not-a-uuid", SCOPE)).toBeNull();
+  });
+
+  it("行を DB から読めなければ投げる（「見つかりませんでした」と答えない ── 2026-09-24 検収の指摘）", async () => {
+    calls.selectError = DOWN;
+    const err = await getTranscriptText("t1", SCOPE).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DbAccessError);
+    expect((err as InstanceType<typeof DbAccessError>).publicMessage).toBe(
+      TRANSCRIPT_READ_FAILED_MESSAGE,
+    );
+    expect(clients.getClientById).not.toHaveBeenCalled();
+  });
+
   it("鍵が違えば復号で例外になる（黙って空を返さない）", async () => {
     const { encryptString } = await import("@/lib/privacy/crypto");
     calls.row = rowFor(encryptString(SECRET, getPiiKey()));
     process.env.CARENOTE_PII_KEY = Buffer.alloc(32, 9).toString("base64");
     await expect(getTranscriptText("t1", SCOPE)).rejects.toBeTruthy();
+  });
+});
+
+/**
+ * 親の利用者を DB から読めなかったとき（2026-09-24 検収の指摘）。
+ * getClientById は ClientLookupError を投げるので、ここで握って「見えない」と答えない。
+ * 入口（app/api/transcripts/*）が 503 と職員向けの文言にする。
+ */
+describe("親の利用者を DB から読めなかったとき", () => {
+  const lookupFailed = () => clients.getClientById.mockRejectedValue(new ClientLookupError("down"));
+
+  it("保存は投げる（client_not_visible と答えない・DBにも書かない）", async () => {
+    lookupFailed();
+    await expect(save()).rejects.toBeInstanceOf(ClientLookupError);
+    expect(calls.inserted).toBeNull();
+  });
+
+  it("一覧は投げる（空の一覧に見せない）", async () => {
+    lookupFailed();
+    await expect(getTranscriptsByClient("c1", SCOPE)).rejects.toBeInstanceOf(ClientLookupError);
+  });
+
+  it("本文を読むときは投げる（見つからないと答えない）", async () => {
+    lookupFailed();
+    await expect(getTranscriptText("t1", SCOPE)).rejects.toBeInstanceOf(ClientLookupError);
+  });
+
+  it("消すときは投げる（消さない・見つからないと答えない）", async () => {
+    lookupFailed();
+    await expect(deleteTranscript("t1", SCOPE)).rejects.toBeInstanceOf(ClientLookupError);
+    expect(calls.deleted).toEqual([]);
   });
 });
 
@@ -236,9 +327,40 @@ describe("消す: deleteTranscript", () => {
   });
 
   it("行が無ければ消さない", async () => {
-    calls.selectError = { code: "PGRST116", message: "no rows" };
+    // maybeSingle では0件はエラーでなく data が null（以前は single() の PGRST116 を偽っていた）
+    calls.row = null;
     expect(await deleteTranscript("t1", SCOPE)).toBe(false);
     expect(calls.deleted).toEqual([]);
+  });
+
+  it("id が uuid の形でなければ消さずに false（どの行にも当たらない）", async () => {
+    calls.selectError = MALFORMED_ID;
+    expect(await deleteTranscript("not-a-uuid", SCOPE)).toBe(false);
+    expect(calls.deleted).toEqual([]);
+  });
+
+  it("行を DB から読めなければ投げて消さない（false＝もう無い、と答えない ── 2026-09-24 検収の指摘）", async () => {
+    calls.selectError = DOWN;
+    const err = await deleteTranscript("t1", SCOPE).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DbAccessError);
+    expect((err as InstanceType<typeof DbAccessError>).publicMessage).toBe(
+      TRANSCRIPT_DELETE_FAILED_MESSAGE,
+    );
+    expect(calls.deleted).toEqual([]);
+  });
+
+  it("消す操作そのものが失敗したら投げる（消えていないのに false と答えない）", async () => {
+    calls.deleteError = DOWN;
+    const err = await deleteTranscript("t1", SCOPE).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DbAccessError);
+    expect((err as InstanceType<typeof DbAccessError>).publicMessage).toBe(
+      TRANSCRIPT_DELETE_FAILED_MESSAGE,
+    );
+  });
+
+  it("消す間際に他の人が消していたら false（消えた行が0件）", async () => {
+    calls.deletedCount = 0;
+    expect(await deleteTranscript("t1", SCOPE)).toBe(false);
   });
 
   it("表が未作成なら専用のエラーを投げる", async () => {

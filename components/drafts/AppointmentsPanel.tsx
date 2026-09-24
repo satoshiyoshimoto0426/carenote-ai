@@ -13,6 +13,11 @@ interface Props {
   secondaryClass: string;
 }
 
+/**
+ * メモから拾った予定の一覧と、カレンダーへ入れるリンク（Googleカレンダー・.ics）。予定が無ければ何も出さない。
+ * 使う所: つくる（支援経過の結果）。記号版の result から作る（実名で表示中でも実名は渡さない）。
+ * A案（R1・2026-09-24）: 角を丸めた箱をやめ、下に 1px の線を引いた区切りと行にした。文字は以前のまま。
+ */
 export default function AppointmentsPanel({ appointments, secondaryClass }: Props) {
   const items = appointments
     .map((a, i) => ({ a, p: toCalendarPayload(a), i }))
@@ -20,14 +25,14 @@ export default function AppointmentsPanel({ appointments, secondaryClass }: Prop
   if (items.length === 0) return null;
 
   return (
-    <section className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-4">
-      <h3 className="mb-1 text-sm font-medium">
+    <section className="draft-section">
+      <h3 className="section-label mb-1">
         メモから拾った予定（<span className="tnum">{items.length}</span>件）
       </h3>
-      <p className="mb-3 text-xs text-[var(--muted)]">
+      <p className="mb-2 text-xs leading-[1.8] text-[var(--muted)]">
         カレンダーには記号（A様）と用件だけを入れます。ボタンを押すと作成画面が開くので、内容を見て保存してください。
       </p>
-      <ul className="space-y-2">
+      <ul>
         {items.map(({ a, p, i }) => {
           if (!p) return null;
           const when = p.allDay
@@ -37,7 +42,7 @@ export default function AppointmentsPanel({ appointments, secondaryClass }: Prop
           return (
             <li
               key={`${a.date}-${a.startTime}-${a.title}`}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-[8px] bg-[var(--paper)] px-3 py-2"
+              className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--line-faint)] py-2.5"
             >
               <div className="text-sm">
                 <span className="font-medium">{p.title}</span>

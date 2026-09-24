@@ -1,3 +1,18 @@
+/*
+ * 層（@layer）の順番。**この文は必ずファイルの先頭（@import より前）に置く**。
+ *
+ * なぜ（2026-09-23 に /sign-in の実画面で計測した不具合）:
+ *   Clerk（ログイン画面・組織切替）は自分のスタイルを実行時に差し込む。層に入っていないスタイルは
+ *   層に入った Tailwind のクラスに詳細度と関係なく勝つので、lib/clerkAppearance.ts の elements に
+ *   書いた Tailwind のクラス（枠線・影なしなど）が画面に効いていなかった（枠線 0px・Clerk 既定の影）。
+ *   そこで app/layout.tsx の ClerkProvider に cssLayerName（= CLERK_CSS_LAYER = "clerk"）を渡して
+ *   Clerk のスタイルを clerk 層に入れ、ここで base（Tailwind の初期化と下の要素リセット）より後、
+ *   components / utilities より前に並べる（Clerk 公式の Tailwind v4 向けの手順と同じ並び）。
+ *   層の順番は「名前が初めて出てきた順」で決まるので、Tailwind の読み込みより後に書くと
+ *   clerk が utilities の後ろに付き、また効かなくなる。検査: lib/clerkAppearance.test.ts。
+ */
+@layer theme, base, clerk, components, utilities;
+
 @import "tailwindcss";
 
 /*
@@ -10,51 +25,83 @@
 @source "../components";
 
 /*
- * CareNote AI design tokens (design system v1, 2026-09-16).
+ * CareNote AI design tokens (design system v2 = A案「作業台」, 2026-09-23).
  *
- * v0 からの変更と理由（吉本さん指摘「AIが作った感を消したい」）:
- *   v0 は「温かいクリーム色の地 ＋ 明朝体の見出し ＋ アクセント1色」だった。
- *   これは生成AIが作るUIで最も多い定番の組み合わせで、それ自体が「量産物」の記号に
- *   なっていた。地の色を**冷たい紙色**へ移し、見出しの明朝体をやめ、記号（A様）だけ
- *   等幅書体にして「これは氏名ではなく符号」と読めるようにした。
- *   深緑のブランド色は残す（色自体は定番化しておらず、地を替えるだけで印象が変わるため）。
+ * v2 の考え方（吉本さん決定 2026-09-23・原寸の案は Main / A-clients のアートボード）:
+ *   カードを積むのをやめ、画面いっぱいの区画（ペイン）を 1px の細い線で区切る「道具」の見た目。
+ *   地は冷たい灰色、文字は 4 段（--ink → --ink-2 → --muted → --faint）、線も 3 段。
+ *   緑は「主ボタン」と「選択中の印」と「置き換え済み（仮名）の印」だけ、赤（--red-word）は「赤い言葉」だけに使う。
+ *   注意の黄色（--amber*）とエラーのレンガ色（--clay*）は v1 のまま残す（色の役割を変えない）。
+ *
+ * v1（2026-09-16）からの経緯: v0 の「温かいクリーム色の地＋明朝体の見出し」は生成AIの定番で
+ *   「量産物」の記号になっていたため、v1 で冷たい紙色へ移した。v2 はその延長で、値をアートボードに揃えた。
+ *
+ * 文字の色は、地の色（--paper / --card / --pane / --surface-2）の上で 4.5:1 以上（WCAG AA）。
+ *   app/globals.test.ts が計算して縛る。**--dash（#a9b0b7）は地の上で約 2:1 なので文字に使わない**
+ *   （「—」の飾り・区切りの「/」専用）。A案の原案は --faint をこの色にしていたが、--faint は
+ *   赤い言葉の理由「（敬称の前）」など 58 か所の本物の文字に使われているため採らなかった。
  *
  * 使い方: 直書きの16進数は置かず、必ず var(--token) を通す。
+ * 例外: lib/clerkAppearance.ts は Clerk の都合で16進数を写して持つ。ずれは lib/clerkAppearance.test.ts が止める。
  * 参照元: components/ui/primitives.tsx と各ページ。
  */
 :root {
-  --paper: #eef1f4;
-  --card: #ffffff;
-  --surface-2: #f7f9fa;
-  --ink: #10151a;
-  --muted: #47535f;
-  --faint: #78848f;
-  --line: #dbe2e8;
-  --line-soft: #eaeff3;
-  --green: #0e5c46;
-  --green-deep: #0a4735;
-  --green-soft: #e6f0ec;
+  /* 地と面 */
+  --paper: #f5f6f7; /* 画面の地 */
+  --card: #ffffff; /* 入力欄・ボタン・ログイン枠の面 */
+  --surface-2: #f7f9fa; /* 薄い面（v1 の画面が使う） */
+  --pane: #fcfcfd; /* 右側の区画（AIに送る文章・利用者の詳細） */
+  --rail: #eceef0; /* 左の縦メニューの地 */
+  --active: #dde2e6; /* 縦メニューで開いている項目の地 */
+  --row-selected: #e7efeb; /* 一覧で選んでいる行の地 */
+
+  /* 文字（濃い順）。どれも地の上で 4.5:1 以上 */
+  --ink: #15181c; /* 本文・見出し */
+  --ink-2: #3d444b; /* 補助の本文・ラベル */
+  --ink-table: #2a2f35; /* 表の本文（属性など） */
+  --muted: #59616a; /* 補足・件数・日付 */
+  --faint: #646c75; /* いちばん淡い文字（ヒント・字数など）。--paper の上で 4.9:1 */
+
+  /* 線（濃い順） */
+  --line: #dfe3e7; /* 区画の境目（1px） */
+  --btn-line: #d3d9de; /* 白いボタンの枠 */
+  --line-inner: #e6e9ec; /* 区画の中の区切り・表の行 */
+  --line-soft: #eaeff3; /* v1 の画面が使う薄い線 */
+  --line-faint: #eceef1; /* いちばん薄い区切り */
+  --dash: #a9b0b7; /* 飾り専用（「—」・区切りの「/」）。文字に使わない */
+
+  /* 色の役割 */
+  --green: #0e5c46; /* 主ボタン・選択中の印・リンク */
+  --green-deep: #0a4735; /* 主ボタンを押す直前（hover） */
+  --green-soft: #e6f0ec; /* 記号の札の地 */
   --green-line: #bcd6cc;
-  --clay: #a83226;
+  --mic-soft: #e3eee9; /* 録音の印の地 */
+  --red-word: #b42318; /* 赤い言葉（名前かもしれないのに消せなかったもの）だけに使う */
+  --clay: #a83226; /* エラー */
   --clay-soft: #fdeeec;
-  --amber: #9a5b06;
+  --clay-line: #f2cdc7; /* エラーの帯の縁（--clay-soft の地を囲む細い線。--amber-line と同じ役割） */
+  --amber: #9a5b06; /* 注意（共有していない・救済モードなど） */
   --amber-soft: #fdf4e6;
   --amber-line: #f0dcbb;
-  /* 記号（A様・B様）と件数に使う。氏名ではなく符号であることを書体で示す */
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
   /*
-   * 本文書体。app/layout.tsx で Noto Sans JP を読み込んでいるのに、ここが
-   * Hiragino/Yu Gothic UI のままで**一度も使われていなかった**（2026-09-16 に発覚）。
-   * Windows の既定 Yu Gothic UI は細く字間が詰まり、それが「安っぽさ」の主因だった。
+   * 記号（A様・B様）・件数・日付に使う等幅書体。氏名ではなく符号であることを書体で示す。
+   * 先頭の書体は app/layout.tsx で読み込む（app/globals.test.ts が一致を確かめる）。
    */
-  --sans: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /*
+   * 本文書体。app/layout.tsx で読み込む書体と一致させる（2026-09-16 に、読み込んだ Noto Sans JP を
+   * ここが一度も使っていなかったずれが発覚した。いまは app/globals.test.ts が一致を確かめる）。
+   * Windows の既定 Yu Gothic UI は細く字間が詰まるので、読み込めなかったときの控えに回す。
+   */
+  --sans: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
   --serif: "Hiragino Mincho ProN", "Yu Mincho", serif;
 
   /*
    * 文字の大きさ（日本語UI用の段階）。以前は 11〜15px に集中していて差がなく、
    * どこが見出しでどこが補足か目で追えなかった。4段階に開く。
    */
-  --t-title: 24px; /* ページ見出し */
+  --t-title: 20px; /* ページ見出し（A案の段階・2026-09-24 R1 で 24px から） */
   --t-section: 16px; /* 節の見出し */
   --t-body: 14.5px; /* 本文・入力 */
   --t-label: 13px; /* 入力のラベル */
@@ -65,6 +112,16 @@
   --sp-2: 12px;
   --sp-3: 20px;
   --sp-4: 28px;
+
+  /*
+   * 外枠の寸法（A案「作業台」のアートボードの値）。
+   * 上の帯＋注意の帯の**実際の**高さは components/shell/TopBar.tsx が測って --shell-head-h に書く。
+   * --topbar-h はそれが書かれる前（サーバーで描いた直後など）の控え。
+   */
+  --topbar-h: 52px; /* 上の帯 */
+  --rail-w: 72px; /* 左の縦の帯（768px 以上） */
+  --tabbar-h: 56px; /* スマホの下のタブ（押す場所は 44px 以上） */
+  --pane-header-h: 48px; /* 区画（.pane）の頭の帯（.pane-header）。区画の中で貼りつく物の逃がし幅にも使う */
 }
 
 /*
@@ -113,6 +170,31 @@
     border-color: var(--green);
     box-shadow: 0 0 0 3px rgba(14, 92, 70, 0.13);
   }
+
+  /*
+   * キーボードで移った先（フォーカス）と、ページ内の飛び先（使い方の章 /guide#chN）が、
+   * 上に貼りつく帯（.shell-head）とスマホの下のタブ（.rail）の裏に隠れないようにする
+   * （WCAG 2.2 AA 2.4.11「フォーカスが隠れない」── A3 の検証で、375px で帯やタブの裏のボタンに
+   * focus() しても画面が動かず、隠れたままだったことが分かった）。
+   * 画面を動かしているのは文書そのもの（html）なので、ここに「端から空けておく幅」を書く。
+   * ブラウザは Tab での移動・focus()・# の飛び先のどれでも、この幅を避けて止める（計測済み: 375px で3つとも、
+   * 1440px で focus() ── docs/REDESIGN-A-SIGNOFF.md の「確かめたこと」）。
+   *   上 = TopBar が測った帯＋注意の帯の高さ（--shell-head-h。測る前は --topbar-h）＋ 8px。
+   *   下 = スマホだけ、下のタブ＋ iPhone の下端の横線（safe-area）＋ 8px。
+   * 章の見出しを1つずつ逃がしていた旧 .shell-anchor（scroll-margin-top）はこれに置き換えた
+   * （両方あると足し算になり、帯の高さぶん二重に下がる）。
+   * 外枠の無い画面（/sign-in /sign-up）でも同じ幅が空くが、止まる位置が少し内側になるだけで害は無い。
+   * 検査: components/shell/TopBar.test.tsx（帯の測った高さ・タブの高さから決めているか、二重に足していないか）。
+   */
+  html {
+    scroll-padding-top: calc(var(--shell-head-h, var(--topbar-h)) + 8px);
+  }
+
+  @media (max-width: 767px) {
+    html {
+      scroll-padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);
+    }
+  }
 }
 
 /* 記号（A様）の共通見た目。氏名と見分けがつくよう等幅＋淡い緑の札にする */
@@ -130,6 +212,14 @@
 /* 件数・点数など、桁を揃えて読ませる数字 */
 .tnum {
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 等幅の数字（時刻「00:12」・「1 / 2」のような位置）。A案では記号・件数・日付を等幅で組む。
+ * **数字と記号だけの文字列に使う**（IBM Plex Mono には日本語の字が無く、「字」「件」は別の書体で描かれて揃わない）。
+ */
+.mono {
+  font-family: var(--mono);
 }
 
 @keyframes fadeIn {
@@ -162,9 +252,22 @@
 }
 
 /*
- * アプリシェル（サイドバー＋本文）のレイアウト。
- * Tailwind のクラス生成に依存させない素のCSS（(dashboard) 配下のスキャン取りこぼしで
- * サイドバーと本文が重なった 2026-07-09 の根治策）。layout.tsx が使用する。
+ * ログイン後の外枠（A案「作業台」・2026-09-23）。app/(dashboard)/layout.tsx と components/shell/ が使う。
+ *
+ *   [左の縦の帯 .rail]  [縦の列 .app-column: 上の帯 .shell-head → 本文 .app-main-inner → 送り先の表示 .app-footer]
+ *
+ * スマホ（768px 未満）では .rail が画面の下に固定したタブになり、列の下をタブの高さぶん空ける。
+ * 画面全体（文書）が縦に動き、上の帯は上に貼りつく。
+ * 768px 以上（A4・2026-09-23）は外枠を画面の高さちょうどに収め、文書は動かさない。本文の中の
+ * 区画（.pane）と、まだ作り替えていない画面の器（.legacy-page）が、それぞれ自分の中だけで縦に動く
+ * （A案の「作業台」── 左の入力を動かしても右の文章は動かない）。
+ * 高さを calc(100dvh - …) で決めない。上の帯の下には「共有していない」注意の帯が出たり消えたり
+ * 折り返したりするので、固定の数字で引くと、その時だけ下の端が画面の外へ押し出される。
+ * 代わりに、列を flex の縦並びにして本文に残りの高さを渡す（flex:1・min-height:0 を上から順に）。
+ *
+ * Tailwind のクラス生成に依存させない素の CSS（(dashboard) 配下のスキャン取りこぼしで
+ * メニューと本文が重なった 2026-07-09 の根治策）。要素そのもの（div・a など）を狙う規則はここに書かない
+ * ── 層の外の規則は Tailwind の余白指定に必ず勝つ（2026-09-23 の不具合・app/globals.test.ts が見張る）。
  */
 .app-shell {
   display: flex;
@@ -174,25 +277,8 @@
   font-family: var(--sans);
 }
 
-.app-sidebar {
-  display: none;
-}
-
-.app-topbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: var(--card);
-  border-bottom: 1px solid var(--line);
-}
-
-.app-main {
+/* 上の帯・本文・送り先の表示を縦に積む列。本文（.app-main-inner）が残りの高さを取る */
+.app-column {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -200,28 +286,231 @@
 }
 
 /*
- * フッターは本文の一部ではなく「紙の端」。本文カードと地続きに見えないよう、
- * 上に細い区切りを置いて距離を取る（2026-09-16 縦のバランス調整）。
+ * 上の帯と注意の帯のまとまり。スクロールしても上に貼りつく（共有状態をいつでも見えるようにする）。
+ * 合わせた高さは components/shell/TopBar.tsx が測って --shell-head-h に書く。
+ */
+.shell-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--paper);
+}
+
+.topbar {
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ページが components/shell/TopBarSlot で差し込む口。箱を作らず、中身を左側の並びにそのまま置く */
+.topbar-slot {
+  display: contents;
+}
+
+/* ページが何も差し込まないときに出す、いまいる項目の名前 */
+.topbar-section {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.topbar-right {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 「この画面の使い方」。スマホでは印（？）だけを見せ、文字は読み上げにだけ残す。押す場所は 44px */
+.topbar-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.topbar-help:hover {
+  background: var(--active);
+  color: var(--ink);
+}
+
+.topbar-help-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+/* 共有状態（components/SharingStatus.tsx の variant "bar"）: 点・言葉・事業所の名前・切り替え */
+.sharing-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.sharing-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.sharing-label {
+  white-space: nowrap;
+}
+
+.sharing-org {
+  max-width: 6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+/* 共有していないときだけ上の帯の下に出る注意（variant "strip"）。畳まない */
+.sharing-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--amber-soft);
+  border-bottom: 1px solid var(--amber-line);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+.sharing-strip strong {
+  color: var(--ink);
+}
+
+.sharing-strip-icon {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--amber);
+}
+
+/*
+ * 左の縦の帯（components/shell/Rail.tsx）。4項目は lib/nav.ts の NAV_ITEMS。
+ * 開いている項目は aria-current="page" で見分け、アイコンだけ緑にする（緑は「選択中の印」の役割）。
+ */
+.rail {
+  background: var(--rail);
+}
+
+.rail-mark {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+.rail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.rail-item:hover {
+  color: var(--ink);
+}
+
+.rail-item[aria-current="page"] {
+  background: var(--active);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.rail-item[aria-current="page"] .rail-icon {
+  color: var(--green);
+}
+
+.rail-user {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+}
+
+/* ログイン中の人のメールの「@」より前。等幅（記号・件数と同じ扱い）。長ければ末尾を省く */
+.rail-user-id {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/*
+ * フッターは本文の一部ではなく「紙の端」。上に細い区切りを置いて距離を取る（2026-09-16）。
+ * 中身は AI の送り先の表示（「CareNote — Powered by Claude API」）。送る帯に送信先の表示が入るまで残す。
+ * 768px 以上では列の下端に常に見えている1行になるので、高さを取りすぎないよう余白を詰める（下の @media）。
  */
 .app-footer {
+  flex-shrink: 0;
   border-top: 1px solid var(--line-soft);
   padding: 18px 16px 26px;
   text-align: center;
 }
 
 /*
- * 本文の器。**ここが唯一の幅の決定点**。
- * 以前はページ側が max-w-2xl / 3xl / 4xl / 860px をそれぞれ持っていて、
- * 画面を移るたびに本文の幅と左端が動いていた（2026-09-16 吉本さん指摘
- * 「なんでこんなに左上にギュッと集まったデザインなのか」の原因のひとつ）。
- * ページ側の max-width は外し、ここに集約する。
+ * 本文の器（A4・2026-09-23 から**画面いっぱい**）。幅も余白も持たない ── 区画（.pane）を
+ * 端から端まで並べ、1px の線だけで区切るため。まだ作り替えていない画面は、自分の根元に
+ * .legacy-page を付けて、以前の幅（1000px）と余白を自分で持つ（下の @layer components）。
+ * 以前はここが「作り直す前の画面の幅の決定点」だった（ページごとに幅がばらばらで、画面を移るたびに
+ * 本文の幅と左端が動いていた ── 2026-09-16 吉本さん指摘。その決まりは .legacy-page が引き継ぐ）。
+ * 列の中で残りの高さを取る（flex:1・min-height:0）。上の帯は流れの中にあるので、上を空ける必要はない。
  */
 .app-main-inner {
   flex: 1;
-  width: 100%;
-  max-width: 1000px;
-  margin-inline: auto;
-  padding: 76px 16px 32px; /* モバイルは固定トップバーぶん上を空ける */
+  min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
@@ -235,60 +524,1018 @@
 }
 
 /*
- * 名簿の共有状態（components/SharingStatus.tsx）のスマホ用。
- * 左メニューは 768px 未満で消えるため、そこに置いた表示はスマホに一切届かない
- * （独立審査 2026-09-13 critical: 配布文書は「スマホでは画面の上に出る」と書いていた）。
- * 固定トップバーの高さを触らずに済むよう、本文の先頭に通常フローで出す。
- */
-/*
- * 767px 以下だけに閉じる。`.app-sharing-mobile + .app-main-inner` は
- * `.app-main-inner` 単独より詳細度が高いため、メディアクエリの外に置くと
- * md+ でも padding-top を上書きしてしまう（display:none でも隣接セレクタは効く）。
- */
-/*
- * 送る前に見る画面の「前へ/次へ」の帯。
- * スマホでは上に固定されたバー（.app-topbar・高さ72px・z-index 20）があるので、
- * top:8px のままだとその裏に潜って押せなくなる（独立審査 2026-09-17 critical）。
+ * 送る前に見る画面の「前へ/次へ」の帯（components/drafts/PreSendPreview.tsx）。
+ * 上に貼りつく帯（.shell-head）の裏に潜ると押せなくなる（独立審査 2026-09-17 critical）。
+ * 以前は固定の 80px で逃がしていたが、帯の高さは「共有していない」注意の有無と折り返しで変わるので、
+ * TopBar が測った実際の高さ（--shell-head-h）の 8px 下に置く。測る前は --topbar-h を使う。
+ *
+ * A4（2026-09-23）: 768px 以上では文書ではなく区画（.pane / .legacy-page）が動くので、貼りつく基準は
+ * 区画の上端になる。そこには上の帯は重ならないので、帯の高さを足すと 52px 以上の隙間が空く。
+ * 区画は --sticky-top に「自分の上端に重なっている物の高さ」（0、または区画の頭の帯の高さ）を書くので、
+ * それがあればそちらを使う（計画の指摘「区画の中は 0・文書が動く所は帯＋注意の帯」）。
+ * スマホは文書が動くので --sticky-top は無く、今までどおり --shell-head-h を使う。
  */
 .presend-nav {
   position: sticky;
-  top: 8px;
+  top: calc(var(--sticky-top, var(--shell-head-h, var(--topbar-h))) + 8px);
   z-index: 10;
+  margin-top: 12px;
+  padding: 12px 14px;
+  /*
+   * 「赤い枠」。使い方（lib/manual/content.ts:433・1165）が「赤い枠が出ていたら／出ていなければ」で
+   * 赤い言葉が残っているかを見分けさせているので、枠を消さない（R1 で一度消して、FAQ が
+   * 「赤い言葉があっても送ってよい」と読める状態になった ── 2026-09-24 検証の blocker）。
+   * 角は丸めず影も付けない（A案の帯）。赤はこの帯が赤い言葉の知らせだから使える（--red-word の役割のまま）。
+   * 見張り: app/globals.test.ts「使い方が指す見た目」。
+   */
+  border: 1px solid var(--red-word);
+  /* 貼りついたとき下の本文が透けないよう、置き場所の地で塗る */
+  background: var(--pane-bg, var(--paper));
 }
 
+/*
+ * 送る前に見る画面の見出しの「緑の帯」（components/drafts/PreSendPreview.tsx）。
+ * 使い方（lib/manual/content.ts:135・429・477・docs/MANUAL-VIDEO-SPEC.md）が「緑の帯が出ている画面」で
+ * 送る前の確認画面を見分けさせ、「その帯の中にある「置き換えたもの:」の行」を読ませている。
+ * 緑は「置き換え済み（仮名）」の印（記号の札 .code-chip・「仮名表示中」と同じ役割）。角は丸めず影も付けない。
+ * 見張り: app/globals.test.ts「使い方が指す見た目」。
+ */
+.presend-head {
+  padding: 12px 14px;
+  border: 1px solid var(--green-line);
+  background: var(--green-soft);
+}
+
+/* スマホ: 左の帯を画面の下のタブにする（4項目・文字つき・押す場所は 56px） */
 @media (max-width: 767px) {
-  .presend-nav {
-    top: 80px; /* 固定トップバー（72px）の下に出す */
+  .rail {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
-  .app-sharing-mobile {
-    padding: 72px 16px 0; /* 固定トップバーぶん上を空ける（本文側の padding-top は詰める） */
+  .rail-mark,
+  .rail-user {
+    display: none;
   }
 
-  .app-sharing-mobile + .app-main-inner {
-    padding-top: 12px;
+  .rail-items {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  /* 上の 1px の線と合わせて、タブ全体の高さをちょうど --tabbar-h にする（本文の下の空きと揃える） */
+  .rail-item {
+    min-height: calc(var(--tabbar-h) - 1px);
+    border-radius: 0;
+    font-size: 11px;
+  }
+
+  /* 下のタブの裏に本文の終わり（送り先の表示）が潜らないよう、タブの高さぶん空ける */
+  .app-column {
+    padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   }
 }
 
 @media (min-width: 768px) {
-  .app-sharing-mobile {
-    display: none; /* md+ は左メニューの中に出る */
+  /*
+   * 外枠を画面の高さちょうどに収める（文書は動かさず、区画が自分の中で動く ── A4）。
+   * dvh（いま見えている高さ）は Chrome 108・Safari 15.4・Firefox 101 から使える。vh の控えを重ねて書くと
+   * Biome が同じ指定の重複として止めるので、dvh だけにした。
+   * min-height を外すのは、iPad の Safari で 100vh（道具の帯を隠したときの高さ）が 100dvh より大きく、
+   * 外枠がはみ出して文書が少し動いてしまうため。
+   */
+  .app-shell {
+    height: 100dvh;
+    min-height: 0;
   }
 
-  .app-sidebar {
-    display: block;
-    width: 220px;
+  /*
+   * 外枠の高さに合わせて伸びる（以前の sticky＋height:100vh は、文書が動かなくなったので不要。
+   * 100vh は iPad で外枠より高くなり、下端のアカウントのボタンが切れる）。
+   * 画面の背が低いとき（拡大表示など）は帯の中だけで動く。
+   */
+  .rail {
+    width: var(--rail-w);
     flex-shrink: 0;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 0;
+    border-right: 1px solid var(--line);
+  }
+
+  .rail-items {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .rail-item {
+    width: 60px;
+    height: 58px;
+  }
+
+  .topbar {
+    gap: 16px;
+    padding: 0 20px 0 24px;
+  }
+
+  .topbar-right {
+    gap: 12px;
+  }
+
+  .topbar-help-text {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+  }
+
+  .sharing-bar {
+    gap: 8px;
+  }
+
+  .sharing-org {
+    max-width: 14em;
+  }
+
+  .sharing-strip {
+    padding: 8px 24px;
+  }
+
+  /* 列の下端に常に見えている1行（送り先の表示）。本文の高さを取りすぎない */
+  .app-footer {
+    padding: 6px 24px;
+  }
+}
+
+/*
+ * 区画（ペイン）と、まだ作り替えていない画面の器（A案「作業台」・A4・2026-09-23）。
+ * 組み立ての部品は components/ui/primitives.tsx の Pane / PaneHeader / SectionLabel / TextAction。
+ *
+ *   <div class="panes">                         ← 区画を横に並べる（本文 .app-main-inner の中）
+ *     <section class="pane pane-640">…</section> ← 幅 640px の区画（つくるの入力など）
+ *     <section class="pane pane-tinted">…</section> ← 残りの幅いっぱい（地を --pane にする）
+ *   </div>
+ *
+ * 区画どうしの境目は 1px の線だけ（隣り合った .pane の2つ目に線を引く ── カードの枠を積まない）。
+ * 768px 以上では各区画が自分の中だけで縦に動き、区画の頭の帯（.pane-header）は区画の上に貼りつく。
+ * スマホでは区画を縦に積み、画面全体（文書）が動く（スマホ用の形は M1/M2 で作る）。
+ *
+ * **@layer components に入れる理由**: 部品は className で Tailwind の指定（余白など）を足せる。
+ * 層の外に置くと、層に入った Tailwind の指定に詳細度と関係なく勝ち、足した余白が黙って消える
+ * （2026-09-23 に全画面の余白が 0 になった不具合と同じ仕組み）。層の中なら utilities が後に来て勝つ。
+ * 素の CSS で書く理由: Tailwind のクラス生成（スキャン）に頼ると、取りこぼしで本番の CSS に入らないことがある
+ * （2026-07-09）。ここに書いたものはスキャンと関係なく必ず出る（本番用ビルドの CSS で確かめる）。
+ * テスト: components/ui/primitives.test.tsx（部品が付けるクラスと、この CSS の形）。
+ */
+@layer components {
+  .panes {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 区画。地の色は --pane-bg に持ち、頭の帯（.pane-header）が同じ色で上に貼りつけるようにする */
+  .pane {
+    --pane-bg: var(--paper);
+    min-width: 0;
+    background: var(--pane-bg);
+  }
+
+  /* 右側の区画（AIに送る文章・利用者の詳細）の、ほんの少し明るい地 */
+  .pane-tinted {
+    --pane-bg: var(--pane);
+  }
+
+  /* 区画どうしの境目（スマホでは縦に積むので上の線） */
+  .pane + .pane {
+    border-top: 1px solid var(--line);
+  }
+
+  /* 区画の頭の帯（高さ 48px・下に 1px の線）。書類の種類の切り替えや、区画の名前と操作を並べる */
+  .pane-header {
+    min-height: var(--pane-header-h);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--line);
+    background: var(--pane-bg, var(--paper));
+  }
+
+  /* 区画の名前（頭の帯の中の h2）。ページの見出し（h1）は上の帯にある */
+  .pane-title {
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  /* 区画の中の小見出し・欄の名前（「会議のメモ」「書類」など）。12px の太字・字間 0.06em */
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.5;
+    letter-spacing: 0.06em;
+    color: var(--ink-2);
+  }
+
+  /*
+   * 文字だけの操作（「録音ファイルから文字にする」「この欄を記録として残す」など）。
+   * 枠も地も持たない。緑の主ボタンは1画面に1つだけなので、脇の操作はこれで並べる。
+   * 押す場所はスマホで 44px 以上（下の @media）、パソコンでも 24px 以上（WCAG 2.2 2.5.8）。
+   */
+  .text-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .text-action:hover {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .text-action:disabled {
+    color: var(--faint);
+    text-decoration: none;
+    cursor: not-allowed;
+  }
+
+  /*
+   * まだ A案の区画に作り替えていない画面の器（各ページの根元に1つ付ける）。
+   * 作り替える前の本文の幅（最大 1000px ＝ 中身 920px＋左右 40px）と余白を、画面いっぱいになった本文
+   * （.app-main-inner）の中で再現する。作り替えが終わったページから外し、全部外れたら消す（計画 X1）。
+   * 768px 以上では、この器が1つの区画のように自分の中で縦に動く。
+   */
+  .legacy-page {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 16px 32px;
+  }
+
+  @media (max-width: 767px) {
+    .pane-header {
+      flex-wrap: wrap;
+      padding: 0 16px;
+    }
+
+    .text-action {
+      min-height: 44px;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .panes {
+      flex-direction: row;
+    }
+
+    /*
+     * 区画が自分の中で縦に動く。--sticky-top は「区画の上端に重なっている物の高さ」で、
+     * 区画の中で貼りつく物（.presend-nav）と、フォーカス・飛び先を止める位置（scroll-padding-top）が読む。
+     * 頭の帯を持つ区画では、その高さぶん下げる（帯の裏に隠さない ── WCAG 2.2 AA 2.4.11・2026-09-23 A3 の教訓）。
+     * 区画の上に貼りつく物を足したら、同じように --sticky-top を書く（利用者の一覧の表の見出しの行は
+     * 下の `.pane:has(> .client-table)`）。
+     */
+    .pane {
+      --sticky-top: 0px;
+      flex: 1 1 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      scroll-padding-top: calc(var(--sticky-top) + 8px);
+    }
+
+    .pane:has(> .pane-header) {
+      --sticky-top: var(--pane-header-h);
+    }
+
+    /*
+     * 動く器（.pane / .legacy-page）の直下の物は縮ませない。
+     * なぜ: 器は高さの決まった flex の縦並びで、直下の物は既定で縮む（flex-shrink: 1）。ふつうは中身の高さより
+     * 小さくならない（min-height: auto）が、overflow: hidden の物（角を丸めた一覧の Card など）はその下限が 0 になり、
+     * 器の高さまで縮んで自分の行を切り落とす。器の方ははみ出す物が無いので動かず、下の行へ行けない
+     * （2026-09-24 A4 の検証の blocker: 行が本文の高さを超えると、利用者の一覧も点検の履歴も下の行が開けなかった）。
+     * 残りの高さを埋めたい物には Tailwind の grow（flex-grow だけ）を付ける。flex-1 は縮む指定と「高さ 0 から始める」を
+     * 一緒に入れ直すので、overflow-hidden や小さい min-h と組むと同じ切り落としが起きる。
+     * 器の中で縮めて中だけ動かしたい物は、flex-1 min-h-0 を自分で付ける（utilities が後に来て、ここに勝つ）。
+     */
+    .pane > *,
+    .legacy-page > * {
+      flex-shrink: 0;
+    }
+
+    /*
+     * 決まった幅の区画。幅が足りない画面（タブレットなど）では、はみ出して横に動くより縮む方を選ぶ
+     * （flex-shrink 1・min-width 0）。つくるの2つの区画が狭い幅でどう並ぶかは C4/M2 で決める。
+     */
+    .pane-640 {
+      flex: 0 1 640px;
+    }
+
+    .pane-440 {
+      flex: 0 1 440px;
+    }
+
+    .pane + .pane {
+      border-top: 0;
+      border-left: 1px solid var(--line);
+    }
+
+    .pane-header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    /*
+     * 作り替える前と同じ幅: 中身は最大 920px で真ん中に置き、左右は最低 40px 空ける
+     * （旧 .app-main-inner の max-width:1000px＋padding:40px と同じ結果。スクロールの溝は画面の右端に出る）。
+     * 上下の 40px は padding ではなく、下の ::before / ::after の空の箱で空ける。
+     * なぜ: 動く器（スクロールする要素）に padding-top があると、ブラウザは中で貼りつく物の基準を
+     * その分だけ下げる。「前へ／次へ」（.presend-nav）が器の上端から 8px でなく 48px の所に止まり、
+     * 上に本文が透けて見える隙間ができた（A4 の検証で本番用ビルドを計測: padding 40px → 40px 下がる）。
+     */
+    .legacy-page {
+      --sticky-top: 0px;
+      min-height: 0;
+      overflow-y: auto;
+      scroll-padding-top: calc(var(--sticky-top) + 8px);
+      padding-block: 0;
+      padding-inline: max(40px, calc((100% - 920px) / 2));
+    }
+
+    .legacy-page::before,
+    .legacy-page::after {
+      content: "";
+      flex: 0 0 40px;
+    }
+  }
+}
+
+/*
+ * 利用者の画面（A案「作業台」・A5・2026-09-24 ── 計画 U1/U2）。部品は components/clients/ClientsLayout.tsx と ClientTable.tsx。
+ * 寸法はアートボード A-clients: 表の見出しの行 40px・行 52px・左右の端 24px・行の区切り 1px（--line-inner）。
+ * 選んでいる行（URL が /clients/{id} の行）だけ地を --row-selected にする（緑系の地は「選択中の印」の役割）。
+ * 行そのもの（<tr>）は押せる物にしない ── 押せるのは記号のリンク（行の見出しのセルの中の <a>）だけ。
+ * 上の帯に差し込む見出し・道しるべ・探す欄・「新しい利用者」もここ（差し込み口 .topbar-slot は箱を作らないので、
+ * これらは上の帯の左側 .topbar-left の並びにそのまま入る）。
+ * @layer components に入れる理由は上の区画と同じ（部品に足した Tailwind の指定が勝てるように）。
+ * テスト: components/clients/ClientTable.test.tsx（選んだ行の地・行と見出しの高さ）。
+ */
+@layer components {
+  .client-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+
+  /*
+   * 表の上の1行「利用者ごとに書類が貯まります（氏名は記号で表示）」。氏名を記号で出す約束を、
+   * 利用者がいるときも画面に残す（以前の一覧の見出しの説明文。アートボードには無い1行 ── 残すか消すかは
+   * 吉本さんが決める: docs/REDESIGN-A-SIGNOFF.md の 10）。表と一緒に動き、上に貼りつかない。
+   */
+  .client-table-lead {
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--line-inner);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+
+  /*
+   * 見出しの行。表を動かしても区画の上に貼りつく（区画 .pane が自分の中で動くので top は 0）。
+   * 下の線は border でなく影で引く（行をまとめて線にする表の組み方では、貼りついた見出しの border が消えるため）。
+   * 高さを変えたら、下の `.pane:has(> .client-table)` の --sticky-top も同じ値にする（テストが両方を比べる）。
+   */
+  .client-table thead th {
     position: sticky;
     top: 0;
-    height: 100vh;
+    z-index: 1;
+    height: 40px;
+    padding: 0 12px 0 0;
+    background: var(--pane-bg, var(--paper));
+    box-shadow: inset 0 -1px 0 var(--line);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--muted);
+    text-align: left;
+    white-space: nowrap;
   }
 
-  .app-topbar {
+  @media (min-width: 768px) {
+    /*
+     * 表を直下に持つ区画は、貼りついた見出しの行（40px）の高さぶんフォーカスの止まる位置を下げる
+     * （区画の scroll-padding-top と「前へ／次へ」が読む --sticky-top ── 上の区画の決まり）。
+     * なぜ: 区画に頭の帯（.pane-header）が無いと --sticky-top は 0 のままで、キーボードで表を上へ戻ると
+     * （Shift+Tab）、移った先の記号のリンクが区画の上端から 8px の所に止まり、0〜40px を覆う見出しの行の
+     * 裏に隠れた（A5 の検証 ── WCAG 2.2 AA 2.4.11。頭の帯で起きた 2026-09-23 A3 と同じ種類）。
+     * スマホは文書が動き、見出しの行は上の帯（.shell-head・52px 以上）の裏に入るので、ここは 768px 以上だけ。
+     */
+    .pane:has(> .client-table) {
+      --sticky-top: 40px;
+    }
+  }
+
+  .client-table tbody tr {
+    height: 52px;
+    border-bottom: 1px solid var(--line-inner);
+  }
+
+  .client-table tbody tr[data-selected] {
+    background: var(--row-selected);
+  }
+
+  .client-table tbody th,
+  .client-table tbody td {
+    padding: 0 12px 0 0;
+    text-align: left;
+    font-weight: 400;
+  }
+
+  /* 1列目（記号）は左の端 24px。幅は「AB様」まで収まる分 */
+  .client-table thead th:first-child,
+  .client-table tbody th {
+    width: 88px;
+    padding-left: 24px;
+  }
+
+  /* 最後の列（登録日）は右寄せで、右の端 24px */
+  .client-table .client-cell-end {
+    width: 128px;
+    padding-right: 24px;
+    text-align: right;
+  }
+
+  /* 記号のリンク（行を開く唯一の押す場所）。等幅・500。押す場所は 44px（行は 52px） */
+  .client-code-link {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    font-family: var(--mono);
+    font-weight: 500;
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .client-code-link:hover {
+    color: var(--green);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .client-attr {
+    color: var(--ink-table);
+  }
+
+  .client-attr-empty {
+    color: var(--muted);
+  }
+
+  .client-date {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* 読み込み中・読めなかった・当てはまる人がいない、の知らせ（表の代わりに出す） */
+  .client-table-note {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 20px 24px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+
+  .client-table-error {
+    flex-wrap: nowrap;
+    color: var(--clay);
+  }
+
+  .client-table-error-icon {
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+
+  /* まだ利用者がいないとき */
+  .client-table-empty {
+    padding: 48px 24px;
+    max-width: 34rem;
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--muted);
+  }
+
+  .client-table-empty-title {
+    margin-bottom: 4px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .client-table-code-sample {
+    font-family: var(--mono);
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  /* 上の帯: 見出し「利用者」と人数 */
+  .clients-title {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+
+  .clients-count {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  /* 上の帯: 道しるべ「利用者 / B様」（アートボード Main の「現在地」と同じ形） */
+  .clients-crumbs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .clients-crumbs a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  .clients-crumbs a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .clients-crumbs-sep {
+    color: var(--dash);
+  }
+
+  .clients-crumbs-here {
+    font-family: var(--mono);
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  /* 上の帯: 「記号・属性で探す」。枠は欄全体（label）に付け、フォーカスの輪も欄全体に出す */
+  .clients-search {
+    flex: 0 1 280px;
+    min-width: 0;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: 12px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+
+  .clients-search:focus-within {
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(14, 92, 70, 0.13);
+  }
+
+  .clients-search input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: var(--ink);
+  }
+
+  .clients-search input:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .clients-search input::placeholder {
+    color: var(--muted);
+  }
+
+  /*
+   * 上の帯: 「新しい利用者」（脇のボタン）。帯の左側の並びの右端へ寄せる。
+   * 登録の欄を開いているあいだの押した色は、部品の側の Tailwind の指定（aria-[current=page]:bg-…）で付ける
+   * ── ここ（層 components）に書くと、btnSecondary の白い地（層 utilities）に負けて効かない（2026-09-24 A5 の計測で発覚）。
+   */
+  .clients-new {
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  @media (max-width: 767px) {
+    /* スマホ: 探す欄も指で押せる高さに。文字 16px 未満だと iPhone が欄に入るたびに画面を拡大する */
+    .clients-search {
+      height: 44px;
+      margin-left: 0;
+    }
+
+    .clients-search input {
+      font-size: 16px;
+    }
+
+    /* スマホ: 「新しい利用者」は + の印だけ（文字は読み上げ用に残す ── 部品の max-md:sr-only）。押す場所は 44px 四方 */
+    .clients-new {
+      min-width: 44px;
+    }
+  }
+}
+
+/*
+ * 利用者の区画（/clients/{id} の右の区画の中身・A案「作業台」A6 ── 計画 U3b/U4）。
+ * 部品は components/clients/ClientPane.tsx・RelatedPeople.tsx・SavedTranscripts.tsx。
+ * 寸法はアートボード A-clients の右の区画: 余白 28px（スマホ 16px）・記号 30px の等幅・書類の行 42px・
+ * 行の区切り 1px（--line-faint）。カードの枠は使わず、行を細い線だけで区切る。
+ * @layer components に入れる理由は上の区画と同じ（部品に足した Tailwind の指定が勝てるように）。
+ */
+@layer components {
+  .client-pane {
+    padding: 24px 16px 40px;
+  }
+
+  /* 頭の記号（「B様」）。氏名ではなく符号であることを等幅の書体で示す */
+  .client-pane-code {
+    font-family: var(--mono);
+    font-size: 30px;
+    font-weight: 500;
+    line-height: 1.1;
+    color: var(--ink);
+  }
+
+  /* 記号の後ろの「（仮名）」。本文の書体に戻して小さく */
+  .client-pane-kana {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+
+  /* 区画の中の1行（書類・以前の版・関係者・文字起こし）。下に 1px の線だけ */
+  .client-pane-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    min-height: 42px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--line-faint);
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  /* 保存した日・字数（等幅） */
+  .client-pane-date {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+
+  /* 行の右端の「開く」「つくる」。アートボードの幅 44px・右寄せ */
+  .client-pane-action {
+    min-width: 44px;
+    justify-content: flex-end;
+  }
+
+  /* 「以前の版（n）」の開け閉め。押す場所はスマホで 44px（下の @media） */
+  .client-doc-older > summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    border-bottom: 1px solid var(--line-faint);
+    font-size: 12.5px;
+    color: var(--ink-2);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .client-doc-older > summary::-webkit-details-marker {
     display: none;
   }
 
-  .app-main-inner {
-    padding: 40px 40px 40px;
+  .client-doc-older > summary svg {
+    transition: transform 0.15s ease;
+  }
+
+  .client-doc-older[open] > summary svg {
+    transform: rotate(90deg);
+  }
+
+  .client-doc-older > summary:hover {
+    color: var(--ink);
+  }
+
+  /* 以前の版の行は、少し字下げして新しい版の行と分ける */
+  .client-doc-older .client-pane-row {
+    padding-left: 20px;
+  }
+
+  /* 関係者名簿の行の右の「→ B様の長女」（AIへ送る前に置き換わる記号）。等幅・緑（記号の札と同じ色の役割） */
+  .client-related-alias {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--green);
+    white-space: nowrap;
+  }
+
+  /* 区画の左右の端まで広げる物（開いた書類の承認の操作と中身）。区画の余白と同じだけ外へ出す */
+  .client-pane-bleed {
+    margin-inline: -16px;
+  }
+
+  @media (max-width: 767px) {
+    .client-doc-older > summary {
+      min-height: 44px;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .client-pane {
+      padding: 28px 28px 40px;
+    }
+
+    .client-pane-bleed {
+      margin-inline: -28px;
+    }
+  }
+}
+
+/*
+ * つくる（/create）の見た目（A案「作業台」・R1・2026-09-24 ── 見た目だけの作り替え）。
+ * 部品は app/(dashboard)/create/page.tsx・components/create/DocTypeTabs.tsx と、そこで使う
+ * components/{create,drafts,recording}/ の部品。流れ（入力 → 送る前に見る → 結果の3段）と画面の文字は変えていない。
+ * 入力と「AIに送る文章」を左右2つの区画に分けるのは計画 C4（送る文章の固定と一緒にやる）。
+ *
+ *   区画（.pane）の中を上から: 見出し（.create-head）→ 書類の種類のタブの行（.create-tabbar）→ 中身（.create-panel）。
+ *   中身は、区画の端から端まで伸びる帯（.create-band 下書きの注意／.create-row 実名・記号の切り替え）と、
+ *   読みやすい幅（中身 760px）に収めた列（.create-col）を並べる。カードの枠は使わず、1px の線だけで区切る。
+ *
+ * 寸法はアートボード Main.dc.html の左の区画: タブの行 48px・左右の端 24px・タブの間 22px・13px の文字・
+ * 選んだタブは太字＋下に 2px の線（--ink）。タブの行は区画の上に貼りつけない ── 狭い幅でタブが2段に折り返すと
+ * 高さが 48px でなくなり、区画の中で貼りつく「前へ／次へ」（.presend-nav）がその裏に潜るため（2026-09-17 critical と同じ種類）。
+ * @layer components に入れる理由は上の区画と同じ（部品に足した Tailwind の指定が勝てるように）。
+ * テスト: app/(dashboard)/create/page.test.tsx（タブの並び・選んだタブ・一式まとめてのリンクがタブの外にあること）。
+ */
+@layer components {
+  .create-head {
+    padding: 20px 24px 0;
+  }
+
+  /* タブの行。一式まとめてのリンクは右の端（タブの並び role=tablist の外 ── タブの中にリンクを置くのは読み上げの決まりに反する） */
+  .create-tabbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    column-gap: 16px;
+    min-height: var(--pane-header-h);
+    padding: 0 24px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .doc-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    column-gap: 22px;
+    min-width: 0;
+  }
+
+  /* 文字だけのタブ。押す場所は 44px 以上（行の高さ 48px に伸びる） */
+  .doc-tab {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--muted);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  /*
+   * 太字の幅を、見えない高さ 0 の行で先に取っておく。選んだタブだけ太字になっても幅が変わらず、
+   * 押すたびに右のタブが横へずれない（中身は data-label ＝ ボタンの文字と同じ。読み上げには出ない）。
+   */
+  .doc-tab::after {
+    content: attr(data-label);
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    font-weight: 700;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .doc-tab:hover {
+    color: var(--ink);
+  }
+
+  .doc-tab[aria-selected="true"] {
+    font-weight: 700;
+    color: var(--ink);
+    box-shadow: inset 0 -2px 0 var(--ink);
+  }
+
+  .create-bundle-link {
+    margin-left: auto;
+    align-self: center;
+  }
+
+  .create-panel {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 読みやすい幅の列（中身 760px ＋ 左右 24px）。区画の左の端（タブの行の文字）に頭を揃える */
+  .create-col {
+    width: 100%;
+    max-width: 808px;
+    padding: 20px 24px 40px;
+  }
+
+  /* 区画の端から端まで伸びる、下に 1px の線の帯（下書きの注意）。共有していないときの注意の帯と同じ組み方 */
+  .create-band {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--ink);
+  }
+
+  .create-band-caution {
+    background: var(--amber-soft);
+    border-bottom-color: var(--amber-line);
+  }
+
+  /* 帯の下の1行（実名・記号の切り替え）。説明のすぐ右にボタンを置く（画面の反対の端へ飛ばさない） */
+  .create-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 20px;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--line-inner);
+  }
+
+  /* 列の最後のボタンの並び（上に 1px の線・右寄せ。主ボタンは右の端） */
+  .create-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line-inner);
+  }
+
+  /* すぐ上に 1px の線で終わる物（下書きの欄）が来るときは、線を重ねない（線が2本並んで見える） */
+  .create-actions-flush {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  /* エラー（レンガ色）。左だけ太い線で飾る形にはしない */
+  .create-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--clay-line);
+    background: var(--clay-soft);
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--clay);
+  }
+
+  /* 下書きの1つの欄（見出し＋本文）と、番号つきの項目。枠は使わず、下に 1px の線 */
+  .draft-section,
+  .draft-item {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line-inner);
+  }
+
+  /* 下書きの中の項目の群れ（第2表の課題など）の見出しの上の空き */
+  .draft-group {
+    padding-top: 24px;
+  }
+
+  /*
+   * 赤い言葉（名前かもしれないのに消せなかったもの）。赤（--red-word）はここだけに使う（吉本さん決定 2026-09-23）。
+   * 下に波線、いま見ている1か所は 1.5px の枠で囲む（アートボード Main.dc.html の「田中」）。
+   */
+  .red-word {
+    padding: 0 1px;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--red-word);
+    font-weight: 500;
+    text-decoration: underline wavy var(--red-word);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 5px;
+  }
+
+  .red-word[data-current="true"] {
+    outline: 1.5px solid var(--red-word);
+    outline-offset: 3px;
+  }
+
+  @media (max-width: 767px) {
+    .create-head {
+      padding: 16px 16px 0;
+    }
+
+    .create-tabbar {
+      padding: 0 16px;
+    }
+
+    /*
+     * スマホではタブを1行のまま横に動かす（折り返すと3段になり、メモ欄が画面の下へ押し出される）。
+     * 動く幅は画面の端から端まで（行の余白 16px の外まで広げ、同じだけ内側を空ける）。
+     * 右の端で切れて見えるタブが「横に続きがある」ことの手がかりになる。一式まとめてのリンクは次の行。
+     */
+    .doc-tabs {
+      flex: 1 1 100%;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      margin-inline: -16px;
+      padding-inline: 16px;
+      scroll-padding-inline: 16px;
+      scrollbar-width: none;
+    }
+
+    .doc-tab {
+      flex-shrink: 0;
+    }
+
+    .create-col {
+      padding: 16px 16px 32px;
+    }
+
+    .create-band,
+    .create-row {
+      padding-inline: 16px;
+    }
   }
 }

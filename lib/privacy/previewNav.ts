@@ -38,7 +38,7 @@ export interface HighlightPart {
   start: number;
   /** 赤くする言葉なら、画面全体の通し番号（1始まり）。ふつうの文字は null */
   candidateNo: number | null;
-  /** なぜ候補にしたか（ふきだしに出す） */
+  /** なぜ候補にしたか（ふきだしと、画面の文字の両方に出す。文字は redWordReasons・candidateContexts 経由） */
   reason?: string;
 }
 
@@ -150,6 +150,40 @@ export function candidateContexts(
       after: full.slice(end, to) + (to < full.length ? "…" : ""),
       reason: part.reason,
     });
+  }
+  return out;
+}
+
+/** 開いた欄の下に並べる「なぜ赤いか」の1行分（redWordReasons の返り値）。 */
+export interface RedWordReason {
+  /** 赤い言葉そのもの */
+  word: string;
+  /** なぜ候補にしたか（「敬称の前」「施設名の可能性」） */
+  reason: string;
+}
+
+/**
+ * 開いた欄の赤い言葉を、**言葉ごとに1行**にまとめて理由と並べる（本文に出てくる順）。
+ *
+ * なぜ要るか（2026-09-23 検収の指摘）:
+ *   開いた欄（3000字以下の欄と、全文を表示した欄）では、理由が <mark title> のふきだしにしか無かった。
+ *   ふきだしはタッチ端末（タブレット・スマホ）では出ないので、職員は「なぜ赤いか」を読めず、
+ *   施設名（そのまま送ってよい）と家族の名前（言い換える）を見分ける手がかりを失っていた。
+ *   本文に差し込むと「佐藤（敬称の前）さん」のように送る文章そのものが読みにくくなり、
+ *   画面の本文と送る文章もずれるので、欄の下に一覧で出す。
+ *   候補は言葉ごとに理由が1つ（findNameCandidates が言葉で重ねない）なので、何度出ても1行にまとめる。
+ *   何か所あるかは、欄の見出しの「赤い言葉◯か所」と「前へ／次へ」が受け持つ。
+ *
+ * 使う側 = components/drafts/PreSendPreview.tsx（開いた欄の下の「なぜ赤いか」）。
+ * 畳んだ欄は candidateContexts の各行に理由が付くので、これは使わない。
+ */
+export function redWordReasons(field: FieldHighlight): RedWordReason[] {
+  const seen = new Set<string>();
+  const out: RedWordReason[] = [];
+  for (const part of field.parts) {
+    if (part.candidateNo === null || part.reason === undefined || seen.has(part.text)) continue;
+    seen.add(part.text);
+    out.push({ word: part.text, reason: part.reason });
   }
   return out;
 }

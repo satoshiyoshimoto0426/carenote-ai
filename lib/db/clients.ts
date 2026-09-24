@@ -9,6 +9,7 @@ import {
 } from "@/lib/privacy/pseudonymize";
 import type { ClientAttributes, ClientInput, ClientRecord } from "@/types/client";
 import { createServerClient } from "../supabase/server";
+import { DbAccessError, dbAccessError, dbFailedMessage, isMalformedIdError } from "./errors";
 
 /**
  * 利用者(clients)のデータアクセス。機能仕様 §6/§8。
@@ -232,7 +233,14 @@ async function nextCodeInScope(
   return nextClientCode(max + 1);
 }
 
-/** 利用者の一覧（事業所に所属していれば事業所ぶん・していなければ自分ぶん）。 */
+/**
+ * 利用者の一覧（事業所に所属していれば事業所ぶん・していなければ自分ぶん）。
+ *
+ * 読めなかったら**例外を投げる**（空の一覧を返さない）。
+ * なぜ（2026-09-23 作り直し計画 U0）: 以前は [] を返していたため、DB の失敗が「まだ利用者がいません」に
+ * 化け、救済モードの保存では同じ方を黙って二重に登録できた（横断規約 §2.7-B②）。
+ * 呼び出し側 app/api/clients/route.ts が受け止めて、職員向けの文言の 500 にする。
+ */
 export async function getClients(scope: DataScope): Promise<ClientRecord[]> {
   const db = createServerClient();
   const { data, error } = await db
@@ -241,14 +249,48 @@ export async function getClients(scope: DataScope): Promise<ClientRecord[]> {
     .or(scopeExpr(scope))
     .order("created_at", { ascending: false })
     .limit(CLIENT_LIST_LIMIT);
-  if (error) {
-    console.error("[db] getClients error:", error.message);
-    return [];
+  if (error || !data) {
+    throw new Error(`getClients: ${error?.message ?? "no data"}`);
   }
   return (data as ClientRow[]).map(toRecord);
 }
 
-/** 利用者を1件取得（範囲チェック込み）。 */
+/**
+ * 利用者1件を DB から読めなかったときに getClientById が投げる（「見えない・存在しない」とは別）。
+ *
+ * なぜ分けるか（2026-09-24 検収の指摘・作り直し計画 S1）:
+ *   以前は DB の失敗も null（＝見えない）で返していた。書類の保存（POST /api/documents）は
+ *   DB が一時的に落ちただけで 404「利用者が見つかりません。」と答え、救済モードの職員はその言葉を
+ *   信じて「新しい利用者として保存」を選び、同じ方を二重に登録し得た（U0 で止めた二重登録の裏口・§2.7-B②）。
+ *
+ * 受け止める側: getClientById を通る入口すべて（app/api/documents・app/api/clients/[id]・
+ * app/api/clients/[id]/related・app/api/transcripts・app/api/transcripts/[id]）が
+ * 503 と CLIENT_LOOKUP_FAILED_MESSAGE にする。DB の詳しい理由は message に入れ、画面へは出さない。
+ * lib/db/errors.ts の DbAccessError の子なので、入口は DbAccessError として受ければ publicMessage で同じ文を返せる。
+ */
+export class ClientLookupError extends DbAccessError {
+  constructor(detail: string) {
+    super(detail, CLIENT_LOOKUP_FAILED_MESSAGE);
+    this.name = "ClientLookupError";
+  }
+}
+
+/**
+ * 利用者1件を DB から読めなかったとき、入口が 503 で返す職員向けの言葉。
+ * 「見つかりません」とは言わない ── 言うと、いる利用者を新しく登録し直してしまう。
+ */
+export const CLIENT_LOOKUP_FAILED_MESSAGE = dbFailedMessage("利用者の情報を読み込めませんでした。");
+
+/**
+ * 利用者を1件取得する（範囲チェック込み）。書類の保存・利用者ページ・関係者名簿・文字起こしの
+ * 「その利用者が見えるか」の判定は、すべてここに一本化している（判定を写すと片方だけ直って漏れる）。
+ *
+ * @returns 見える利用者。見えない・存在しない・id が uuid の形でないときは null。
+ * @throws ClientLookupError DB を読めなかったとき（null＝見えない、と取り違えないため）。
+ *
+ * 0件をエラーにしない maybeSingle で読む。single() だと PostgREST は0件にもエラー（PGRST116）を返すので、
+ * 「見えない」と「DB の失敗」を分けられない。
+ */
 export async function getClientById(id: string, scope: DataScope): Promise<ClientRecord | null> {
   const db = createServerClient();
   const { data, error } = await db
@@ -256,8 +298,15 @@ export async function getClientById(id: string, scope: DataScope): Promise<Clien
     .select("*")
     .eq("id", id)
     .or(scopeExpr(scope))
-    .single();
-  if (error || !data) return null;
+    .maybeSingle();
+  if (error) {
+    // uuid の形でない id はどの行にも当たらない＝見えない利用者（lib/db/errors.ts）
+    if (isMalformedIdError(error)) return null;
+    // 利用者の保存や閲覧が止まる＝業務が止まる。原因を追えるようにサーバのログへ残す（画面へは出さない）
+    console.error("[db] getClientById error:", error.code ?? "", error.message);
+    throw new ClientLookupError(`getClientById: ${error.code ?? ""} ${error.message}`);
+  }
+  if (!data) return null;
   return toRecord(data as ClientRow);
 }
 
@@ -316,6 +365,13 @@ class PermanentAliasError extends Error {
 /** 職員に見せる文言（関係者名簿の表が無い時） */
 export const RELATED_TABLE_MISSING_MESSAGE =
   "関係者名簿の表が未作成のため送信を中止しました。管理者が supabase/client_related.sql を Supabase で実行してください。";
+
+/**
+ * 職員に見せる文言（関係者名簿の画面で、表が未作成のため一覧を読めない時）。
+ * RELATED_TABLE_MISSING_MESSAGE は AI への送信を止めたときの文なので、画面の一覧には使わない。
+ */
+export const RELATED_TABLE_MISSING_LIST_MESSAGE =
+  "関係者名簿の表が未作成のため、一覧を読めません。管理者が supabase/client_related.sql を Supabase で実行してください。";
 
 /** 職員に見せる文言（待っても直らない・管理者の対応が要る時） */
 export const ALIAS_PERMANENT_MESSAGE =
@@ -550,6 +606,11 @@ interface RelatedRow {
  * 境界は**親の利用者**（見てよい利用者か）だけにする。関係者行の org_id でも絞ると、
  * 組織が選ばれていないときに登録された家族が画面から消え、名簿（loadAliases）との
  * 見え方もズレる（独立審査 2026-09-13）。関係者は利用者の付属物として扱う。
+ *
+ * 親の利用者を DB から読めなければ ClientLookupError をそのまま投げる（空の一覧に見せない ──
+ * 「家族が登録されていない」と取り違えて登録し直させないため。受け止めるのは app/api/clients/[id]/related）。
+ * 関係者の表そのものを読めなかったときも同じ理由で DbAccessError を投げる（以前は [] を返していた ──
+ * 2026-09-24 検収の指摘）。表が未作成なら、管理者がやることを名指しする文にする。
  */
 export async function getRelatedPeople(
   clientId: string,
@@ -564,8 +625,13 @@ export async function getRelatedPeople(
     .eq("client_id", clientId)
     .order("created_at", { ascending: true });
   if (error) {
-    console.error("[db] getRelatedPeople error:", error.message);
-    return [];
+    throw dbAccessError(
+      "getRelatedPeople",
+      error,
+      MISSING_TABLE_CODES.has(error.code ?? "")
+        ? RELATED_TABLE_MISSING_LIST_MESSAGE
+        : dbFailedMessage("関係者名簿を読み込めませんでした。"),
+    );
   }
   const key = getPiiKey();
   const out: RelatedPerson[] = [];
@@ -585,7 +651,10 @@ export async function getRelatedPeople(
   return out;
 }
 
-/** 関係者を追加する。同じ利用者に同じ続柄は登録できない（記号が重なるため）。 */
+/**
+ * 関係者を追加する。同じ利用者に同じ続柄は登録できない（記号が重なるため）。
+ * 親の利用者を DB から読めなければ ClientLookupError をそのまま投げる（「利用者が見つかりません。」と答えない）。
+ */
 export async function addRelatedPerson(params: {
   clientId: string;
   userId: string;
@@ -632,7 +701,8 @@ export async function addRelatedPerson(params: {
 /**
  * 関係者を削除する（所有者チェック込み・利用者IDでも絞る）。
  * 0件（他人の id・存在しない id・別の利用者の id）は "not_found" にして、画面に「消えた」と誤って伝えない
- * （独立審査 2026-09-11 D8）。
+ * （独立審査 2026-09-11 D8）。親の利用者を DB から読めなければ ClientLookupError をそのまま投げる
+ * （"not_found" と答えると、消えていないのに「もう無い」と伝わる）。
  */
 export async function deleteRelatedPerson(
   id: string,
