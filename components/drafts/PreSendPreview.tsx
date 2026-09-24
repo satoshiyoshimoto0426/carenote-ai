@@ -36,8 +36,8 @@ import {
 } from "@/lib/privacy/previewNav";
 
 /**
- * /api/preview が返す「AIに送る紙」（app/(dashboard)/create/page.tsx が受け取って渡す）。
- * fields は黒塗り後の本文そのもの（/api/generate と同じ関数で作る）、candidates は欄ごとの赤い言葉。
+ * /api/preview が返す「AIに送る紙」: 黒塗りした欄の文章（fields ── /api/generate と同じ関数で作る）・置き換えた種類と件数（findings ── 原文は持たない）・
+ * 名前かもしれないのに消せなかった言葉（candidates ── 欄ごと）。つくる（app/(dashboard)/create/page.tsx）が受け取って渡す。
  */
 export interface PreviewData {
   fields: Record<string, string>;
@@ -77,6 +77,8 @@ interface Props {
 
 /**
  * 送る前に見る画面（黒塗りで消せなかった名前を、職員が目で止める最後の関門）。
+ * onBack =「戻って直す」、onConfirm =「この内容でAIに送る」（全文を開いていない欄があれば一度だけ知らせてから）。
+ * primaryClass / secondaryClass はボタンの見た目（呼ぶ側の btnPrimary / btnSecondary）。
  * 使う側 = app/(dashboard)/create/page.tsx。赤い言葉の組み立ては lib/privacy/previewNav.ts、
  * 既定の見た目の検査は PreSendPreview.test.tsx（安全テストの一覧 tools/safety-tests.json に名指し）。
  */
@@ -147,13 +149,25 @@ export default function PreSendPreview({
     [highlights],
   );
 
+  /*
+   * A案（R1・2026-09-24）の見た目: 角の丸い箱を積むのをやめ、見出しの帯 → 「前へ／次へ」の帯 → 欄 を 1px の線で区切る。
+   * 赤い言葉だけを赤（--red-word ── 吉本さん決定 2026-09-23）にし、全文を開いていない欄の知らせは注意の黄色にした。
+   * 文字・数え方・畳み方・押したときの動き・テストが見る形（presend-nav のクラス、`<span class="tnum">N</span>か所`、
+   * `N字</span>`、畳んだ欄の理由の文字）は以前のまま。
+   *
+   * 見出しの「緑の帯」（.presend-head）と「前へ／次へ」の「赤い枠」（.presend-nav）は残す（R1 の検証 2026-09-24）。
+   * 使い方（lib/manual/content.ts:135・429・433・477・1165 と公開中の public/manual/）が、この2つの色で
+   * 「送る前の画面かどうか」「赤い言葉が残っているかどうか」を見分けさせている。とくに FAQ の
+   * 「赤い枠が出ていなければ、そのまま送って構いません」は、枠が無くなると赤い言葉があっても送ってよいと読める。
+   * 見た目は app/globals.css、消えていないことは app/globals.test.ts と PreSendPreview.test.tsx が見張る。
+   */
   return (
-    <div className="animate-fadeIn space-y-4">
-      <div className="rounded-[10px] border border-[var(--green-line)] bg-[var(--green-soft)] p-3.5">
-        <p className="text-sm font-medium text-[var(--green)]">
+    <div className="animate-fadeIn">
+      <div className="presend-head">
+        <p className="text-[14px] font-bold leading-[1.6] text-[var(--green)]">
           これがAIに送られる文章です。名前と番号は置き換え済みです。
         </p>
-        <p className="mt-1 text-xs text-[var(--muted)]">
+        <p className="mt-0.5 text-xs text-[var(--muted)]">
           {summary.length > 0
             ? `置き換えたもの: ${summary.join("・")}`
             : "置き換えたものはありません"}
@@ -161,33 +175,29 @@ export default function PreSendPreview({
       </div>
 
       {highlights.total > 0 && (
-        <div className="presend-nav rounded-[10px] border border-[var(--clay)] bg-[var(--clay-soft)] p-3.5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-medium text-[var(--clay)]">
+        <div className="presend-nav">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <p className="text-[13px] font-medium leading-[1.7] text-[var(--red-word)]">
               赤い言葉は「名前かもしれないのに消せなかったもの」です（
               <span className="tnum">{highlights.total}</span>か所）。
             </p>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => goTo(current === 0 ? highlights.total : current - 1)}
-                className="h-8 rounded-[8px] border border-[var(--clay)] px-2.5 text-xs font-medium text-[var(--clay)] transition-colors hover:bg-[var(--clay)] hover:text-white"
+                className={secondaryClass}
               >
                 前へ
               </button>
-              <span className="tnum min-w-14 text-center text-xs text-[var(--muted)]">
+              <span className="mono tnum min-w-14 text-center text-xs text-[var(--muted)]">
                 {current === 0 ? `— / ${highlights.total}` : `${current} / ${highlights.total}`}
               </span>
-              <button
-                type="button"
-                onClick={() => goTo(current + 1)}
-                className="h-8 rounded-[8px] border border-[var(--clay)] px-2.5 text-xs font-semibold text-[var(--clay)] transition-colors hover:bg-[var(--clay)] hover:text-white"
-              >
+              <button type="button" onClick={() => goTo(current + 1)} className={secondaryClass}>
                 次へ
               </button>
             </div>
           </div>
-          <p className="mt-1 text-xs text-[var(--muted)]">
+          <p className="mt-1.5 text-xs leading-[1.8] text-[var(--ink-2)]">
             「次へ」で1か所ずつ確かめられます。家族や他事業所の方の名前なら「戻って直す」で言い換えてください（例:「長女」「担当ケアマネ」）。
             施設名や一般の言葉なら、そのまま送って構いません。
           </p>
@@ -199,17 +209,12 @@ export default function PreSendPreview({
         if (!field) return null;
         const isOpen = opened[key] ?? !field.long;
         return (
-          <section
-            key={key}
-            className="rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-4"
-          >
-            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <h3 className="text-xs font-medium text-[var(--muted)]">
-                {FIELD_LABELS[key] ?? key}
-              </h3>
-              <span className="tnum text-xs text-[var(--faint)]">{field.length}字</span>
+          <section key={key} className="border-b border-[var(--line-inner)] py-4">
+            <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h3 className="section-label">{FIELD_LABELS[key] ?? key}</h3>
+              <span className="tnum text-xs text-[var(--muted)]">{field.length}字</span>
               {field.candidateNumbers.length > 0 && (
-                <span className="tnum text-xs font-medium text-[var(--clay)]">
+                <span className="tnum text-xs font-medium text-[var(--red-word)]">
                   赤い言葉 {field.candidateNumbers.length}か所
                 </span>
               )}
@@ -217,7 +222,7 @@ export default function PreSendPreview({
 
             {isOpen ? (
               <>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                <p className="whitespace-pre-wrap text-[15px] leading-[1.95] text-[var(--ink)]">
                   {field.parts.map((part) =>
                     part.candidateNo === null ? (
                       <span key={`${key}-${part.start}`}>{part.text}</span>
@@ -240,7 +245,7 @@ export default function PreSendPreview({
               <button
                 type="button"
                 onClick={() => setOpened((prev) => ({ ...prev, [key]: !isOpen }))}
-                className="mt-2 text-xs font-medium text-[var(--green)] underline underline-offset-2"
+                className="mt-2 inline-flex items-center text-xs font-medium text-[var(--green)] underline underline-offset-2 max-md:min-h-11"
               >
                 {isOpen ? "この欄を畳む" : `全文を表示する（${field.length}字）`}
               </button>
@@ -250,49 +255,35 @@ export default function PreSendPreview({
       })}
 
       {asking && (
-        <div className="rounded-[10px] border border-[var(--clay)] bg-[var(--clay-soft)] p-3.5">
-          <p className="text-sm font-medium text-[var(--clay)]">
+        <div className="mt-4 border border-[var(--amber-line)] bg-[var(--amber-soft)] px-4 py-3">
+          <p className="text-[13.5px] font-medium text-[var(--amber)]">
             まだ全文を開いていない欄が <span className="tnum">{unopened.length}</span>{" "}
             つあります（合計 <span className="tnum">{unopenedChars}</span>字）。
           </p>
-          <p className="mt-1 text-xs text-[var(--muted)]">
+          <p className="mt-1 text-xs leading-[1.8] text-[var(--ink-2)]">
             赤い言葉はすべて上に出していますが、それ以外の文章は畳んだままです。
             見落としが心配なときは「全文を開く」を押してから送ってください。
           </p>
           <div className="mt-2.5 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={openAll}
-              className="h-8 rounded-[8px] border border-[var(--clay)] px-3 text-xs font-semibold text-[var(--clay)] transition-colors hover:bg-[var(--clay)] hover:text-white"
-            >
+            <button type="button" onClick={openAll} className={secondaryClass}>
               全文を開く
             </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={loading}
-              className="h-8 rounded-[8px] border border-[var(--line)] px-3 text-xs font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-2)]"
-            >
+            <button type="button" onClick={onConfirm} disabled={loading} className={secondaryClass}>
               このまま送る
             </button>
           </div>
         </div>
       )}
 
-      <div className="flex gap-2.5">
-        <button
-          type="button"
-          onClick={onBack}
-          disabled={loading}
-          className={`${secondaryClass} flex-1`}
-        >
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <button type="button" onClick={onBack} disabled={loading} className={secondaryClass}>
           戻って直す
         </button>
         <button
           type="button"
           onClick={handleConfirm}
           disabled={loading}
-          className={`${primaryClass} flex-1`}
+          className={`${primaryClass} ml-auto`}
         >
           {loading ? "AIが作成中です…（30秒〜1分ほど）" : "この内容でAIに送る"}
         </button>
@@ -301,7 +292,7 @@ export default function PreSendPreview({
   );
 }
 
-/** 赤い言葉ひとつ。いま見ている場所は枠で囲む。 */
+/** 赤い言葉ひとつ。いま見ている場所は枠で囲む（見た目は globals.css の .red-word）。 */
 function Mark({
   part,
   current,
@@ -313,11 +304,8 @@ function Mark({
     <mark
       id={`cand-${part.candidateNo}`}
       title={part.reason}
-      className={`rounded px-0.5 font-medium text-[var(--clay)] underline decoration-[var(--clay)] decoration-2 underline-offset-2 ${
-        current === part.candidateNo
-          ? "bg-[var(--clay-soft)] ring-2 ring-[var(--clay)]"
-          : "bg-transparent"
-      }`}
+      data-current={current === part.candidateNo ? "true" : undefined}
+      className="red-word"
     >
       {part.text}
     </mark>
@@ -339,19 +327,19 @@ function CollapsedField({
 }) {
   if (contexts.length === 0) {
     return (
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">
+      <p className="whitespace-pre-wrap text-[14.5px] leading-[1.9] text-[var(--muted)]">
         {excerptText}
       </p>
     );
   }
   return (
-    <ul className="space-y-2">
+    <ul>
       {contexts.map((c) => (
         <li
           key={c.candidateNo}
-          className="rounded-[8px] border border-[var(--line)] bg-[var(--surface)] p-2.5 text-sm leading-relaxed"
+          className="border-b border-[var(--line-faint)] py-2.5 text-[14.5px] leading-[1.95] last:border-b-0"
         >
-          <span className="tnum mr-2 text-xs font-semibold text-[var(--clay)]">
+          <span className="mono tnum mr-2 text-xs font-medium text-[var(--red-word)]">
             {c.candidateNo}
           </span>
           <span className="text-[var(--muted)]">{c.before}</span>

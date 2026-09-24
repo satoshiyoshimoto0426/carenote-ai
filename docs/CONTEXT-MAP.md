@@ -63,7 +63,7 @@
 | `lib/draftText.ts` | 下書き→コピー用プレーンテキスト整形（純粋関数・テスト済）。救済モードの帳票連結にも使用 | P1実装済 |
 | `app/api/generate/` | 認証＋`documentType`分岐（carePlan/assessment/monitoring）＋入力検証 | P1実装済 |
 | `app/api/rescue/` | 救済モードAPI（Clerk認証）。人物像（＋timeline／sourceDocs=Blob上のPDF最大5件）→（資料あれば Stage0 `generateIntake`）→`generateRescueBundle`→一式JSON＋`intake`。PDFは finally で必ず del()（非保持原則）。maxDuration=300 | 実装済 |
-| `app/(dashboard)/create/` | 作成UI：帳票セレクタ→入力→下書き生成→確認・コピー（`components/drafts/` に表示部品） | P1実装済 |
+| `app/(dashboard)/create/` | 作成UI（つくる）：書類の種類の文字のタブ（`components/create/DocTypeTabs.tsx`）→入力→送る前に見る→下書き・確認・コピー（`components/drafts/` に表示部品）。タブの行の右端に一式まとめて（救済モード `/rescue`）への入口（A案 R1 ── §3「つくるの見た目」） | P1実装済 |
 | `app/(dashboard)/rescue/` | 救済モードUI：人物像の**構造化フォーム**（性格/生活歴/既往・診断/心身/家族・住環境/サービス/意向/補足）→一式生成→全帳票表示＋コピー。完成形まで埋める旨のバナー表示 | 実装済 |
 | `extension/` | **時短エンジン**：ブラウザ拡張(MV3)。対象=**カイポケ**。サイドパネルで下書き生成→セクション単位コピー(Step1)＋カイポケ画面へ流し込み(Step2)。`src/adapters/kaipoke.js`＝CareNote→カイポケ欄マッピング(出典[KAIPOKE-DOM.md](KAIPOKE-DOM.md))。調査: [P2-KAIPOKE.md](P2-KAIPOKE.md)・[CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)（電話録音→要約→転記の可否／カイポケ公開APIは無し・公認既製品あり・2026-09-09） | **P2 Step1+Step2 実装済**（テキスト欄の半自動入力。第2表等はDOM追加取得後） |
 | 評価（現行） | 独立機能として継続。開発時は生成物の品質回帰チェックにも転用 | 継続 |
@@ -271,7 +271,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - **本文 `main.app-main-inner` は画面いっぱい**（幅の上限・余白なし）。区画を端から端まで並べ、1px の線だけで区切る（カードを積まない）。
 - **部品** `components/ui/primitives.tsx`: `Pane`（section／aside・`width` 640／440・`tinted`＝地を `--pane`・`label`＝読み上げの名前）、`PaneHeader`（高さ 48px・**Pane の直下に置く**・`title` は h2）、
   `SectionLabel`（12px 太字・字間 0.06em・`htmlFor` で欄に結んだ label）、`TextAction`（文字だけの操作 ── `href`＝リンク／`onClick`＝ボタン・スマホ 44px）。
-  ボタンの寸法もアートボードへ: `btnPrimary`＝高さ 44px の緑（1画面に1つ）、`btnSecondary`＝パソコン 34px・スマホ 44px・枠 `--btn-line`・文字 `--ink`。`Card`/`PageHeader`/`SectionTitle` は作り替え前の画面のために残す（計画 X1 で片付け）。
+  ボタンの寸法もアートボードへ: `btnPrimary`＝高さ 44px の緑（1画面に1つ）、`btnSecondary`＝パソコン 34px・スマホ 44px・枠 `--btn-line`・文字 `--ink`。`Card`/`PageHeader`/`SectionTitle` は作り替え前の画面のために残す（計画 X1 で片付け）。R1（2026-09-24）で `Card` は角の丸みと影を外した 1px の線の面に、`PageHeader` は見出し 20px・説明 13px・静かな「この画面の使い方」にした（作り替え前の画面が一度にカードを積んだ見た目でなくなる）。
 - **CSS** `app/globals.css` の `@layer components`: `.panes`（区画を横に並べる）・`.pane`・`.pane-640`・`.pane-440`・`.pane-tinted`・隣り合う区画の 1px の線（`.pane + .pane`）・`.pane-header`・`.pane-title`・`.section-label`・`.text-action`・`.legacy-page`。
   層に入れるのは、部品に className で足した Tailwind の指定（余白など）が勝てるように（層の外の規則は層の中に必ず勝つ ── 2026-09-23 の余白 0 の不具合と同じ仕組み）。素の CSS なのでスキャンの取りこぼしと無関係に本番の CSS に出る（本番用ビルドで確認済み）。
 - **768px 以上は区画が自分の中で縦に動く**（左の入力を動かしても右は動かない）。区画の頭の帯は区画の上に貼りつく。スマホは区画を縦に積み、文書が動く（スマホ用の形は M1/M2）。
@@ -282,7 +282,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
   overflow-hidden の一覧（角を丸めた Card）は縮む下限が 0 になり、器の高さで自分の行を切り落として下の行へ行けなくなる（2026-09-24 A4 の検証の blocker ──
   利用者の一覧と点検の履歴）。**残りの高さを埋める物は `grow`**（flex-grow だけ）を付け、`flex-1` は使わない（縮む指定と高さ 0 の出発点を入れ直すので、
   overflow-hidden や小さい `min-h` と組むと同じ切り落としが起きる）。器の中で縮めて中だけ動かしたい物だけが `flex-1 min-h-0` を自分で付ける。
-- **まだ作り替えていない画面の器 `.legacy-page`**: 5画面（`create`・`evaluate`・`dashboard`・`rescue`・`guide`）の根元に付ける（A4 では7画面。`clients`・`clients/[id]` は A5 で外した ── 下の「利用者の作業台」）。
+- **まだ作り替えていない画面の器 `.legacy-page`**: 4画面（`evaluate`・`dashboard`・`rescue`・`guide`）の根元に付ける（A4 では7画面。`clients`・`clients/[id]` は A5 で、`create` は R1 で外した ── 下の「利用者の作業台」「つくるの見た目」）。
   以前の本文の幅（最大 1000px＝中身 920px＋左右 40px）と余白（スマホ 16/16/32px）を再現し、768px 以上ではそれ自体が1つの区画のように動く。旧 `.app-main-inner` の「幅の決定点」の決まりはここが引き継いだ。作り替えたページから外し、全部外れたら消す（計画 X1）。
 - **ホーム = 利用者**（吉本さん決定 2026-09-23）: `app/page.tsx` が `/` を `/clients` へ（旧 `/evaluate`）。ログイン直後の行き先は Clerk の `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` / `AFTER_SIGN_UP_URL`。
   手元の見本 `.env.local.example` は `/clients` にした（ただしこのファイルは `.gitignore` の `.env*` に当たり **git に入っていない**）。本番の Vercel の値は吉本さんが変える（`docs/REDESIGN-A-SIGNOFF.md` の 8）。
@@ -378,6 +378,32 @@ npm test ─> tools/run-tests.mjs
 **未了（redesign/a を本番へ出す前に必須）**: この注意喚起は maoucastle-game のブランチ `harness/h3-safety-advisory`（ab5e3ad）にあり、
 main へはまだ入っていない。ハーネスの変更なので PR＋独立審査（§2.7-F 出口）を通す ── [maoucastle-game#38](https://github.com/satoshiyoshimoto0426/maoucastle-game/issues/38)。
 
+### つくるの見た目 ── 見た目だけの作り替え（A案「作業台」・R1・2026-09-24・ブランチ `redesign/a-restyle`）
+- **流れ・押したときの動き・画面の文字は変えていない**（入力 → 送る前に見る → 結果の3段のまま。送る直前の文章を固定して左右の区画に分けるのは計画 C4、録音中にタブを止めるのは C3）。
+- **並び** `app/(dashboard)/create/page.tsx`: `.panes` の中に区画（`Pane label="つくる"`・画面の残りの幅いっぱい）1つ。上から 見出し（`PageHeader`「帳票作成（下書き）」・`helpAnchor="ch3"` ── マニュアルが見出しの文字を使う）→
+  書類の種類のタブの行（`.create-tabbar`・48px・下に 1px の線）→ 中身（`role="tabpanel"` の `.create-panel`）。中身は、区画の端から端までの帯（`.create-band`＝下書きの注意の黄色の帯／`.create-row`＝実名・記号の切り替え）と、読みやすい幅の列（`.create-col`・中身 760px）。
+  タブの行は区画の上に**貼りつけない**（狭い幅でタブが2段に折り返すと高さが 48px でなくなり、区画の中で貼りつく「前へ／次へ」がその裏に潜るため）。
+- **`components/create/DocTypeTabs.tsx`**: 文字のタブ（`role="tablist"`・`aria-selected`・選んだタブは太字＋下に 2px の線 `--ink`）。並びと文字は `lib/create/docTypes.ts` のまま、押すと以前と同じ `switchDocType`。
+  キーボードは選んだタブだけが Tab の並びに入り、←/→・Home/End で移って Enter/スペースで選ぶ（移るだけでは選ばない ── 選ぶと結果の下書きが消えるので）。スマホではタブを1行のまま横に動かす。
+- **一式まとめて（救済モード）への入口**: タブの行の右端の文字のリンク「一式まとめて（救済モード）」→ `/rescue`（左の帯から救済モードの項目が無くなったので、ここから行く）。**タブの並び（tablist）の外**に置く（中に入れると読み上げでタブの1つに数えられる ── 計画の指摘）。
+- **部品の見た目**（文字・並び順・テストが見る形は以前のまま）: `components/drafts/PreSendPreview.tsx`（見出しの**緑の帯**〔`.presend-head`・淡い緑の地＋緑の線〕→ 「前へ／次へ」の**赤い枠**の帯〔`.presend-nav`・`--red-word` の 1px の線で四方を囲む・置き場所の地で塗る〕→ 欄を 1px の線で区切る。
+  緑の帯と赤い枠は、使い方〔`lib/manual/content.ts`:135・429・433・477・1165〕がこの色で「送る前の画面か」「赤い言葉が残っているか」を見分けさせているので残す ── R1 で一度線だけにして、FAQ が「赤い言葉があっても送ってよい」と読める状態になった〔2026-09-24 検証の blocker〕。見張りは `app/globals.test.ts`「使い方が指す見た目」と `PreSendPreview.test.tsx`。赤い言葉の印は `.red-word`〔`--red-word` の文字＋波線・いま見ている所は 1.5px の枠〕。全文を開いていない欄の知らせは注意の黄色）、
+  `components/drafts/*View.tsx`・`DraftSection.tsx`（白いカードをやめ `.draft-section`／`.draft-item` の 1px の線。項目の名前は緑・黄色でなく `--ink-2`）、`ItemsToConfirm`・`AssessmentUpdatesPanel`（細い線で囲んだ黄色の帯）、`AppointmentsPanel`・`KaipokeSheetView`（線で区切った行。つくるでは緑の主ボタンを1つにするため `primaryClass` に脇のボタンを渡す）、
+  `components/recording/RecordingPanel.tsx`（上に 1px の線・マイクの印。同意のチェックは帯の中で最初の checkbox のまま）、`components/create/SaveTranscriptBar.tsx`・`NotesField.tsx`（上に 1px の線・欄の名前は `.section-label`）。
+  救済モード（`rescue/page.tsx`）は、左だけ太い線で飾った注意・エラーの帯を細い線で囲む帯にしただけ（文字は同じ）。
+- **トークンとクラス** `app/globals.css`: `--t-title` 24px → 20px、`--clay-line`（エラーの帯の縁）、`.mono`（数字と記号だけの文字列を等幅に ── 日本語の字には使わない）、4つ目の `@layer components`（`.create-*`・`.doc-tab*`・`.draft-*`・`.red-word`）。
+  `components/ui/primitives.tsx`: `textareaClass` を 14.5px・行の高さ 1.9 に、1行に並べる小さな欄 `inlineFieldClass`（34px／スマホ 44px）を追加（`inputClass` に高さ・余白を足して上書きすると、どちらが勝つかが出力の順で決まり、選ぶ欄の文字が切れていた）。
+- テスト: `app/(dashboard)/create/page.test.tsx`（一式まとめてのリンク〔`/rescue`・タブの並びの外〕・タブ5つの並びと文字・選んだタブは1つでケアプラン・Tab の並びに入るのはそのタブだけ・中身の名前・送る前の約束の一文）。エラーの帯の文字の 4.5:1 は `app/globals.test.ts`。
+  送る前の見出しの緑の帯の文字の 4.5:1 も `app/globals.test.ts`。`components/recording/RecordingPanel*.test.tsx` は1文字も変えずに通る。
+  `components/drafts/PreSendPreview.test.tsx` は以前の検査を1文字も変えず、緑の帯と赤い枠の帯に文字が入っていることの検査を1つ足した。
+- **使い方と合っている所**（R1 の検証の直しで戻した）: 送る前の画面の「緑の帯」（`lib/manual/content.ts`:135・429・477、`docs/MANUAL-VIDEO-SPEC.md`:209・243・267）、
+  赤い言葉の知らせの「赤い枠」「赤い帯」（`lib/manual/content.ts`:225・433・1165〔FAQ「赤い枠が出ていなければ、そのまま送って構いません」〕、`docs/MANUAL-VIDEO-SPEC.md`:244）。
+  エラーの帯（`.create-error`）も細い線で囲んだ枠なので、ch7 の「赤い枠」（`lib/manual/content.ts`:1082・1139、`docs/MANUAL-VIDEO-SPEC.md`:320・327）もそのまま通じる。
+- **まだ直していない文書**（D1b でまとめて）: `lib/manual/content.ts`:413（「上に並んだ5つのボタン」── 文字のタブ）・
+  913・1036（救済モードへは、つくるのタブの行の右端「一式まとめて（救済モード）」から入る）、
+  `docs/MANUAL-VIDEO-SPEC.md`:207（ch1 #6「画面の上に並ぶ帳票の種類」）・239（ch3 #2「5つの書類ボタン」）（形が文字のタブに）、
+  公開中の ch1・ch3 の動画（書類の種類がボタンの並びで、送る前の画面の帯と枠が角の丸い箱で映っている ── 色の呼び方〔緑の帯・赤い枠〕と文字は今と同じ）。
+
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
 - API ルートの追加・データフローの変更
@@ -386,7 +412,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
 
 ---
-*最終更新: 2026-09-24 / 見張り（tools/run-tests.mjs）が一時レポートを消す所で、日本語を含む置き場所だとプロセスごと落ちていた（合否を出さずに 127）のを unlinkSync に直し、tools の道具に rmSync を戻さない検査を足した*
+*最終更新: 2026-09-24 / 枝 `redesign/a-restyle`（つくると共通部品の A案の見た目・動きと文字は変えない・送る前の画面の緑の帯と赤い枠は残す）を取り込んだ（今夜の本番公開用）*
+*2026-09-24 / 見張り（tools/run-tests.mjs）が一時レポートを消す所で、日本語を含む置き場所だとプロセスごと落ちていた（合否を出さずに 127）のを unlinkSync に直し、tools の道具に rmSync を戻さない検査を足した*
 *2026-09-24 / 枝 `redesign/a-backend`（API・DB の失敗の扱い・安全テストの見張り・書類の日付の API）を `redesign/a` へ取り込んだ。利用者の一覧の読み方を `lib/clients/listError.ts` の `fetchClientList` に1つにし、利用者の画面の検査6つを安全テストの一覧へ足した。利用者の画面・外枠の検査の「出ている」を `tests/helpers/markup.ts`（jsdom の橋 `shownText`・`isShown` を足した）で読む形に寄せた*
 *2026-09-24 / 利用者一覧の書類の日付の API（`GET /api/clients/latest-docs`・`getLatestDocMeta`・`lib/documents/latest.ts`）を足した（作り直し計画 U5 の API 部分。画面の列は統合の後）。範囲を使うルートは 12ファイル・17ハンドラ*
 *2026-09-24 / 本文を直接読んでいた blob-upload（壊れた JSON で JSON の無い 500）と evaluate も `lib/requestBody.ts` に寄せた（12の入口。blob-upload は handleUpload の形も確かめる）。「唯一の道」の言い過ぎを直した（S1 の検収の指摘）*

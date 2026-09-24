@@ -73,6 +73,16 @@ describe("送る前に見る画面の既定表示", () => {
     expect(marksOf(html)).toEqual(["佐藤", "佐藤", "佐藤"]);
   });
 
+  it("見出しの2行は緑の帯（presend-head）の中、赤い言葉があれば「前へ/次へ」は赤い枠の帯（presend-nav）に出る", () => {
+    // 使い方（lib/manual/content.ts:135・429・433・477・1165）が「緑の帯」「その帯の中にある「置き換えたもの:」の行」
+    // 「赤い枠」で画面を見分けさせている。色そのものは app/globals.test.ts が見る（R1 の検証 2026-09-24）。
+    const html = view({ meetingNotes: "長女の佐藤さんより電話。" });
+    const head = html.match(/<div class="presend-head">([\s\S]*?)<\/div>/)?.[1] ?? "";
+    expect(head).toContain("これがAIに送られる文章です。名前と番号は置き換え済みです。");
+    expect(head).toContain("置き換えたものはありません");
+    expect(html).toContain('<div class="presend-nav">');
+  });
+
   it("赤い言葉が1つも無ければ、前へ/次への帯は出さない", () => {
     const html = view({ meetingNotes: "本人から電話。特変なし。" });
     expect(html).not.toContain("presend-nav");

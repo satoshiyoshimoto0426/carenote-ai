@@ -12,16 +12,35 @@ import { IconHelpCircle } from "./icons";
  * （全部の画面を作り替えたら片付ける ── 計画 X1）。
  */
 
-/**
- * Shared form-control base: white field, warm border, generous padding.
- * The green focus ring comes from the global focus-visible rule in globals.css.
- */
-export const inputClass =
-  "w-full rounded-[8px] border border-[var(--line)] bg-[var(--card)] px-3 py-2.5 text-sm " +
+/** 入力欄の共通の見た目（白い面・細い枠・角丸 8px）。文字の大きさは下の2つがそれぞれ1つだけ決める。 */
+const fieldBase =
+  "w-full rounded-[8px] border border-[var(--line)] bg-[var(--card)] px-3 py-2.5 " +
   "text-[var(--ink)] placeholder:text-[var(--faint)]";
 
-/** Textarea variant of inputClass — same field styling plus readable line height. */
-export const textareaClass = `${inputClass} leading-relaxed`;
+/**
+ * 1行の入力欄・選ぶ欄のクラス（白い面・細い枠・14px）。
+ * フォーカスの緑の枠は globals.css の input:focus-visible が付ける。
+ * 使う所: つくる・救済モード・利用者の画面（新しい利用者・関係者名簿）・記録として残す欄。
+ */
+export const inputClass = `${fieldBase} text-sm`;
+
+/**
+ * 複数行の入力欄（メモ・人物像など）のクラス。本文はアートボードのメモ欄と同じ 14.5px・行の高さ 1.9
+ * （長い文字起こしを読み返しやすく ── A案 R1・2026-09-24。以前は 14px・1.625）。
+ * inputClass に大きさを足して上書きしない: 同じ性質（font-size）を決めるクラスが2つあると、
+ * どちらが勝つかは Tailwind の出力の順で決まり、書いた順では決まらないため。
+ */
+export const textareaClass = `${fieldBase} text-[14.5px] leading-[1.9]`;
+
+/**
+ * 1行に並べる小さな入力欄・選ぶ欄（幅は中身なり・高さはパソコン 34px／スマホ 44px ── 脇のボタン btnSecondary と同じ高さ）。
+ * inputClass に高さや幅を足して上書きしない（同じ性質を決めるクラスが2つあると、どちらが勝つかは Tailwind の出力の順で決まる。
+ * 2026-09-24 に「記録として残す」欄の選ぶ欄が上下の余白に押されて文字が切れていたのを R1 の画面確認で見つけた）。
+ * 使う所: components/create/SaveTranscriptBar.tsx（保存先の利用者・見出し）。
+ */
+export const inlineFieldClass =
+  "h-11 rounded-[8px] border border-[var(--line)] bg-[var(--card)] px-3 text-sm " +
+  "text-[var(--ink)] placeholder:text-[var(--faint)] md:h-[34px]";
 
 /**
  * 主ボタン（緑の地・白い文字）。**1画面に1つだけ**使う（A案の決まり ── 緑は「主ボタン」と「選択中の印」だけ）。
@@ -186,15 +205,21 @@ export function TextAction(
 }
 
 /**
- * 各ページの見出し。
+ * 各ページの見出し（h1）と1行の説明、「この画面の使い方」のリンク。
  *
  * 2026-09-16 の作り直し: 旧版は日本語の見出しの上に "CREATE" のような**ラテン文字の
  * アイブロウ**を置き、見出しを明朝体で組んでいた。これは生成AIが作る画面の典型で、
  * 情報も足していない（"CREATE" は「帳票作成」の上に置いても何も説明しない）。
  * 見出し1本に整理し、書体は本文と同じゴシックの太字にした。
  *
+ * A案「作業台」（2026-09-24 R1）: 文字の大きさをアートボードの段階に揃えた ── 見出し 20px の太字
+ * （--t-title）、説明 13px の --muted。「この画面の使い方」は上の帯（components/shell/TopBar.tsx）にも
+ * あるので、ここでは小さく静かに添える（12px の --muted・枠も地も無し）。スマホでは押す場所を 44px にする。
+ *
  * helpAnchor: 使い方ページの章アンカー（例 "ch3"）。渡すと見出しの右に
  * 「この画面の使い方」リンクが出て /guide#ch3 へ飛ぶ（迷った職員がその場で手順を open できる）。
+ * 行き先が上の帯と同じであることは lib/nav.test.ts が確かめる。
+ * 使う所: つくる・救済モード・点検・ダッシュボード・使い方（まだ上の帯へ見出しを移していない画面）。
  */
 export function PageHeader({
   title,
@@ -206,20 +231,20 @@ export function PageHeader({
   helpAnchor?: string;
 }) {
   return (
-    <header className="mb-[var(--sp-4)]">
+    <header className="mb-[var(--sp-3)]">
       {/*
         2026-09-16: 以前は justify-between で「使い方」リンクを見出しの反対側へ飛ばしていた。
         見出しが短いページでは画面の真ん中にぽつんと浮いて、意図した配置に見えなかった。
         見出しのすぐ隣に添える形に変える。
       */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="text-[length:var(--t-title)] font-bold leading-[1.4] tracking-[0.01em] text-[var(--ink)]">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <h1 className="text-[length:var(--t-title)] font-bold leading-[1.4] text-[var(--ink)]">
           {title}
         </h1>
         {helpAnchor ? (
           <Link
             href={`/guide#${helpAnchor}`}
-            className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-[7px] px-2 py-1 text-[12px] text-[var(--faint)] transition-colors hover:bg-[var(--green-soft)] hover:text-[var(--green)]"
+            className="inline-flex flex-shrink-0 items-center gap-1.5 text-[12px] text-[var(--muted)] underline-offset-[3px] transition-colors hover:text-[var(--ink)] hover:underline max-md:min-h-11"
           >
             <IconHelpCircle size={13} />
             この画面の使い方
@@ -227,22 +252,25 @@ export function PageHeader({
         ) : null}
       </div>
       {description ? (
-        <p className="mt-1.5 text-[13.5px] leading-relaxed text-[var(--muted)]">{description}</p>
+        <p className="mt-1 text-[13px] leading-[1.7] text-[var(--muted)]">{description}</p>
       ) : null}
     </header>
   );
 }
 
 /**
- * White surface card with hairline border and the one approved soft shadow.
- * Deliberately no default padding — callers pass p-5/p-6 via className so
- * Tailwind class conflicts never occur.
+ * まだ A案の区画に作り替えていない画面の「ひとまとまり」（1px の線で囲んだ白い面）。
+ *
+ * A案「作業台」（2026-09-24 R1）: 以前は角を 10px 丸めて影を付けた「カード」で、画面がカードを積んだ形
+ * （生成AIの画面の典型 ── 吉本さんが2度却下した見た目）になっていた。角の丸みと影を外し、細い線（--line）で
+ * 囲むだけの面にした。これ1か所を変えるだけで、作り替え前の画面（点検・ダッシュボード・使い方・救済モード）が
+ * 一度にカードを積んだ見た目でなくなる。区画に作り替えた画面は使わない（Pane を使う ── 全部の画面を
+ * 作り替えたら片付ける・計画 X1）。
+ * 余白は持たない（呼ぶ側が p-5 / p-6 を className で渡す。Tailwind の指定がぶつからないように）。
  */
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div
-      className={`rounded-[10px] border border-[var(--line)] bg-[var(--card)] shadow-[0_1px_2px_rgba(16,21,26,0.05)] ${className ?? ""}`}
-    >
+    <div className={`border border-[var(--line)] bg-[var(--card)] ${className ?? ""}`}>
       {children}
     </div>
   );

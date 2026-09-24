@@ -211,19 +211,22 @@ function DocView({ docKey, bundle }: { docKey: DocKey; bundle: RescueBundle }) {
   }
 }
 
-/** 救済モード共通の注意書き。amber の左ボーダー帯（下書き・要事実照合の明示）。 */
+/**
+ * 救済モード共通の注意書き。注意の黄色（amber）の帯（下書き・要事実照合の明示）。
+ * A案（R1・2026-09-24）で左だけ太い線の飾りをやめ、細い線で囲む帯にした（文字は以前のまま）。
+ */
 function AmberNotice({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-r-[8px] border-l-4 border-[var(--amber)] bg-[var(--amber-soft)] px-4 py-3">
+    <div className="border border-[var(--amber-line)] bg-[var(--amber-soft)] px-4 py-3">
       <p className="text-xs leading-relaxed text-[var(--amber)]">{children}</p>
     </div>
   );
 }
 
-/** エラー表示帯。clay の枠＋アイコンで明瞭に。 */
+/** エラー表示帯。レンガ色（clay）の地＋細い線＋アイコンで明瞭に（A案 R1 で角の丸みを外した）。 */
 function ErrorNotice({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2.5 rounded-[8px] border border-[var(--clay)] bg-[var(--clay-soft)] px-4 py-3">
+    <div className="flex items-start gap-2.5 border border-[var(--clay-line)] bg-[var(--clay-soft)] px-4 py-3">
       <IconAlert size={16} className="mt-0.5 shrink-0 text-[var(--clay)]" />
       <p className="text-sm leading-relaxed text-[var(--clay)]">{message}</p>
     </div>
@@ -660,7 +663,7 @@ export default function RescuePage() {
 
               {/* 資料どうしの食い違い（人が確かめる） */}
               {(intake.conflicts?.length ?? 0) > 0 && (
-                <div className="rounded-r-[8px] border-l-4 border-[var(--clay)] bg-[var(--clay-soft)] px-4 py-3">
+                <div className="border border-[var(--clay-line)] bg-[var(--clay-soft)] px-4 py-3">
                   <p className="text-xs font-semibold text-[var(--clay)]">
                     資料どうしの食い違い（<span className="tnum">{intake.conflicts.length}</span>
                     件・確かめてから使う）
@@ -716,7 +719,7 @@ export default function RescuePage() {
                 </details>
               )}
               {intake.cautions.length > 0 && (
-                <div className="rounded-r-[8px] border-l-4 border-[var(--amber)] bg-[var(--amber-soft)] px-4 py-3">
+                <div className="border border-[var(--amber-line)] bg-[var(--amber-soft)] px-4 py-3">
                   <p className="text-xs font-semibold text-[var(--amber)]">要注意点</p>
                   <ul className="mt-1.5 space-y-1">
                     {intake.cautions.map((c) => (

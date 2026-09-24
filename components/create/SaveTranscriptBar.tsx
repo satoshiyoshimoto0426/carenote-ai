@@ -30,8 +30,8 @@ interface Props {
 }
 
 /**
- * 「この欄の内容を記録として残す（任意）」の帯。text が空なら何も描かない。
- * 呼ぶ側: components/create/NotesField.tsx（/create のメモ欄の下）。
+ * 「この欄の内容を記録として残す（任意）」の欄（保存先の利用者・見出し・残すボタン）。text が空なら何も描かない。
+ * 呼ぶ側: components/create/NotesField.tsx（/create の録音の入口がある欄の下）。
  */
 export default function SaveTranscriptBar({ text, kind, inputClass, secondaryClass }: Props) {
   const clientList = useClientList();
@@ -70,19 +70,20 @@ export default function SaveTranscriptBar({ text, kind, inputClass, secondaryCla
   if (text.trim().length === 0) return null;
 
   return (
-    <div className="mt-2 rounded-[8px] border border-[var(--line)] bg-[var(--surface)] p-2.5">
-      <p className="text-xs font-medium text-[var(--ink)]">この欄の内容を記録として残す（任意）</p>
-      <p className="mt-1 text-xs text-[var(--muted)]">
+    // A案（R1・2026-09-24）: 角を丸めた箱をやめ、上に 1px の線を引いた区切りにした。文字と並びは以前のまま
+    <div className="mt-4 border-t border-[var(--line-inner)] pt-3.5">
+      <p className="section-label">この欄の内容を記録として残す（任意）</p>
+      <p className="mt-1.5 text-xs leading-[1.8] text-[var(--muted)]">
         あとで「言った・言わない」を確かめたいときに残します。いま上の欄に書かれている全文
         （録音から起こした文章も、手で書き足した部分も）を、実名が入ったまま暗号化して保存します。
         保存から5年を過ぎたら消す決まりですが、いまは自動で消えません（管理者がまとめて消します）。
         残さない場合は、画面を離れた時点で消えます。
       </p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
         <select
           value={clientId}
           onChange={(e) => setClientId(e.target.value)}
-          className={`${inputClass} h-9 w-auto py-0`}
+          className={`${inputClass} max-w-full`}
           aria-label="保存先の利用者"
         >
           <option value="">保存先の利用者を選ぶ</option>
@@ -98,7 +99,7 @@ export default function SaveTranscriptBar({ text, kind, inputClass, secondaryCla
           onChange={(e) => setTitle(e.target.value)}
           maxLength={TITLE_MAX_CHARS}
           placeholder="見出し（例: 9月17日 担当者会議）"
-          className={`${inputClass} h-9 w-56 py-0`}
+          className={`${inputClass} w-72 max-w-full`}
           aria-label="見出し"
         />
         <button

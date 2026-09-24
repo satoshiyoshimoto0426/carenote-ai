@@ -20,6 +20,11 @@ interface Props {
   secondaryClass: string;
 }
 
+/**
+ * カイポケの10ページの欄に合わせた文章の表示（ページごとに開け閉め・欄ごとにコピー）。
+ * 使う所: つくる（アセスメントの結果の「カイポケの欄に合わせる」のあと）。A案（R1・2026-09-24）: 角を丸めた箱をやめ、
+ * ページと欄を 1px の線で区切った。つくるは緑の主ボタンを1画面に1つにするため primaryClass に脇のボタンの見た目を渡す。文字は以前のまま。
+ */
 export default function KaipokeSheetView({ sheet, primaryClass, secondaryClass }: Props) {
   const [copied, setCopied] = useState<string | null>(null);
   const checks = new Map(checkSheet(sheet).map((c) => [c.key, c]));
@@ -33,10 +38,10 @@ export default function KaipokeSheetView({ sheet, primaryClass, secondaryClass }
   };
 
   return (
-    <section className="space-y-3 rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-4">
+    <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-medium">カイポケの欄に合わせた文章（10ページ）</h3>
+          <h3 className="section-label">カイポケの欄に合わせた文章（10ページ）</h3>
           <p className="text-xs text-[var(--muted)]">
             欄ごとにコピーして貼れます。{inferred > 0 && `推測を含む欄 ${inferred}件。`}
             {over > 0 && (
@@ -76,25 +81,21 @@ export default function KaipokeSheetView({ sheet, primaryClass, secondaryClass }
           .filter((r) => r.f?.text);
         if (rows.length === 0) return null;
         return (
-          <details
-            key={page}
-            className="rounded-[8px] border border-[var(--line)] px-3 py-2"
-            open={page <= 2}
-          >
-            <summary className="tnum cursor-pointer text-sm font-medium">
+          <details key={page} className="border-b border-[var(--line-inner)] py-2" open={page <= 2}>
+            <summary className="tnum cursor-pointer py-1.5 text-sm font-medium max-md:py-3">
               {page}枚目：{KAIPOKE_PAGE_TITLES[page]}（{rows.length}欄）
             </summary>
-            <ul className="mt-2 space-y-2">
+            <ul className="mt-1">
               {rows.map(({ spec, f }) => {
                 if (!f) return null;
                 const key = fieldKey(f);
                 const c = checks.get(key);
                 return (
-                  <li key={key} className="rounded-[8px] bg-[var(--paper)] px-3 py-2">
+                  <li key={key} className="border-t border-[var(--line-faint)] py-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-1">
                       <div className="text-xs">
                         <span className="font-medium">{spec.label}</span>
-                        <span className="ml-2 text-[var(--faint)]">{spec.formName}</span>
+                        <span className="mono ml-2 text-[var(--faint)]">{spec.formName}</span>
                         {f.isInferred && (
                           <span className="ml-2 font-medium text-[var(--clay)]">推測を含む</span>
                         )}
