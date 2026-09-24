@@ -50,8 +50,9 @@
 - <small>根拠（開発向け）: scratchpad/m1-status.txt 末尾: lens:delivery/invent/live/mutation/spec/survival => FAILED、merge => FAILED／scratchpad/wf-m1-finish.js:3-4,94-95（phase('Review') の await workflow('graph-doubt') が未実行）／`gh pr view 15 --json reviews` → reviews: []／`gh pr view 15 --comments`: github-actions のコメントは「Auto Review 進行中」・Critical 3項目が「サブエージェント実行中」・判定（APPROVE/…）未チェックのまま「Claude finished in 2m 25s」＝判定なしで終了（PR 側の review-pr 実行 35967886853 は success だが中身は判定なし。PR #16 の 35976526820 は完了・承認）／wt-harness/decisions-log.md 2026-09-23「出口ゲート: 安全網・データ・認証にかかわるものは独立審査」／lead 検証「milestone 1 の graph-doubt は未実施」</small>
 
 ### T-NOW-03　点検（PDF の AI 評価）は本番でいま動いていない（AI のモデル名が存在しない・Issue #4）── 直してから1回だけ確かめる
-- **優先**: P0 いま最優先　**担当**: Claude＋吉本さん　**状態**: 未着手（本番で壊れている）　**大きさ**: 小(〜1時間)
+- **優先**: P0 いま最優先　**担当**: Claude＋吉本さん　**状態**: ✅済（2026-09-25）　**大きさ**: 小(〜1時間)
 - **止めているもの**: 動かなければ本番の機能が1つ止まっている。点検の作り直し（K1〜K3）の前提
+- **結果（2026-09-25）**: PR #17 を main へ取り込み（04:03）→ 本番へ自動公開（04:04）→ Issue #4 は自動で閉じた。Claude が本番で、実名の無い試験用 PDF（英文1ページ・「Client A」）を撮影用の試験アカウントで点検し、25秒で評価結果が出た（中身がほぼ空なので 0/27・要改善は正しい動き）。吉本さんの手での確認②は不要になった。残る点検の課題は K1〜K3（見た目の作り直し・実名が履歴に出る件）。
 - **次の一手**: ①Claude が点検専用のモデル名の定数を作り、存在しない名前 claude-sonnet-4-5-20250514 を正しい名前（claude-sonnet-4-5 ＝ 2026-09-25 に公式一覧で確認）に直して小さな PR で出す（Opus に黙って寄せない）→ ②吉本さんが実名の無い試験用 PDF で本番の点検を1回実行し、結果が出るかを Claude に伝える → ③Issue #4 を閉じる。
 - <small>根拠（開発向け）: app/api/evaluate/route.ts:73 `model: "claude-sonnet-4-5-20250514"`・:70 `"anthropic-beta": "pdfs-2024-09-25"`／lib/anthropic.ts:8 `CLAUDE_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8"`／`gh issue list` → #4 OPEN（本文は「Sonnet 4.5 は claude-sonnet-4-5-20250929」と指摘。2026-09-25 に claude-api スキルの正本 shared/models.md:92 で Sonnet 4.5 の ID は claude-sonnet-4-5-20250929（別名 claude-sonnet-4-5）と確認。route.ts:73 の名前はどの一覧にも無い＝本番の点検は API に弾かれている）／docs/ROADMAP.md:142／scratchpad/redesign-plan.md:336 K0・OPEN【点検が動いているか】</small>
 
