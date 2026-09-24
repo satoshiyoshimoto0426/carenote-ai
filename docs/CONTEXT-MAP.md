@@ -311,6 +311,12 @@ elements の部品が「押す／押さない／まだ計測していない」�
   下書き＝「承認する」＋押せない「コピー」＋「承認後にコピーできます」／承認済み＝「コピー」（`lib/draftText.documentContentToText`）・「カイポケ用データ」（**`JSON.stringify(content, null, 2)` そのもの ── 拡張 `extension/src/panel.html` の「下書きJSONを貼り付けて読み込む」との約束**）・「承認を取り消す」。
   承認・取消は `PATCH /api/documents/{id}`、通ったら `onChange` で呼ぶ側が行を差し替える。状態の札 `StatusBadge`（下書き＝黄・承認済み＝緑）もここ。
   テスト `components/clients/DocumentPanel.live.test.tsx`（jsdom ── 下書きはコピーできない・カイポケ用データの中身・承認／取消の失敗が画面に出る）。
+- **※ 枝 `redesign/a-backend` を取り込むとき、安全テストの一覧 `tools/safety-tests.json` の `files` に次の4つを足す**（計画 U3a・U4 の「SAFETY_TESTS へ足す」。一覧と、それを読む見張り〔向こうの枝の `tools/run-tests.mjs` の ⓪・`tools/testManifest.mjs`〕はまだ向こうの枝にしか無いので、この枝では足せていない）。
+  足さないと、承認・実名・消す操作の検査が消えても飛ばされても `npm test` が緑のまま（`components/clients` は `protectedDirs` にも入っていない）。足した後に `npm test` が緑のことを確かめる。`why` はそのまま貼れる形:
+  `components/clients/DocumentPanel.live.test.tsx`「書類の承認（G4）: 下書きは「コピー」を押せない＋「承認後にコピーできます」・承認済みだけ「カイポケ用データ」（JSON.stringify(content, null, 2) そのもの ── 拡張との約束）・承認／取消の失敗を画面に出す」／
+  `components/clients/ClientPane.test.tsx`「利用者の区画: 「仮名表示中」を出す・頭と書類の行に実名を描かない・どの版の書類も開ける・書類を開いているあいだは関係者名簿（実名）を読みにいかない」／
+  `components/clients/RelatedPeople.test.tsx`「関係者名簿: 登録の欄と「削除」がある・説明の文は保証できることだけ・読めなかったら空の名簿に見せない」／
+  `components/clients/SavedTranscripts.live.test.tsx`「残した文字起こし: 一覧では本文（実名）を取りに行かない・実名の注意と5年の正直な文・表が未作成（503）なら管理者向けの文を出す・消す前に確かめる」。
 - **見た目** `app/globals.css` の2つ目の `@layer components`（`.client-table*`・`.client-code-link`・`.clients-*`）。部品に `btnSecondary` などの Tailwind の指定がある要素の上書きは、ここ（層 components）ではなく部品の側の Tailwind で書く（層 utilities に負けて効かない ── A5 の本番用ビルドで「新しい利用者」の押した色が出なかった）。
   スマホ（768px 未満）: 上の帯が狭いので、見出しは読み上げ用に残して見た目だけ隠し、人数と道しるべは出さない（一覧へ戻るのは下のタブ）。案内だけの右の区画は出さない。**スマホ用の形はまだ**（選んだ方の詳細や登録の欄は表の下に出る ── 計画 M1）。
 - テスト: `components/clients/ClientTable.test.tsx`（jsdom・本物の Context ＋偽の通信 ── 行のリンク・行は押す物にしない・絞り込み・まだいないときの約束の文・読めなかったら知らせ〔空の一覧に見せない〕・読み直し・API に氏名が紛れても出さない・表の上の約束の1行・選んだ行の地と寸法の CSS・見出しの行の高さと区画の `--sticky-top` が同じ値）・
