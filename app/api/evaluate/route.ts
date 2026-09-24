@@ -3,6 +3,7 @@ import { del } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
 import { readPrivateBlob } from "@/lib/blob/readPrivate";
 import { saveEvaluation } from "@/lib/db";
+import { EVALUATE_MODEL } from "@/lib/evaluate/model";
 import { EVALUATION_CRITERIA } from "@/lib/evaluationCriteria";
 import { parseEvaluationJson } from "@/lib/parseEvaluationJson";
 import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
         "anthropic-beta": "pdfs-2024-09-25",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5-20250514",
+        model: EVALUATE_MODEL,
         max_tokens: 4096,
         messages: [
           {
