@@ -79,6 +79,7 @@
   --red-word: #b42318; /* 赤い言葉（名前かもしれないのに消せなかったもの）だけに使う */
   --clay: #a83226; /* エラー */
   --clay-soft: #fdeeec;
+  --clay-line: #f2cdc7; /* エラーの帯の縁（--clay-soft の地を囲む細い線。--amber-line と同じ役割） */
   --amber: #9a5b06; /* 注意（共有していない・救済モードなど） */
   --amber-soft: #fdf4e6;
   --amber-line: #f0dcbb;
@@ -100,7 +101,7 @@
    * 文字の大きさ（日本語UI用の段階）。以前は 11〜15px に集中していて差がなく、
    * どこが見出しでどこが補足か目で追えなかった。4段階に開く。
    */
-  --t-title: 24px; /* ページ見出し */
+  --t-title: 20px; /* ページ見出し（A案の段階・2026-09-24 R1 で 24px から） */
   --t-section: 16px; /* 節の見出し */
   --t-body: 14.5px; /* 本文・入力 */
   --t-label: 13px; /* 入力のラベル */
@@ -211,6 +212,14 @@
 /* 件数・点数など、桁を揃えて読ませる数字 */
 .tnum {
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 等幅の数字（時刻「00:12」・「1 / 2」のような位置）。A案では記号・件数・日付を等幅で組む。
+ * **数字と記号だけの文字列に使う**（IBM Plex Mono には日本語の字が無く、「字」「件」は別の書体で描かれて揃わない）。
+ */
+.mono {
+  font-family: var(--mono);
 }
 
 @keyframes fadeIn {
@@ -530,6 +539,8 @@
   position: sticky;
   top: calc(var(--sticky-top, var(--shell-head-h, var(--topbar-h))) + 8px);
   z-index: 10;
+  /* A案（R1）で箱をやめ、線で区切った帯にした。貼りついたとき下の本文が透けないよう、置き場所の地で塗る */
+  background: var(--pane-bg, var(--paper));
 }
 
 /* スマホ: 左の帯を画面の下のタブにする（4項目・文字つき・押す場所は 56px） */
@@ -1266,6 +1277,234 @@
 
     .client-pane-bleed {
       margin-inline: -28px;
+    }
+  }
+}
+
+/*
+ * つくる（/create）の見た目（A案「作業台」・R1・2026-09-24 ── 見た目だけの作り替え）。
+ * 部品は app/(dashboard)/create/page.tsx・components/create/DocTypeTabs.tsx と、そこで使う
+ * components/{create,drafts,recording}/ の部品。流れ（入力 → 送る前に見る → 結果の3段）と画面の文字は変えていない。
+ * 入力と「AIに送る文章」を左右2つの区画に分けるのは計画 C4（送る文章の固定と一緒にやる）。
+ *
+ *   区画（.pane）の中を上から: 見出し（.create-head）→ 書類の種類のタブの行（.create-tabbar）→ 中身（.create-panel）。
+ *   中身は、区画の端から端まで伸びる帯（.create-band 下書きの注意／.create-row 実名・記号の切り替え）と、
+ *   読みやすい幅（中身 760px）に収めた列（.create-col）を並べる。カードの枠は使わず、1px の線だけで区切る。
+ *
+ * 寸法はアートボード Main.dc.html の左の区画: タブの行 48px・左右の端 24px・タブの間 22px・13px の文字・
+ * 選んだタブは太字＋下に 2px の線（--ink）。タブの行は区画の上に貼りつけない ── 狭い幅でタブが2段に折り返すと
+ * 高さが 48px でなくなり、区画の中で貼りつく「前へ／次へ」（.presend-nav）がその裏に潜るため（2026-09-17 critical と同じ種類）。
+ * @layer components に入れる理由は上の区画と同じ（部品に足した Tailwind の指定が勝てるように）。
+ * テスト: app/(dashboard)/create/page.test.tsx（タブの並び・選んだタブ・一式まとめてのリンクがタブの外にあること）。
+ */
+@layer components {
+  .create-head {
+    padding: 20px 24px 0;
+  }
+
+  /* タブの行。一式まとめてのリンクは右の端（タブの並び role=tablist の外 ── タブの中にリンクを置くのは読み上げの決まりに反する） */
+  .create-tabbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    column-gap: 16px;
+    min-height: var(--pane-header-h);
+    padding: 0 24px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .doc-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    column-gap: 22px;
+    min-width: 0;
+  }
+
+  /* 文字だけのタブ。押す場所は 44px 以上（行の高さ 48px に伸びる） */
+  .doc-tab {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--muted);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  /*
+   * 太字の幅を、見えない高さ 0 の行で先に取っておく。選んだタブだけ太字になっても幅が変わらず、
+   * 押すたびに右のタブが横へずれない（中身は data-label ＝ ボタンの文字と同じ。読み上げには出ない）。
+   */
+  .doc-tab::after {
+    content: attr(data-label);
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    font-weight: 700;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .doc-tab:hover {
+    color: var(--ink);
+  }
+
+  .doc-tab[aria-selected="true"] {
+    font-weight: 700;
+    color: var(--ink);
+    box-shadow: inset 0 -2px 0 var(--ink);
+  }
+
+  .create-bundle-link {
+    margin-left: auto;
+    align-self: center;
+  }
+
+  .create-panel {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 読みやすい幅の列（中身 760px ＋ 左右 24px）。区画の左の端（タブの行の文字）に頭を揃える */
+  .create-col {
+    width: 100%;
+    max-width: 808px;
+    padding: 20px 24px 40px;
+  }
+
+  /* 区画の端から端まで伸びる、下に 1px の線の帯（下書きの注意）。共有していないときの注意の帯と同じ組み方 */
+  .create-band {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--ink);
+  }
+
+  .create-band-caution {
+    background: var(--amber-soft);
+    border-bottom-color: var(--amber-line);
+  }
+
+  /* 帯の下の1行（実名・記号の切り替え）。説明のすぐ右にボタンを置く（画面の反対の端へ飛ばさない） */
+  .create-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 20px;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--line-inner);
+  }
+
+  /* 列の最後のボタンの並び（上に 1px の線・右寄せ。主ボタンは右の端） */
+  .create-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line-inner);
+  }
+
+  /* すぐ上に 1px の線で終わる物（下書きの欄）が来るときは、線を重ねない（線が2本並んで見える） */
+  .create-actions-flush {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  /* エラー（レンガ色）。左だけ太い線で飾る形にはしない */
+  .create-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--clay-line);
+    background: var(--clay-soft);
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--clay);
+  }
+
+  /* 下書きの1つの欄（見出し＋本文）と、番号つきの項目。枠は使わず、下に 1px の線 */
+  .draft-section,
+  .draft-item {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line-inner);
+  }
+
+  /* 下書きの中の項目の群れ（第2表の課題など）の見出しの上の空き */
+  .draft-group {
+    padding-top: 24px;
+  }
+
+  /*
+   * 赤い言葉（名前かもしれないのに消せなかったもの）。赤（--red-word）はここだけに使う（吉本さん決定 2026-09-23）。
+   * 下に波線、いま見ている1か所は 1.5px の枠で囲む（アートボード Main.dc.html の「田中」）。
+   */
+  .red-word {
+    padding: 0 1px;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--red-word);
+    font-weight: 500;
+    text-decoration: underline wavy var(--red-word);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 5px;
+  }
+
+  .red-word[data-current="true"] {
+    outline: 1.5px solid var(--red-word);
+    outline-offset: 3px;
+  }
+
+  @media (max-width: 767px) {
+    .create-head {
+      padding: 16px 16px 0;
+    }
+
+    .create-tabbar {
+      padding: 0 16px;
+    }
+
+    /*
+     * スマホではタブを1行のまま横に動かす（折り返すと3段になり、メモ欄が画面の下へ押し出される）。
+     * 動く幅は画面の端から端まで（行の余白 16px の外まで広げ、同じだけ内側を空ける）。
+     * 右の端で切れて見えるタブが「横に続きがある」ことの手がかりになる。一式まとめてのリンクは次の行。
+     */
+    .doc-tabs {
+      flex: 1 1 100%;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      margin-inline: -16px;
+      padding-inline: 16px;
+      scroll-padding-inline: 16px;
+      scrollbar-width: none;
+    }
+
+    .doc-tab {
+      flex-shrink: 0;
+    }
+
+    .create-col {
+      padding: 16px 16px 32px;
+    }
+
+    .create-band,
+    .create-row {
+      padding-inline: 16px;
     }
   }
 }

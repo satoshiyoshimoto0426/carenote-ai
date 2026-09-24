@@ -25,6 +25,7 @@
  *   事業所への説明書の改訂（R5）が済むまで現場に出さないことを、約束ではなく仕組みで担保する。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { IconMic } from "@/components/ui/icons";
 import { btnSecondary } from "@/components/ui/primitives";
 import {
   MAX_ATTEMPTS,
@@ -313,23 +314,33 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
   const canStart = told && !disabled && phase === "idle";
 
   return (
-    <div className="mt-3 rounded-[10px] border border-[var(--line)] bg-[var(--surface)] p-3.5">
-      <p className="text-xs font-medium text-[var(--ink)]">この画面で録音する</p>
+    // A案（R1・2026-09-24）: 角を丸めた箱をやめ、上に 1px の線を引いた区切りにした（アートボード Main.dc.html の録音の帯）。
+    // 文字・並び順（説明 → 同意のチェック → ボタン）・押せる条件は以前のまま（同意のチェックは帯の中で最初の checkbox）。
+    <div className="mt-4 border-t border-[var(--line-inner)] pt-3.5">
+      <div className="flex items-center gap-2.5">
+        <span
+          aria-hidden="true"
+          className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-[var(--mic-soft)] text-[var(--green)]"
+        >
+          <IconMic size={15} />
+        </span>
+        <p className="section-label">この画面で録音する</p>
+      </div>
 
       {phase === "idle" && (
         <>
-          <p className="mt-1 text-xs text-[var(--muted)]">
+          <p className="mt-2 text-xs leading-[1.8] text-[var(--muted)]">
             {Math.round(maxSegmentMs() / 60000)}
             分ごとに区切って、録りながら文字にします。音声は保存しません
             （文字にしたら消えます）。雑談になったら一時停止してください ──
             録らなければ外に出ません。
           </p>
-          <label className="mt-2.5 flex items-start gap-2 text-xs text-[var(--ink)]">
+          <label className="mt-2.5 flex cursor-pointer items-start gap-2 text-xs leading-[1.8] text-[var(--ink)]">
             <input
               type="checkbox"
               checked={told}
               onChange={(e) => setTold(e.target.checked)}
-              className="mt-0.5"
+              className="mt-[3px] size-[15px] shrink-0 accent-[var(--green)]"
             />
             <span>
               その場にいる全員に、記録を作るために録音することを伝えました
@@ -340,8 +351,10 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
       )}
 
       {(phase === "recording" || phase === "paused") && (
-        <p className="mt-1 text-xs text-[var(--muted)]">
-          <span className="tnum font-medium text-[var(--ink)]">{mmss(elapsed)}</span>
+        <p className="mt-2 text-xs text-[var(--muted)]">
+          <span className="mono tnum text-[13px] font-medium text-[var(--ink)]">
+            {mmss(elapsed)}
+          </span>
           {phase === "paused" ? "（一時停止中 ── いまは録っていません）" : " 録音中"}
           {p.total > 0 && (
             <>
@@ -354,13 +367,13 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
       )}
 
       {phase === "finishing" && (
-        <p className="mt-1 text-xs text-[var(--muted)]">
+        <p className="mt-2 text-xs text-[var(--muted)]">
           残りを文字にしています… <span className="tnum">{p.done}</span>/
           <span className="tnum">{p.total}</span>
         </p>
       )}
 
-      <div className="mt-2.5 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         {phase === "idle" && (
           <button type="button" onClick={start} disabled={!canStart} className={btnSecondary}>
             録音を始める

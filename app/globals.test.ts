@@ -231,6 +231,25 @@ describe("文字の色が地の色の上で読める（WCAG AA 4.5:1）", () => 
     expect(failures).toEqual([]);
   });
 
+  /**
+   * つくる（app/(dashboard)/create/page.tsx と components/drafts/・R1 2026-09-24）の帯に載る文字。
+   * 帯の地（--clay-soft / --amber-soft）は上の4つの地に入っていないので、ここで組み合わせを縛る。帯の色を変えたら、ここも直す。
+   */
+  const CREATE_PAIRS: [string, string, string][] = [
+    ["--clay", "--clay-soft", "エラーの帯（.create-error）"],
+    ["--ink", "--amber-soft", "下書きの注意の帯（.create-band-caution）"],
+    ["--amber", "--amber-soft", "要確認事項・全文を開いていない欄の知らせ・追記案の見出し"],
+    ["--ink-2", "--amber-soft", "全文を開いていない欄の知らせの説明・追記案の理由と札"],
+  ];
+
+  it("つくるの帯の文字も 4.5:1 以上", () => {
+    const failures = CREATE_PAIRS.filter(
+      ([text, ground]) =>
+        contrastRatio(resolveColor(tokens, text), resolveColor(tokens, ground)) < AA_TEXT,
+    ).map(([text, ground, where]) => `${text} on ${ground}（${where}）`);
+    expect(failures).toEqual([]);
+  });
+
   it("計算そのものが正しい（既知の値と一致する）", () => {
     expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 5);
     // #767676 は白地で AA を満たす最も淡い灰色として知られる値（4.54:1）

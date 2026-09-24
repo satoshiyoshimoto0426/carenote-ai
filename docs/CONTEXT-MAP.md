@@ -62,7 +62,7 @@
 | `lib/draftText.ts` | 下書き→コピー用プレーンテキスト整形（純粋関数・テスト済）。救済モードの帳票連結にも使用 | P1実装済 |
 | `app/api/generate/` | 認証＋`documentType`分岐（carePlan/assessment/monitoring）＋入力検証 | P1実装済 |
 | `app/api/rescue/` | 救済モードAPI（Clerk認証）。人物像（＋timeline／sourceDocs=Blob上のPDF最大5件）→（資料あれば Stage0 `generateIntake`）→`generateRescueBundle`→一式JSON＋`intake`。PDFは finally で必ず del()（非保持原則）。maxDuration=300 | 実装済 |
-| `app/(dashboard)/create/` | 作成UI：帳票セレクタ→入力→下書き生成→確認・コピー（`components/drafts/` に表示部品） | P1実装済 |
+| `app/(dashboard)/create/` | 作成UI（つくる）：書類の種類の文字のタブ（`components/create/DocTypeTabs.tsx`）→入力→送る前に見る→下書き・確認・コピー（`components/drafts/` に表示部品）。タブの行の右端に一式まとめて（救済モード `/rescue`）への入口（A案 R1 ── §3「つくるの見た目」） | P1実装済 |
 | `app/(dashboard)/rescue/` | 救済モードUI：人物像の**構造化フォーム**（性格/生活歴/既往・診断/心身/家族・住環境/サービス/意向/補足）→一式生成→全帳票表示＋コピー。完成形まで埋める旨のバナー表示 | 実装済 |
 | `extension/` | **時短エンジン**：ブラウザ拡張(MV3)。対象=**カイポケ**。サイドパネルで下書き生成→セクション単位コピー(Step1)＋カイポケ画面へ流し込み(Step2)。`src/adapters/kaipoke.js`＝CareNote→カイポケ欄マッピング(出典[KAIPOKE-DOM.md](KAIPOKE-DOM.md))。調査: [P2-KAIPOKE.md](P2-KAIPOKE.md)・[CALL-PIPELINE-FEASIBILITY.md](CALL-PIPELINE-FEASIBILITY.md)（電話録音→要約→転記の可否／カイポケ公開APIは無し・公認既製品あり・2026-09-09） | **P2 Step1+Step2 実装済**（テキスト欄の半自動入力。第2表等はDOM追加取得後） |
 | 評価（現行） | 独立機能として継続。開発時は生成物の品質回帰チェックにも転用 | 継続 |
@@ -250,7 +250,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - **本文 `main.app-main-inner` は画面いっぱい**（幅の上限・余白なし）。区画を端から端まで並べ、1px の線だけで区切る（カードを積まない）。
 - **部品** `components/ui/primitives.tsx`: `Pane`（section／aside・`width` 640／440・`tinted`＝地を `--pane`・`label`＝読み上げの名前）、`PaneHeader`（高さ 48px・**Pane の直下に置く**・`title` は h2）、
   `SectionLabel`（12px 太字・字間 0.06em・`htmlFor` で欄に結んだ label）、`TextAction`（文字だけの操作 ── `href`＝リンク／`onClick`＝ボタン・スマホ 44px）。
-  ボタンの寸法もアートボードへ: `btnPrimary`＝高さ 44px の緑（1画面に1つ）、`btnSecondary`＝パソコン 34px・スマホ 44px・枠 `--btn-line`・文字 `--ink`。`Card`/`PageHeader`/`SectionTitle` は作り替え前の画面のために残す（計画 X1 で片付け）。
+  ボタンの寸法もアートボードへ: `btnPrimary`＝高さ 44px の緑（1画面に1つ）、`btnSecondary`＝パソコン 34px・スマホ 44px・枠 `--btn-line`・文字 `--ink`。`Card`/`PageHeader`/`SectionTitle` は作り替え前の画面のために残す（計画 X1 で片付け）。R1（2026-09-24）で `Card` は角の丸みと影を外した 1px の線の面に、`PageHeader` は見出し 20px・説明 13px・静かな「この画面の使い方」にした（作り替え前の画面が一度にカードを積んだ見た目でなくなる）。
 - **CSS** `app/globals.css` の `@layer components`: `.panes`（区画を横に並べる）・`.pane`・`.pane-640`・`.pane-440`・`.pane-tinted`・隣り合う区画の 1px の線（`.pane + .pane`）・`.pane-header`・`.pane-title`・`.section-label`・`.text-action`・`.legacy-page`。
   層に入れるのは、部品に className で足した Tailwind の指定（余白など）が勝てるように（層の外の規則は層の中に必ず勝つ ── 2026-09-23 の余白 0 の不具合と同じ仕組み）。素の CSS なのでスキャンの取りこぼしと無関係に本番の CSS に出る（本番用ビルドで確認済み）。
 - **768px 以上は区画が自分の中で縦に動く**（左の入力を動かしても右は動かない）。区画の頭の帯は区画の上に貼りつく。スマホは区画を縦に積み、文書が動く（スマホ用の形は M1/M2）。
@@ -261,7 +261,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
   overflow-hidden の一覧（角を丸めた Card）は縮む下限が 0 になり、器の高さで自分の行を切り落として下の行へ行けなくなる（2026-09-24 A4 の検証の blocker ──
   利用者の一覧と点検の履歴）。**残りの高さを埋める物は `grow`**（flex-grow だけ）を付け、`flex-1` は使わない（縮む指定と高さ 0 の出発点を入れ直すので、
   overflow-hidden や小さい `min-h` と組むと同じ切り落としが起きる）。器の中で縮めて中だけ動かしたい物だけが `flex-1 min-h-0` を自分で付ける。
-- **まだ作り替えていない画面の器 `.legacy-page`**: 5画面（`create`・`evaluate`・`dashboard`・`rescue`・`guide`）の根元に付ける（A4 では7画面。`clients`・`clients/[id]` は A5 で外した ── 下の「利用者の作業台」）。
+- **まだ作り替えていない画面の器 `.legacy-page`**: 4画面（`evaluate`・`dashboard`・`rescue`・`guide`）の根元に付ける（A4 では7画面。`clients`・`clients/[id]` は A5 で、`create` は R1 で外した ── 下の「利用者の作業台」「つくるの見た目」）。
   以前の本文の幅（最大 1000px＝中身 920px＋左右 40px）と余白（スマホ 16/16/32px）を再現し、768px 以上ではそれ自体が1つの区画のように動く。旧 `.app-main-inner` の「幅の決定点」の決まりはここが引き継いだ。作り替えたページから外し、全部外れたら消す（計画 X1）。
 - **ホーム = 利用者**（吉本さん決定 2026-09-23）: `app/page.tsx` が `/` を `/clients` へ（旧 `/evaluate`）。ログイン直後の行き先は Clerk の `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` / `AFTER_SIGN_UP_URL`。
   手元の見本 `.env.local.example` は `/clients` にした（ただしこのファイルは `.gitignore` の `.env*` に当たり **git に入っていない**）。本番の Vercel の値は吉本さんが変える（`docs/REDESIGN-A-SIGNOFF.md` の 8）。
@@ -311,6 +311,25 @@ elements の部品が「押す／押さない／まだ計測していない」�
   A6（利用者の区画）で本文と合わなくなった所: `lib/manual/content.ts`:276-277（見出しは頭の「B様（仮名）」＋「仮名表示中」── 形は同じ・場所が区画の頭）・280・326（関係者名簿は頭の上ではなく、書類の下）・1036（「救済モードで一式」ボタン → 区画の「一式まとめて」）・1066（「この方の書類」→ 区画の「書類」・種類ごとの1行と「以前の版」・行を押すのではなく「開く」）、
   `docs/MANUAL-VIDEO-SPEC.md`:228-231（ch2 #9・10・12 ── 見出しと、パンくずの下の関係者名簿）・302（ch6 #12「この方の書類」に5件並ぶ）、公開中の ch2・ch6 の動画。
 
+### つくるの見た目 ── 見た目だけの作り替え（A案「作業台」・R1・2026-09-24・ブランチ `redesign/a-restyle`）
+- **流れ・押したときの動き・画面の文字は変えていない**（入力 → 送る前に見る → 結果の3段のまま。送る直前の文章を固定して左右の区画に分けるのは計画 C4、録音中にタブを止めるのは C3）。
+- **並び** `app/(dashboard)/create/page.tsx`: `.panes` の中に区画（`Pane label="つくる"`・画面の残りの幅いっぱい）1つ。上から 見出し（`PageHeader`「帳票作成（下書き）」・`helpAnchor="ch3"` ── マニュアルが見出しの文字を使う）→
+  書類の種類のタブの行（`.create-tabbar`・48px・下に 1px の線）→ 中身（`role="tabpanel"` の `.create-panel`）。中身は、区画の端から端までの帯（`.create-band`＝下書きの注意の黄色の帯／`.create-row`＝実名・記号の切り替え）と、読みやすい幅の列（`.create-col`・中身 760px）。
+  タブの行は区画の上に**貼りつけない**（狭い幅でタブが2段に折り返すと高さが 48px でなくなり、区画の中で貼りつく「前へ／次へ」がその裏に潜るため）。
+- **`components/create/DocTypeTabs.tsx`**: 文字のタブ（`role="tablist"`・`aria-selected`・選んだタブは太字＋下に 2px の線 `--ink`）。並びと文字は `lib/create/docTypes.ts` のまま、押すと以前と同じ `switchDocType`。
+  キーボードは選んだタブだけが Tab の並びに入り、←/→・Home/End で移って Enter/スペースで選ぶ（移るだけでは選ばない ── 選ぶと結果の下書きが消えるので）。スマホではタブを1行のまま横に動かす。
+- **一式まとめて（救済モード）への入口**: タブの行の右端の文字のリンク「一式まとめて（救済モード）」→ `/rescue`（左の帯から救済モードの項目が無くなったので、ここから行く）。**タブの並び（tablist）の外**に置く（中に入れると読み上げでタブの1つに数えられる ── 計画の指摘）。
+- **部品の見た目**（文字・並び順・テストが見る形は以前のまま）: `components/drafts/PreSendPreview.tsx`（見出しの行 → 「前へ／次へ」の帯〔`.presend-nav`・置き場所の地で塗る〕→ 欄を 1px の線で区切る。赤い言葉の印は `.red-word`〔`--red-word` の文字＋波線・いま見ている所は 1.5px の枠〕。全文を開いていない欄の知らせは注意の黄色）、
+  `components/drafts/*View.tsx`・`DraftSection.tsx`（白いカードをやめ `.draft-section`／`.draft-item` の 1px の線。項目の名前は緑・黄色でなく `--ink-2`）、`ItemsToConfirm`・`AssessmentUpdatesPanel`（細い線で囲んだ黄色の帯）、`AppointmentsPanel`・`KaipokeSheetView`（線で区切った行。つくるでは緑の主ボタンを1つにするため `primaryClass` に脇のボタンを渡す）、
+  `components/recording/RecordingPanel.tsx`（上に 1px の線・マイクの印。同意のチェックは帯の中で最初の checkbox のまま）、`components/create/SaveTranscriptBar.tsx`・`NotesField.tsx`（上に 1px の線・欄の名前は `.section-label`）。
+  救済モード（`rescue/page.tsx`）は、左だけ太い線で飾った注意・エラーの帯を細い線で囲む帯にしただけ（文字は同じ）。
+- **トークンとクラス** `app/globals.css`: `--t-title` 24px → 20px、`--clay-line`（エラーの帯の縁）、`.mono`（数字と記号だけの文字列を等幅に ── 日本語の字には使わない）、4つ目の `@layer components`（`.create-*`・`.doc-tab*`・`.draft-*`・`.red-word`）。
+  `components/ui/primitives.tsx`: `textareaClass` を 14.5px・行の高さ 1.9 に、1行に並べる小さな欄 `inlineFieldClass`（34px／スマホ 44px）を追加（`inputClass` に高さ・余白を足して上書きすると、どちらが勝つかが出力の順で決まり、選ぶ欄の文字が切れていた）。
+- テスト: `app/(dashboard)/create/page.test.tsx`（一式まとめてのリンク〔`/rescue`・タブの並びの外〕・タブ5つの並びと文字・選んだタブは1つでケアプラン・Tab の並びに入るのはそのタブだけ・中身の名前・送る前の約束の一文）。エラーの帯の文字の 4.5:1 は `app/globals.test.ts`。
+  `components/drafts/PreSendPreview.test.tsx`・`components/recording/RecordingPanel*.test.tsx` は1文字も変えずに通る。
+- **まだ直していない文書**（D1b でまとめて）: `lib/manual/content.ts`:135・429・477（「緑の帯」── 送る前の見出しは色の帯でなく線で区切った見出しの行になった）・225（「赤い帯の「次へ」」）・433（「赤い枠が出ていたら」── 赤い言葉の説明は線で区切った帯の赤い文字）・413（「上に並んだ5つのボタン」── 文字のタブ）・
+  913・1036（救済モードへは、つくるのタブの行の右端「一式まとめて（救済モード）」から入る）、`docs/MANUAL-VIDEO-SPEC.md`:207・238（「画面の上に並ぶ帳票の種類」── 形が文字のタブに）、公開中の ch1・ch3 の動画（旧い送る前の画面が映っている）。
+
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
 - API ルートの追加・データフローの変更
@@ -318,7 +337,7 @@ elements の部品が「押す／押さない／まだ計測していない」�
 - ブラウザ拡張のソフト別アダプタを追加したとき
 
 ---
-*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記。同日: 利用者の作業台（一覧の表・右の 440px の区画・上の帯への差し込み・ClientsContext・勝手に選ばない ── A5）を追記し、利用者の2画面を .legacy-page から外した。同日: A5 の検証の直し（表の見出しの行の高さぶん区画の --sticky-top を下げる・氏名を記号で表示する約束の1行を表の上に戻した）を追記。同日: 開いた書類の承認（G4）の操作を components/clients/DocumentPanel.tsx へ中身を変えずに移し、検査を足した（A6 U3a）。同日: 利用者の区画（ClientPane・書類は種類ごとの1行と以前の版・?doc= で開く・区画を 640px に広げる）を追記（A6 U3b）*
+*2026-09-23 / デザイントークン v2（A案「作業台」）・書体 IBM Plex・トークンのセンサー（globals.test / clerkAppearance.test）を追記。同日: Clerk の層（cssLayerName）と、ログインが要る画面の確認残り（REDESIGN-A-SIGNOFF.md）を追記。同日: Clerk の押す部品の 44px とその見張りを追記。同日: 書体の読み込みの見張りを「描いた HTML の <link>」を見る形に強めた。同日: ナビ4項目の決まり（lib/nav.ts）・A案のアイコン・書類の種類の正本（lib/create/docTypes.ts）を追記。同日: 外枠（左の帯・上の帯・共有状態の置き場所・components/shell/）を追記し、Sidebar を外した。同日: 区画（ペイン）の部品と CSS・まだ作り替えていない画面の器（.legacy-page）・ホーム＝利用者（A4）を追記。2026-09-24: 動く器の直下の物を縮ませない決まり（一覧が切れて下の行へ行けなかった A4 の不具合）を追記。同日: 利用者の作業台（一覧の表・右の 440px の区画・上の帯への差し込み・ClientsContext・勝手に選ばない ── A5）を追記し、利用者の2画面を .legacy-page から外した。同日: A5 の検証の直し（表の見出しの行の高さぶん区画の --sticky-top を下げる・氏名を記号で表示する約束の1行を表の上に戻した）を追記。同日: 開いた書類の承認（G4）の操作を components/clients/DocumentPanel.tsx へ中身を変えずに移し、検査を足した（A6 U3a）。同日: 利用者の区画（ClientPane・書類は種類ごとの1行と以前の版・?doc= で開く・区画を 640px に広げる）を追記（A6 U3b）。同日: つくるの見た目（文字のタブ・一式まとめての入口・線で区切る部品・Card と PageHeader の見た目 ── R1）を追記し、つくるを .legacy-page から外した*
 *最終更新: 2026-06-16 / 救済モード（人物像→書類一式の一括下書き・SPEC §6.5 F9）を反映*
 *2026-06-15 / P2拡張: カイポケ・サイドパネル＋流し込みアダプタ(extension/)を反映*
 *2026-06-11 / P1拡張: アセスメント・モニタリング生成＋共通コア(structured.ts)を反映*

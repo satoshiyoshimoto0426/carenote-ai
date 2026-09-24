@@ -19,18 +19,25 @@
 import type { ReactNode } from "react";
 import SaveTranscriptBar from "@/components/create/SaveTranscriptBar";
 import RecordingPanel from "@/components/recording/RecordingPanel";
-import { btnSecondary, inputClass, textareaClass } from "@/components/ui/primitives";
+import { btnSecondary, inlineFieldClass, textareaClass } from "@/components/ui/primitives";
 import type { TranscriptKind } from "@/lib/privacy/transcriptInput";
 import { AUDIO_MAX_BYTES } from "@/lib/transcribe/validate";
 
-/** ラベルは常に入力の上・12px・muted（Field と同じ見た目。必須マーク併用のため手書き） */
-const labelClass = "mb-1.5 block text-xs font-medium text-[var(--muted)]";
+/**
+ * 欄の名前。A案のアートボードの「会議のメモ」と同じ小見出しの見た目（globals.css の .section-label ──
+ * 12px の太字・字間 0.06em・--ink-2）。必須マーク（Req）を並べるため、SectionLabel ではなく手書きの label にする。
+ */
+const labelClass = "section-label mb-2 block";
 
 /** 必須マーク（clay） */
 function Req() {
   return <span className="text-[var(--clay)]"> *</span>;
 }
 
+/**
+ * メモ欄に「録音から文字にする」入口を付けるときに渡すもの（つくるの entryFor が作る）。
+ * 文字にした結果をどの欄へ足すかを、欄ごとに持たせるための形（docs/specs/recording-pipeline.md R1）。
+ */
 export interface TranscribeEntry {
   /** いま文字にしている最中か（ボタンを押せなくする） */
   busy: boolean;
@@ -42,6 +49,7 @@ export interface TranscribeEntry {
   saveKind?: TranscriptKind;
 }
 
+/** メモ欄（NotesField）に渡すもの。label と required は欄の名前と必須の印、transcribe は録音の入口。 */
 export interface NotesFieldProps {
   id: string;
   label: ReactNode;
@@ -54,6 +62,10 @@ export interface NotesFieldProps {
   transcribe?: TranscribeEntry;
 }
 
+/**
+ * メモ欄1つ（欄の名前・複数行の入力欄・録音ファイルの入口・画面内の録音・記録として残す欄）。
+ * 使う所: app/(dashboard)/create/page.tsx（書類の種類ごとの欄）。見た目は A案（R1）の小見出しと 14.5px の本文。
+ */
 export default function NotesField({
   id,
   label,
@@ -88,7 +100,7 @@ export default function NotesField({
             <SaveTranscriptBar
               text={value}
               kind={transcribe.saveKind}
-              inputClass={inputClass}
+              inputClass={inlineFieldClass}
               secondaryClass={btnSecondary}
             />
           )}
@@ -102,7 +114,7 @@ export default function NotesField({
 function AudioEntry({ id, entry }: { id: string; entry: TranscribeEntry }) {
   const inputId = `${id}-audio`;
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+    <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs leading-[1.7] text-[var(--muted)]">
       <label
         htmlFor={inputId}
         className={`${btnSecondary} cursor-pointer ${entry.busy ? "pointer-events-none opacity-60" : ""}`}
