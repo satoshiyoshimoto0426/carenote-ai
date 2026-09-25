@@ -187,8 +187,9 @@
 > 黒塗りの取りこぼしと、実名が入りうる値の経路の穴。どれも小さいが放置すると AI や保存先に実名が出る。
 
 ### T-SEC-01　Issue #10: 点検（/api/evaluate）に元のファイル名（実名が入りうる）を送っている ── ログ・AI・保存先へ出ていないか追って直す
-- **優先**: P1 次にやる　**担当**: Claude　**状態**: PR 中（2026-09-25・枝 fix/evaluate-filename）　**大きさ**: 小(〜1時間)
+- **優先**: P1 次にやる　**担当**: Claude　**状態**: ✅済（2026-09-25・PR #19）　**大きさ**: 小(〜1時間)
 - **やったこと（2026-09-25）**: サーバーは本文の fileName を読まず、履歴には固定の「資料」だけを保存する（lib/evaluate/storedFileName.ts）。画面も送らない。AI への文・ログ・応答に出ないことをテストで固定（独立審査の指摘でログの見張りを実際に働く形に直した）。Issue #10 の件名の経路の混入も直した。**残り**: 修正前の行には元の名前が残り、履歴の画面にも出る（列を外すか・消すかは「決めること」6 の②）。同じ種類の件が救済モードにもある → Issue #18（別に対応）。
+- **本番の確認（2026-09-25）**: PR #19 を取り込み・公開後、Claude が架空の名前「テスト太郎_ケアプラン.pdf」で本番の点検を実行。履歴の新しい行のファイル名は「資料」、修正前の行は元の名前のまま（説明どおり）。Issue #10 は自動で閉じた。
 - **次の一手**: fileName を固定名（例「資料1」）にするか黒塗り（maskPii）を通す→ログ・AI への文・保存先に転記されていないことをテストで固定→Issue を閉じる。あわせて Issue のタイトルに混入した「C:/Program Files/Git/api/evaluate」（Git Bash の経路変換の事故）を「/api/evaluate」に直す。
 - <small>根拠（開発向け）: app/(dashboard)/evaluate/page.tsx:106 `body: JSON.stringify({ ...payload, fileName: file.name })`／app/api/evaluate/route.ts:36 で受け取り :135 で使用／app/(dashboard)/dashboard/page.tsx:236 で file_name を表示／`gh issue list` → #10 OPEN（本セッション再確認・タイトルに経路混入あり）</small>
 
