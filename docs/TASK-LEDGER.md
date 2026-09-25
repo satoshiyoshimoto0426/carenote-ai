@@ -472,8 +472,9 @@
 - <small>根拠（開発向け）: lib/manual/content.ts:90,239,402,553,911,1080 `status: "ready"`（ch5 のみ planned:699）／components/Sidebar.tsx は削除済み（Rail.tsx に置換）／計画 F5 DOCS（redesign-plan.md:106）／STALE（:510-511: ch4 に「25MBまで」が焼き込み、ch6 の人物像の欄が空）／git show 997f7e2（PR #16 は「作り直し途中」の知らせを足しただけ）</small>
 
 ### T-DOC-02　事業所向け説明書・管理者手順・仕様書・拡張機能の文言を今の状態に合わせる（D3。画面内録音「使えない状態」・共有状態の場所「左下」・削除失敗の警告・評価する→点検・録音チェック R5/env・版表記 v0.5→v0.6）
-- **優先**: P1 次にやる　**担当**: Claude＋吉本さん　**状態**: 未着手　**大きさ**: 中(半日)
+- **優先**: P1 次にやる　**担当**: Claude＋吉本さん　**状態**: 途中（2026-09-25・PR 中・枝 docs/sync-with-current-screens）　**大きさ**: 中(半日)
 - **止めているもの**: 説明書を専門家へ送る前・事業所へ再配布する前に必須
+- **やったこと（2026-09-25）**: 実物と突き合わせて直した ── 説明書を v0.7 に（画面内録音は 2026-09-18 から使える状態・共有状態の表示は「画面いちばん上の帯の右側」で言葉は「事業所で共有中」「自分の登録分のみ」・冒頭の版表記 v0.5 の食い違い）、ADMIN-SETUP の切り替えの場所と言葉、録音の仕様書の R3・R5・環境変数の状態、拡張の「作成」→「つくる」。**残り**: 説明書の「削除に失敗した時は画面に警告」は、実は画面に出していなかった（救済モードはサーバーが警告を返すが画面が表示していない・点検はサーバーの記録だけ）→ 約束どおり画面に出す修正を別に行う。「評価する→点検」の言い換えと、再配布前の吉本さんの差分確認。
 - **次の一手**: redesign-plan の STALE 一覧を上から潰す。DATA-HANDLING-EXPLANATION.md（:92 左下・:107 削除警告・:136/213-214 録音・:5 版表記）、ADMIN-SETUP.md:162「左下」→「上の帯の右側」、recording-pipeline.md:180-181 の R5 と env を「済（2026-09-18・法人了解のうえ有効化）」に、extension/src/panel.html:37・extension/README.md:41「Web版「作成」ページ」。事業所向けの文書は再配布前に吉本さんが差分を確認。
 - <small>根拠（開発向け）: docs/DATA-HANDLING-EXPLANATION.md:92「画面の左下」・:107「削除に失敗した時は画面に警告」（今は出ない）・:136,213-214「画面内録音は使えない状態／設定で止めてあり」（2026-09-18 から on）・:5「v0.5」vs :227「v0.6」／docs/ADMIN-SETUP.md:162 と docs/CONTEXT-MAP.md:223「上の帯の右側」の食い違い／docs/specs/recording-pipeline.md:180-181（[ ] R5・[ ] env）と ~/.claude/decisions-log.md 2026-09-18（法人了解済）／extension/src/panel.html:37・extension/README.md:41／scratchpad/redesign-plan.md「# STALE」・D3（:452-460）</small>
 
