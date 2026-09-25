@@ -282,7 +282,7 @@
 - <small>根拠（開発向け）: docs/CONTEXT-MAP.md:159「未対応: /create からの「利用者に保存」導線」／app/(dashboard)/create/page.tsx に /api/documents の呼び出しなし（grep 0件）／wt-harness/decisions-log.md 2026-09-23 決定2「保存するのは名前を記号にした版…常に下書き」／redesign-plan.md:304 C8（deps=C4,S1。S1 は main 済 CONTEXT-MAP.md:135）＋CRITIQUE important (:563-566: C8 は §2.7-F の二段ゲート対象)</small>
 
 ### T-DIR-03　「確認待ちの箱」と「自動タスク」の仕様を1枚に書く（docs/specs/inbox-and-tasks.md 仮）
-- **優先**: P1 次にやる　**担当**: Claude　**状態**: 未着手　**大きさ**: 中(半日)
+- **優先**: P1 次にやる　**担当**: Claude　**状態**: 案を作成（2026-09-25・`docs/specs/inbox-and-tasks.md`。§6 の6問が吉本さんの決定待ち）　**大きさ**: 中(半日)
 - **止めているもの**: 段階1の実装すべて
 - **先に要るもの**: T-DIR-01
 - **次の一手**: §2.8-A ①定義で書く。器は既存の「下書き→承認」（PATCH /api/documents/[id]・DocumentPanel.tsx）を流用し、新しい表は「タスク」1つに留める案。吉本さんに決めてもらう点＝タスクの定義（誰が閉じる・期限・事業所で共有するか（決めること10）・いつ消すか）。
