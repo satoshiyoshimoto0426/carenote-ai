@@ -1,5 +1,7 @@
+import { inspect } from "node:util";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { saveEvaluation as SaveEvaluation } from "@/lib/db";
 
 /**
  * /api/evaluate の一時保管まわり（CI 審査 PR #11 Minor）:
@@ -11,10 +13,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 const blob = vi.hoisted(() => ({ del: vi.fn(), get: vi.fn() }));
 vi.mock("@vercel/blob", () => ({ del: blob.del, get: blob.get }));
-vi.mock("@/lib/db", () => ({ saveEvaluation: vi.fn(async () => undefined) }));
+const db = vi.hoisted(() => ({ saveEvaluation: vi.fn<typeof SaveEvaluation>(async () => null) }));
+vi.mock("@/lib/db", () => ({ saveEvaluation: db.saveEvaluation }));
 
 const { POST } = await import("@/app/api/evaluate/route");
 const { EVALUATE_MODEL } = await import("@/lib/evaluate/model");
+const { EVALUATION_STORED_FILE_NAME } = await import("@/lib/evaluate/storedFileName");
 
 const PRIVATE_URL = "https://abc.private.blob.vercel-storage.com/evaluate/1.pdf";
 
@@ -97,5 +101,125 @@ describe("POST /api/evaluate（AI に送るモデル名）", () => {
     if (!ai) throw new Error("AI の呼び出しが無い");
     const sent = JSON.parse(String(ai[1].body)) as { model: string };
     expect(sent.model).toBe(EVALUATE_MODEL);
+  });
+});
+
+/**
+ * 元のファイル名を残さない（Issue #10・2026-09-25）:
+ *   以前は職員が選んだ PDF の名前（実名が入りうる）を履歴の表にそのまま保存し、点検の履歴に表示していた。
+ *   サーバーは本文の fileName を読まず、決まった名前だけを保存する。AI への文とサーバーのログにも出さない。
+ */
+describe("POST /api/evaluate（元のファイル名を残さない）", () => {
+  const REAL_NAME = "山田太郎";
+  const readable = () => ({
+    statusCode: 200,
+    stream: new Blob([new Uint8Array([1, 2, 3])]).stream(),
+    blob: { contentType: "application/pdf" },
+  });
+  const aiAnswer = () =>
+    new Response(
+      JSON.stringify({
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ client_name: "A", total_score: 10, categories: [] }),
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+
+  /**
+   * console に出たものを、Error の message と stack まで文字にして集める。
+   * JSON.stringify は Error を {} にしてしまい、中に実名があっても見逃す（2026-09-25 独立審査の指摘）ので使わない。
+   */
+  function captureConsole() {
+    const logs: string[] = [];
+    const spies = (["log", "info", "warn", "error", "debug"] as const).map((k) =>
+      vi.spyOn(console, k).mockImplementation((...a: unknown[]) => {
+        logs.push(a.map((x) => inspect(x, { depth: 6 })).join(" "));
+      }),
+    );
+    return {
+      text: () => logs.join("\n"),
+      restore: () => {
+        for (const s of spies) s.mockRestore();
+      },
+    };
+  }
+
+  it("実名入りのファイル名を送っても、保存・AI への文・応答のどこにも出さず、決まった名前で保存する", async () => {
+    blob.get.mockResolvedValue(readable());
+    vi.mocked(fetch).mockResolvedValueOnce(aiAnswer());
+    const res = await POST(post({ blobUrl: PRIVATE_URL, fileName: `${REAL_NAME}_ケアプラン.pdf` }));
+    expect(res.status).toBe(200);
+    expect(db.saveEvaluation).toHaveBeenCalledTimes(1);
+    expect(db.saveEvaluation.mock.calls[0][0].fileName).toBe(EVALUATION_STORED_FILE_NAME);
+    expect(JSON.stringify(db.saveEvaluation.mock.calls)).not.toContain(REAL_NAME);
+    const sentToAi = vi
+      .mocked(fetch)
+      .mock.calls.map(([, init]) => String(init?.body ?? ""))
+      .join(" ");
+    expect(sentToAi).not.toContain(REAL_NAME);
+    expect(await res.text()).not.toContain(REAL_NAME);
+  });
+
+  it("保存と一時保管の削除に失敗してログが出るときも、ログと応答に元のファイル名を出さない", async () => {
+    blob.get.mockResolvedValue(readable());
+    vi.mocked(fetch).mockResolvedValueOnce(aiAnswer());
+    db.saveEvaluation.mockRejectedValueOnce(new Error("db down"));
+    blob.del.mockRejectedValueOnce(new Error("blob down"));
+    const c = captureConsole();
+    try {
+      const res = await POST(
+        post({ blobUrl: PRIVATE_URL, fileName: `${REAL_NAME}_ケアプラン.pdf` }),
+      );
+      expect(res.status).toBe(200);
+      // 見張りが本当にログを見たことを先に確かめる（ログ0件を「何も無いので合格」にしない）。
+      // 2つのログは応答を返した後に出るので待つ
+      await vi.waitFor(() => {
+        expect(c.text()).toContain("db down");
+        expect(c.text()).toContain("blob down");
+      });
+      expect(c.text()).not.toContain(REAL_NAME);
+      expect(await res.text()).not.toContain(REAL_NAME);
+    } finally {
+      c.restore();
+    }
+  });
+
+  it("読み取りに失敗した 400 と、AI が失敗した 500 でも、応答とログに元のファイル名を出さない", async () => {
+    const c = captureConsole();
+    try {
+      blob.get.mockResolvedValueOnce(null);
+      const r400 = await POST(post({ blobUrl: PRIVATE_URL, fileName: `${REAL_NAME}.pdf` }));
+      expect(r400.status).toBe(400);
+      expect(await r400.text()).not.toContain(REAL_NAME);
+
+      blob.get.mockResolvedValueOnce(readable());
+      vi.mocked(fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "overloaded" } }), { status: 500 }),
+      );
+      const r500 = await POST(post({ blobUrl: PRIVATE_URL, fileName: `${REAL_NAME}.pdf` }));
+      expect(r500.status).toBe(500);
+      expect(await r500.text()).not.toContain(REAL_NAME);
+
+      expect(c.text()).not.toContain(REAL_NAME);
+      expect(db.saveEvaluation).not.toHaveBeenCalled();
+    } finally {
+      c.restore();
+    }
+  });
+
+  it("ファイル名が無くても、同じ決まった名前で保存する", async () => {
+    blob.get.mockResolvedValue(readable());
+    vi.mocked(fetch).mockResolvedValueOnce(aiAnswer());
+    const res = await POST(post({ blobUrl: PRIVATE_URL }));
+    expect(res.status).toBe(200);
+    expect(db.saveEvaluation.mock.calls[0][0].fileName).toBe(EVALUATION_STORED_FILE_NAME);
+  });
+
+  it("決まった名前は「資料」（元の名前や拡張子を含まない）", () => {
+    expect(EVALUATION_STORED_FILE_NAME).toBe("資料");
   });
 });
