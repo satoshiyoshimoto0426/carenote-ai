@@ -28,8 +28,11 @@ vi.mock("@/lib/generation/rescue", async (importOriginal) => {
 });
 
 const { POST } = await import("@/app/api/rescue/route");
+const { TEMP_DELETE_FAILED_WARNING } = await import("@/lib/blob/deleteTemp");
 
 const BLOB_URL = "https://abc.private.blob.vercel-storage.com/intake/1.pdf";
+/** 削除は必ず「途中で止める指定」つきで呼ぶ（時間切れで SDK のやり直しを止めるため・lib/blob/deleteTemp.ts） */
+const DEL_OPTS = expect.objectContaining({ abortSignal: expect.any(AbortSignal) });
 
 function post(body: unknown) {
   return new NextRequest("http://localhost/api/rescue", {
@@ -94,7 +97,7 @@ describe("POST /api/rescue", () => {
       post({ personality: "山田花子さんは穏やか", sourceDocs: [{ name: "a.pdf", url: BLOB_URL }] }),
     );
     expect(res.status).toBe(422);
-    expect(blob.del).toHaveBeenCalledWith([BLOB_URL]);
+    expect(blob.del).toHaveBeenCalledWith([BLOB_URL], DEL_OPTS);
     expect(ai.generateIntake).not.toHaveBeenCalled();
   });
 
@@ -142,8 +145,115 @@ describe("POST /api/rescue", () => {
     expect(json.warnings[0]).toContain("削除に失敗");
   });
 
+  // 2026-09-25: 以前は失敗の返事を作った後の finally で消していたため、失敗の返事には警告が載らなかった
+  it("生成が失敗した 500 でも、返事を作る前に消し、削除の失敗を warnings で画面へ伝える", async () => {
+    blob.del.mockRejectedValue(new Error("blob down"));
+    ai.generateIntake.mockResolvedValue(EMPTY_INTAKE);
+    ai.generateRescueBundle.mockRejectedValue(new Error("AI down"));
+    const res = await POST(
+      post({ personality: "穏やか", sourceDocs: [{ name: "a.pdf", url: BLOB_URL }] }),
+    );
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toBe("AI down");
+    expect(json.warnings).toEqual([TEMP_DELETE_FAILED_WARNING]);
+    expect(blob.del).toHaveBeenCalledTimes(1);
+  });
+
+  it("生成が失敗しても、削除できたなら warnings は付かない", async () => {
+    ai.generateIntake.mockResolvedValue(EMPTY_INTAKE);
+    ai.generateRescueBundle.mockRejectedValue(new Error("AI down"));
+    const res = await POST(
+      post({ personality: "穏やか", sourceDocs: [{ name: "a.pdf", url: BLOB_URL }] }),
+    );
+    expect(res.status).toBe(500);
+    expect((await res.json()).warnings).toBeUndefined();
+    expect(blob.del).toHaveBeenCalledTimes(1);
+  });
+
   it("人物像も資料も無ければ 400", async () => {
     const res = await POST(post({}));
     expect(res.status).toBe(400);
+  });
+
+  // 2026-09-25 独立審査: 生成（最大300秒）の後に消していたので、時間切れで打ち切られると資料が残った
+  it("資料は読み込んだ直後、AI へ送る前に消す", async () => {
+    ai.generateIntake.mockResolvedValue(EMPTY_INTAKE);
+    const res = await POST(
+      post({ personality: "穏やか", sourceDocs: [{ name: "a.pdf", url: BLOB_URL }] }),
+    );
+    expect(res.status).toBe(200);
+    expect(blob.del).toHaveBeenCalledTimes(1);
+    expect(blob.del.mock.invocationCallOrder[0]).toBeLessThan(
+      ai.generateIntake.mock.invocationCallOrder[0],
+    );
+  });
+
+  // 2026-09-25 独立審査: 1件だけ種類が不正でも全体が 400 になり、正しく上げた他の資料が残っていた
+  it("資料の指定が不正な 400 でも、非公開ストアのホストの資料だけは消す（よそのホストは消さない）", async () => {
+    const res = await POST(
+      post({
+        personality: "穏やか",
+        sourceDocs: [
+          { name: "a.pdf", url: BLOB_URL },
+          { name: "b.txt", url: "https://abc.private.blob.vercel-storage.com/intake/2.txt" },
+          { name: "c.pdf", url: "https://evil.example.com/c.pdf" },
+        ],
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(blob.del).toHaveBeenCalledTimes(1);
+    expect(blob.del).toHaveBeenCalledWith(
+      [BLOB_URL, "https://abc.private.blob.vercel-storage.com/intake/2.txt"],
+      DEL_OPTS,
+    );
+    expect(blob.get).not.toHaveBeenCalled();
+  });
+
+  const BLOB_URL2 = "https://abc.private.blob.vercel-storage.com/intake/2.pdf";
+  const sized = (bytes: number) => ({
+    statusCode: 200,
+    stream: new Blob([new Uint8Array(bytes)]).stream(),
+    blob: { contentType: "application/pdf" },
+  });
+
+  it("資料の合計が大きすぎる 413（読み込みの途中）でも、まだ読んでいない資料も含めて1回で全部消す", async () => {
+    blob.get
+      .mockResolvedValueOnce(sized(15 * 1024 * 1024))
+      .mockResolvedValueOnce(sized(10 * 1024 * 1024));
+    const res = await POST(
+      post({
+        personality: "穏やか",
+        sourceDocs: [
+          { name: "a.pdf", url: BLOB_URL },
+          { name: "b.pdf", url: BLOB_URL2 },
+        ],
+      }),
+    );
+    expect(res.status).toBe(413);
+    expect(blob.del).toHaveBeenCalledTimes(1);
+    expect(blob.del).toHaveBeenCalledWith([BLOB_URL, BLOB_URL2], DEL_OPTS);
+    expect(ai.generateIntake).not.toHaveBeenCalled();
+  });
+
+  it("2件目の読み込みに失敗した 500 でも、2件とも1回で消す", async () => {
+    blob.get.mockResolvedValueOnce(sized(3)).mockResolvedValueOnce(null);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await POST(
+        post({
+          personality: "穏やか",
+          sourceDocs: [
+            { name: "a.pdf", url: BLOB_URL },
+            { name: "b.pdf", url: BLOB_URL2 },
+          ],
+        }),
+      );
+      expect(res.status).toBe(500);
+      expect(blob.del).toHaveBeenCalledTimes(1);
+      expect(blob.del).toHaveBeenCalledWith([BLOB_URL, BLOB_URL2], DEL_OPTS);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

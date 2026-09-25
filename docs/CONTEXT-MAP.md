@@ -16,7 +16,7 @@
 | `app/(dashboard)/dashboard/` | 履歴ダッシュボード（過去の評価一覧） |
 | `app/(dashboard)/evaluate/` | PDFアップロード＋評価実行 UI（クライアント） |
 | `app/api/blob-upload/` | Vercel Blob のアップロード用トークン発行 |
-| `app/api/evaluate/` | Claude API でPDFを評価→JSON整形→Supabase保存→Blob削除。モデル名は `lib/evaluate/model.ts`（別名 `claude-sonnet-4-5`・Issue #4）。履歴の file_name は元のファイル名を使わず固定の「資料」（`lib/evaluate/storedFileName.ts`・Issue #10。修正前の行には元の名前が残る） |
+| `app/api/evaluate/` | PDF を読む→すぐ Blob 削除（失敗は `warnings`）→Claude API で評価（待てる時間は使った分を差し引く・`lib/evaluate/timeBudget.ts`）→JSON整形（AI の返事の `warnings` は捨てる）→Supabase保存。モデル名は `lib/evaluate/model.ts`（別名 `claude-sonnet-4-5`・Issue #4）。履歴の file_name は元のファイル名を使わず固定の「資料」（`lib/evaluate/storedFileName.ts`・Issue #10。修正前の行には元の名前が残る） |
 | `app/api/history/` | ログインユーザーの評価履歴を返す |
 | `components/` | UI部品（FileUploader / LoadingProgress / EvaluationResults / CategoryCard / ScoreRing / MiniBar / SharingStatus）。外枠（左の帯・上の帯）は `components/shell/`（§3「外枠」） |
 | `lib/db.ts` | Supabase データアクセス（saveEvaluation / getEvaluations。読めなければ `DbAccessError` ── `lib/db/errors.ts`。使われていなかった getEvaluationById は 2026-09-24 に削除） |
@@ -184,7 +184,7 @@ AIの返事は `restoreDeep` で手元に戻してから返す（`appointments` 
 （記号＝`pseudonymize.relatedAliasCode`「A様の長女」・**表が読めなければ 503 で送らない**）→ `GET/POST/DELETE /api/clients/[id]/related`（DELETE は利用者IDでも絞り 0件は 404）→ `components/clients/RelatedPeople.tsx`（利用者の区画 `ClientPane` の中 ── A6）。SQL は手動実行が要る。
 **第6段 OCR統合 (2026-09-11)**: `/rescue` 参考資料に画像（JPEG/PNG/WebP・`blob-upload` 許可）＋資料ごとの種別 → `/api/rescue`（`contentType`/`docType` を検証）
 → `lib/generation/rescueIntake.ts`（PDF=document ブロック／画像=image ブロック・種別ごとの読みどころ・`facts`〔分類＋出典＋日付〕・`conflicts`・`documents`）
-→ `composeIntakeNotes`（食い違い→分類別事実）を `generateRescueBundle` の入力に。結果の全文章とファイル名に maskPii（`maskDeep`）。画面に読み取り報告・食い違い・事実（分類別）。sourceDocs の検証は `lib/rescue/sourceDocs.ts`（SSRF 許可リスト＝**非公開ストアのホストのみ**・純粋・テスト済）。Blob は **非公開ストア** `carenote-intake-private`（D6・2026-09-12）に置き、`lib/blob/readPrivate.ts`（get()）で読む（/api/evaluate も同じ）。400/422 でも finally で削除・失敗は `warnings`。
+→ `composeIntakeNotes`（食い違い→分類別事実）を `generateRescueBundle` の入力に。結果の全文章とファイル名に maskPii（`maskDeep`）。画面に読み取り報告・食い違い・事実（分類別）。sourceDocs の検証は `lib/rescue/sourceDocs.ts`（SSRF 許可リスト＝**非公開ストアのホストのみ**・純粋・テスト済）。Blob は **非公開ストア** `carenote-intake-private`（D6・2026-09-12）に置き、`lib/blob/readPrivate.ts`（get()）で読む（/api/evaluate も同じ）。資料は**読み込んだ直後、AI へ送る前に**削除し（`lib/blob/deleteTemp.ts` の `deleteTempBlobs`・8秒の上限つき）、読み込む前・途中で返す返事（指定が不正な 400・範囲の 503・大きすぎる 413 など）も返事を作る前に消す。失敗・時間切れは `warnings` として以後の返事に載せ、画面は `components/TempDeleteWarnings.tsx` で黄色の警告を出す（/api/evaluate も同じ・データ取扱説明書の「削除に失敗した時は画面に警告」の約束・2026-09-25）。消さない返事は 401 と本文が読めない 400 だけ。画面の途中失敗や強制終了で残る分は定期の掃除が無い（Issue #22）。
 **カイポケ転記 手順仕様書 (2026-09-11)**: [KAIPOKE-TRANSCRIPTION-SPEC.md](KAIPOKE-TRANSCRIPTION-SPEC.md)（ブラウザ操作型AIの実機転記記録＝アセスメント11ページ全欄・第2表往復・禁止文字・keyup同期・エラー回避）。
 取り込み済: `kaipoke.js` `normalizeForKaipoke`（〜→～・丸数字→(n)・ローマ数字・組文字・空白）を `writeField` で必ず通す／`writeField` が keyup も dispatch／`measureText` に総文字数の安全上限（行×字−行数）／
 `isReloginRequired`（再ログイン画面検知）→ `content.js` が書き込み系を拒否・`panel.js` バッジ「再ログインが必要」／FIELD_MAPS.assessment に P1 の26字幅と P2 `form:supportSubject` を追加。

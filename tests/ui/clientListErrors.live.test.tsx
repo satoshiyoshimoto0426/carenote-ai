@@ -104,6 +104,10 @@ let failDocumentCalls: number[] = [];
 let createdClients = 0;
 /** そのほかの通信（"GET /api/history" の形）に順番に返す応答（最後の1つは何度でも返す） */
 let routes: Record<string, (() => Response)[]> = {};
+/** POST /api/rescue の返事に足すもの（一時保管の削除の警告 warnings など） */
+let rescueExtra: Record<string, unknown> = {};
+/** POST /api/rescue の返事の状態番号（失敗の返事を試すとき 503 など） */
+let rescueStatus = 200;
 
 /** 利用者を DB から読めなかったとき（app/api/documents/route.ts の 503）の文言。押し直しを勧める */
 const LOOKUP_FAILED =
@@ -115,6 +119,8 @@ function installFetch() {
   failDocumentCalls = [];
   createdClients = 0;
   routes = {};
+  rescueExtra = {};
+  rescueStatus = 200;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -138,13 +144,17 @@ function installFetch() {
         return json({ id: `d${documentPosts.length}` }, 201);
       }
       if (url === "/api/rescue" && method === "POST") {
-        return json({
-          assessment: {},
-          carePlan: {},
-          meetingSummary: {},
-          supportLog: {},
-          monitoring: {},
-        });
+        return json(
+          {
+            assessment: {},
+            carePlan: {},
+            meetingSummary: {},
+            supportLog: {},
+            monitoring: {},
+            ...rescueExtra,
+          },
+          rescueStatus,
+        );
       }
       const queue = routes[`${method} ${url}`];
       if (queue && queue.length > 0) {
@@ -544,5 +554,96 @@ describe("利用者の一覧（/clients）", () => {
     await renderList();
     expect(visibleText()).toContain("まだ利用者がいません");
     expect(visibleText()).not.toContain(CLIENT_LIST_ERROR_HEADLINE);
+  });
+});
+
+describe("救済モードの一時保管の削除の警告（/rescue・2026-09-25 独立審査の指摘）", () => {
+  const WARN =
+    "資料の一時保管の削除に失敗しました。管理者に Vercel Blob の該当ファイルの削除を依頼してください。";
+
+  /** 人物像を1つ書いて一式を作る（一覧は A様 だけ読める） */
+  async function generate() {
+    listResponses = [() => json([CLIENT_A])];
+    const { default: RescuePage } = await import("@/app/(dashboard)/rescue/page");
+    await render(<RescuePage />);
+    const el = container.querySelector<HTMLTextAreaElement | HTMLInputElement>("#f-personality");
+    if (!el) throw new Error("#f-personality が見つかりません");
+    const setValue = Object.getOwnPropertyDescriptor(
+      Object.getPrototypeOf(el) as object,
+      "value",
+    )?.set;
+    await act(async () => {
+      setValue?.call(el, "穏やかな方");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click(buttonByText("書類一式を生成する"));
+    if (!container.querySelector("#save-client")) throw new Error("結果の画面になっていません");
+  }
+
+  /** 画面に出ている警告の枠（role=alert）の文字 */
+  const alertTexts = () =>
+    elementsOf(`<div>${container.innerHTML}</div>`)
+      .filter((e) => attrOf(e, "role") === "alert")
+      .map((e) => textOf(e));
+
+  it("作成が成功して削除だけ失敗したとき、結果の画面に警告が文字で出て、その枠が画面の中へ動かされる", async () => {
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      rescueExtra = { warnings: [WARN] };
+      await generate();
+      expect(alertTexts().some((t) => t.includes("一時保管の削除に失敗しました"))).toBe(true);
+      // 生成ボタンは長い入力欄の一番下。結果に切り替わってもスクロールの位置が残るので、警告の枠へ動かす
+      expect(scrolled.some((el) => el.getAttribute("role") === "alert")).toBe(true);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("作成が失敗したときは、入力の画面の、押したボタンとエラーのすぐ上に警告が出る（ページの上に出して見落とさせない）", async () => {
+    rescueStatus = 503;
+    rescueExtra = { error: "利用者の名簿を読み込めませんでした。", warnings: [WARN] };
+    listResponses = [() => json([CLIENT_A])];
+    const { default: RescuePage } = await import("@/app/(dashboard)/rescue/page");
+    await render(<RescuePage />);
+    const el = container.querySelector<HTMLTextAreaElement | HTMLInputElement>("#f-personality");
+    if (!el) throw new Error("#f-personality が見つかりません");
+    const setValue = Object.getOwnPropertyDescriptor(
+      Object.getPrototypeOf(el) as object,
+      "value",
+    )?.set;
+    await act(async () => {
+      setValue?.call(el, "穏やかな方");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const button = buttonByText("書類一式を生成する");
+    await click(button);
+    const alert = [...container.querySelectorAll('[role="alert"]')].find((a) =>
+      a.textContent?.includes("一時保管の削除に失敗しました"),
+    );
+    if (!alert) throw new Error("警告が出ていません");
+    // 入力欄のどれよりも後ろ（下）にあり、生成ボタンより前（上）にある
+    const fields = [...container.querySelectorAll("textarea, input")];
+    const last = fields[fields.length - 1];
+    expect(last.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const nowButton = buttonByText("書類一式を生成する");
+    expect(
+      alert.compareDocumentPosition(nowButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("「別の人物像で作り直す」を押すと、前の警告は消える", async () => {
+    rescueExtra = { warnings: [WARN] };
+    await generate();
+    await click(buttonByText("別の人物像で作り直す"));
+    expect(alertTexts().some((t) => t.includes("一時保管の削除に失敗しました"))).toBe(false);
+  });
+
+  it("削除できたときは警告を出さない（上の検査が空振りしていない証拠）", async () => {
+    await generate();
+    expect(alertTexts().some((t) => t.includes("一時保管の削除に失敗しました"))).toBe(false);
   });
 });
