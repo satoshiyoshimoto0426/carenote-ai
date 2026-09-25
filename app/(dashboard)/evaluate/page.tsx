@@ -103,7 +103,8 @@ export default function EvaluatePage() {
       const resp = await fetch("/api/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, fileName: file.name }),
+        // 元のファイル名は送らない（実名が入りうる。サーバーも読まない ── lib/evaluate/storedFileName.ts・Issue #10）
+        body: JSON.stringify(payload),
       });
 
       aiTimers.forEach(clearTimeout);

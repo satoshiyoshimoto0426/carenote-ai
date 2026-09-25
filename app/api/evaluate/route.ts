@@ -4,6 +4,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { readPrivateBlob } from "@/lib/blob/readPrivate";
 import { saveEvaluation } from "@/lib/db";
 import { EVALUATE_MODEL } from "@/lib/evaluate/model";
+import { EVALUATION_STORED_FILE_NAME } from "@/lib/evaluate/storedFileName";
 import { EVALUATION_CRITERIA } from "@/lib/evaluationCriteria";
 import { parseEvaluationJson } from "@/lib/parseEvaluationJson";
 import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
@@ -11,6 +12,15 @@ import { isBlobUrl } from "@/lib/rescue/sourceDocs";
 
 export const maxDuration = 120;
 
+/**
+ * 点検（ケアプラン書類一式の PDF を AI が 27 点満点で評価する）の入口。画面は app/(dashboard)/evaluate/page.tsx。
+ *
+ * 受け取る本文: `blobUrl`（非公開ストアに一時保管した PDF。本番）か `pdf`（base64。ローカル開発用）のどちらか。
+ *   `fileName` は来ても読まない（元のファイル名には実名が入りうる ── Issue #10・lib/evaluate/storedFileName.ts）。
+ * 流れ: 認証 → PDF を読む（lib/blob/readPrivate.ts）→ AI（lib/evaluate/model.ts のモデル）→ 形の検査
+ *   （lib/parseEvaluationJson.ts）→ 履歴へ保存（lib/db.ts saveEvaluation・待たない）→ 一時保管を削除。
+ * 何を返すか: 評価結果の JSON。失敗は 400（読めない）・401・413（大きすぎる）・500／503（AI 側）と職員向けの文。
+ */
 export async function POST(req: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -26,16 +36,13 @@ export async function POST(req: NextRequest) {
   // ── リクエスト解析（Vercel Blob URL or base64フォールバック） ──
   let base64: string;
   let blobUrl: string | null = null;
-  let fileName: string;
+  // 元のファイル名（本文の fileName）は読まない。実名が入りうるため、履歴には決まった名前だけを残す（Issue #10）
 
   // 本文は lib/requestBody.ts の readJsonObject で読む（オブジェクトでなければ 400。2026-09-24 検収の指摘で他の入口と揃えた）
   const body = await readJsonObject(req);
   if (!body) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
 
   try {
-    fileName =
-      typeof body.fileName === "string" && body.fileName !== "" ? body.fileName : "document.pdf";
-
     if (body.blobUrl) {
       // ── Vercel Blob 経由（本番） ──
       // 文字列でなければ空にして、下の許可リストで止める（読みに行かない）
@@ -133,7 +140,7 @@ export async function POST(req: NextRequest) {
     saveEvaluation({
       userId,
       clientName: parsed.client_name || "不明",
-      fileName,
+      fileName: EVALUATION_STORED_FILE_NAME,
       totalScore: parsed.total_score,
       result: parsed,
     }).catch((e) => console.error("[evaluate] DB save failed:", e));

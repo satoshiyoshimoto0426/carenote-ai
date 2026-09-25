@@ -16,7 +16,7 @@
 | `app/(dashboard)/dashboard/` | 履歴ダッシュボード（過去の評価一覧） |
 | `app/(dashboard)/evaluate/` | PDFアップロード＋評価実行 UI（クライアント） |
 | `app/api/blob-upload/` | Vercel Blob のアップロード用トークン発行 |
-| `app/api/evaluate/` | Claude API でPDFを評価→JSON整形→Supabase保存→Blob削除 |
+| `app/api/evaluate/` | Claude API でPDFを評価→JSON整形→Supabase保存→Blob削除。モデル名は `lib/evaluate/model.ts`（別名 `claude-sonnet-4-5`・Issue #4）。履歴の file_name は元のファイル名を使わず固定の「資料」（`lib/evaluate/storedFileName.ts`・Issue #10。修正前の行には元の名前が残る） |
 | `app/api/history/` | ログインユーザーの評価履歴を返す |
 | `components/` | UI部品（FileUploader / LoadingProgress / EvaluationResults / CategoryCard / ScoreRing / MiniBar / SharingStatus）。外枠（左の帯・上の帯）は `components/shell/`（§3「外枠」） |
 | `lib/db.ts` | Supabase データアクセス（saveEvaluation / getEvaluations。読めなければ `DbAccessError` ── `lib/db/errors.ts`。使われていなかった getEvaluationById は 2026-09-24 に削除） |
