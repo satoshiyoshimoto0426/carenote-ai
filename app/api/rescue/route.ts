@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
-import { del } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
+import { deleteTempBlobs } from "@/lib/blob/deleteTemp";
 import { readPrivateBlob } from "@/lib/blob/readPrivate";
 import {
   AliasLoadError,
@@ -25,7 +25,7 @@ import { maskDeep } from "@/lib/privacy/maskBody";
 import { maskPii } from "@/lib/privacy/maskPii";
 import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
 import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
-import { MAX_SOURCE_DOCS, parseSourceDocs } from "@/lib/rescue/sourceDocs";
+import { blobUrlsIn, MAX_SOURCE_DOCS, parseSourceDocs } from "@/lib/rescue/sourceDocs";
 
 // 5帳票を依存順＋並列で生成するため、通常の生成より長めに確保する。
 export const maxDuration = 300;
@@ -40,12 +40,14 @@ const MAX_TOTAL_DOC_BYTES = 20 * 1024 * 1024;
  * 救済モード: 1つの人物像メモ（＋任意のPDF提供書類・時系列）から、整合の取れた書類一式
  * （アセスメント・第1/2表・第4表・第5表・モニタリング）の下書きを生成する。
  * sourceDocs があれば Stage0 として generateIntake で統合読解し、結果を全帳票の入力に統合、
- * レスポンスの intake にも載せる。PDFは処理後に必ず del() で削除する（評価と同じ非保持原則）。
+ * レスポンスの intake にも載せる。資料（PDF・画像）は読み込んだ直後、AI へ送る前に削除する（評価と同じ非保持原則）。
  * Webアプリ（Clerkログイン）専用。完成形まで埋める（印なし）方針＝救済モード限定の品質緩和
  * （吉本さん承認済み・SPEC §6.5 / §12）。出力は下書きであり、確定前に人間が事実と照合する。
  *
- * 削除の順序（独立審査 2026-09-11 D20）: sourceDocs は本文解析の直後に確定し、以降の 400/422/503 も
- * すべて finally の del() を通る（原本を Blob に残さない）。
+ * 削除の順序（独立審査 2026-09-11 D20・2026-09-25）: 本文を読んだら、資料の指定が不正でも非公開ストアのホストの URL を拾い
+ * （blobUrlsIn）、以後の返事はすべて respond() を通す。respond() は返事を作る**前に**消し、失敗・時間切れなら warnings を
+ * 返事に載せる（lib/blob/deleteTemp.ts）。資料を読み込めたら AI へ送る前に消すので、生成の途中で打ち切られても残らない。
+ * 削除しない返事: 401（ログインしていない人の指定では消さない）と、本文が読めない 400（URL が分からない）。
  */
 export async function POST(req: NextRequest) {
   const { userId, orgId } = await auth();
@@ -53,27 +55,40 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
   }
 
-  let scope: DataScope;
-  try {
-    scope = resolveScope(userId, orgId);
-  } catch {
-    return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
-  }
-
   const body = await readJsonObject(req);
   if (!body) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
 
   const sourceDocs = parseSourceDocs(body.sourceDocs);
+  // 削除する Blob URL（非保持原則）。指定が不正でも、非公開ストアのホストの URL は拾って消す（残さない）
+  const blobUrls = sourceDocs ? sourceDocs.map((d) => d.url) : blobUrlsIn(body.sourceDocs);
+  /** 一時保管の削除に失敗したときの警告。以後の返事すべてに載せる（黙って残さない・独立審査 D27） */
+  const warnings: string[] = [];
+  /** まだ消していない一時保管を消し、失敗なら warnings に積む（2回目以降は対象が空なので何もしない） */
+  const deleteNow = async () => {
+    warnings.push(...(await deleteTempBlobs(blobUrls.splice(0, blobUrls.length), "rescue")));
+  };
+  /**
+   * 返事を作る前に一時保管を消し、削除の失敗を warnings として返事に載せる。
+   * 以前は失敗の返事を作った後の finally で消していたため、失敗の返事には警告が載らなかった（2026-09-25）。
+   */
+  const respond = async (payload: object, status = 200) => {
+    await deleteNow();
+    return NextResponse.json(warnings.length > 0 ? { ...payload, warnings } : payload, { status });
+  };
+
   if (sourceDocs === null) {
-    return NextResponse.json(
+    return await respond(
       { error: `提供書類の指定が不正です（PDF・画像のアップロードは最大${MAX_SOURCE_DOCS}件）。` },
-      { status: 400 },
+      400,
     );
   }
-  // 処理後に必ず削除する Blob URL（非保持原則。以降のどの return でも finally で del）。
-  const blobUrls = sourceDocs.map((d) => d.url);
-  /** 削除に失敗した時に画面へ伝える（黙って残さない・独立審査 D27） */
-  const warnings: string[] = [];
+
+  let scope: DataScope;
+  try {
+    scope = resolveScope(userId, orgId);
+  } catch {
+    return await respond({ error: SCOPE_ERROR_MESSAGE }, 503);
+  }
 
   try {
     // 黒塗り（SPEC §7・docs/specs/call-pipeline.md §2.1）: 名簿置換→型置換→自己点検を maskPii で
@@ -85,8 +100,7 @@ export async function POST(req: NextRequest) {
     try {
       aliases = await getClientAliases(scope);
     } catch (e) {
-      if (e instanceof AliasLoadError)
-        return NextResponse.json({ error: e.message }, { status: 503 });
+      if (e instanceof AliasLoadError) return await respond({ error: e.message }, 503);
       throw e;
     }
     const vault = createPiiVault();
@@ -108,12 +122,12 @@ export async function POST(req: NextRequest) {
 
     // 「人物像1項目以上 or 提供書類1件以上」で生成可（資料だけでも生成できる）。
     if (!composePersonaNotes(persona).trim() && sourceDocs.length === 0) {
-      return NextResponse.json(
+      return await respond(
         {
           error:
             "利用者の人物像（性格・生活歴・診断など）を1つ以上入力するか、資料（PDF・画像）を添付してください。",
         },
-        { status: 400 },
+        400,
       );
     }
 
@@ -131,12 +145,12 @@ export async function POST(req: NextRequest) {
         }
         totalBytes += arrayBuffer.byteLength;
         if (totalBytes > MAX_TOTAL_DOC_BYTES) {
-          return NextResponse.json(
+          return await respond(
             {
               error:
                 "資料の合計サイズが大きすぎます（合計20MBまで）。ページ数の少ないPDFや、枚数を減らした写真でお試しください。",
             },
-            { status: 413 },
+            413,
           );
         }
         docs.push({
@@ -147,6 +161,8 @@ export async function POST(req: NextRequest) {
           docType: doc.docType,
         });
       }
+      // 読み込んだら、AI へ送る前にすぐ消す（すみやかに削除。この後で時間切れに打ち切られても残らない ── 2026-09-25 独立審査）
+      await deleteNow();
       const raw = await generateIntake(docs, persona);
       // 読み取り結果の文章すべてに黒塗りを適用（資料由来の実名・番号が下流プロンプトへ流れる穴を塞ぐ）
       intake = maskDeep(raw, aliases, vault);
@@ -159,32 +175,23 @@ export async function POST(req: NextRequest) {
     );
     // AIの返事に残る札（〔電話番号1〕等）を手元で元の値に戻してから返す（名前の記号はそのまま）
     const result = restoreDeep(intake ? { ...bundle, intake } : bundle, vault);
-    await deleteBlobs(blobUrls, warnings);
-    return NextResponse.json(warnings.length > 0 ? { ...result, warnings } : result);
+    return await respond(result);
   } catch (e: unknown) {
     // 読解サマリの黒塗りで実名が残った場合も 422（fail-closed）。原文はログに出さない
     if (e instanceof PiiLeakError) {
-      return NextResponse.json({ error: e.message }, { status: 422 });
+      return await respond({ error: e.message }, 422);
     }
     const message = e instanceof Error ? e.message : "不明なエラーが発生しました";
     console.error("[rescue] error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return await respond({ error: message }, 500);
   } finally {
-    // ── Blob削除（個人情報保護・成功/失敗を問わず必ず。成功経路で削除済みなら何もしない） ──
-    await deleteBlobs(blobUrls, warnings);
-  }
-}
-
-/** 資料の一時保管を削除する。失敗は握りつぶさず warnings に積む（呼び出し側が画面へ返す）。 */
-async function deleteBlobs(urls: string[], warnings: string[]): Promise<void> {
-  if (urls.length === 0) return;
-  const targets = urls.splice(0, urls.length);
-  try {
-    await del(targets);
-  } catch (e) {
-    console.error("[rescue] blob delete:", e instanceof Error ? e.message : String(e));
-    warnings.push(
-      "資料の一時保管の削除に失敗しました。管理者に Vercel Blob の該当ファイルの削除を依頼してください。",
-    );
+    // ── 安全網: respond() を通らずに抜けた場合も一時保管を残さない。ここで消す物があるのは配線の誤り
+    //    （警告が返事に載らない）なので、記録に残して気づけるようにする ──
+    if (blobUrls.length > 0) {
+      console.error(
+        "[rescue] respond() を通らずに返した経路がある（一時保管の削除の警告が返事に載らない）",
+      );
+      await deleteNow();
+    }
   }
 }

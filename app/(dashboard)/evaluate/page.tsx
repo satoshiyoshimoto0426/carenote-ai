@@ -6,6 +6,7 @@ import { useState } from "react";
 import EvaluationResults from "@/components/EvaluationResults";
 import FileUploader from "@/components/FileUploader";
 import LoadingProgress from "@/components/LoadingProgress";
+import TempDeleteWarnings, { warningsOf } from "@/components/TempDeleteWarnings";
 import { IconAlert } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/primitives";
 import { safeExtension } from "@/lib/rescue/sourceDocs";
@@ -55,6 +56,8 @@ export default function EvaluatePage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 一時保管の削除に失敗したときの警告（サーバーの返事の warnings・成功でも失敗でも出す）
+  const [tempWarnings, setTempWarnings] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
   const [statusMsg, setStatusMsg] = useState("");
 
@@ -79,6 +82,7 @@ export default function EvaluatePage() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setTempWarnings([]);
 
     const aiTimers: ReturnType<typeof setTimeout>[] = [];
 
@@ -110,6 +114,7 @@ export default function EvaluatePage() {
       aiTimers.forEach(clearTimeout);
 
       const data = await resp.json();
+      setTempWarnings(warningsOf(data));
       if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
 
       setProgress(100);
@@ -142,6 +147,8 @@ export default function EvaluatePage() {
           これまでの点検（履歴）を見る
         </Link>
       </p>
+
+      <TempDeleteWarnings warnings={tempWarnings} />
 
       {!result ? (
         <div className="animate-fadeIn">
@@ -182,6 +189,7 @@ export default function EvaluatePage() {
             setFile(null);
             setProgress(0);
             setError(null);
+            setTempWarnings([]);
           }}
         />
       )}

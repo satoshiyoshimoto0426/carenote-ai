@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { isBlobUrl, MAX_SOURCE_DOCS, parseSourceDocs, safeExtension } from "./sourceDocs";
+import {
+  blobUrlsIn,
+  isBlobUrl,
+  MAX_SOURCE_DOCS,
+  parseSourceDocs,
+  safeExtension,
+} from "./sourceDocs";
 
 const BLOB = "https://abc123.private.blob.vercel-storage.com/intake/1.pdf";
 
 describe("SSRF 許可リスト: isBlobUrl", () => {
-  it("自前の非公開ストア（https・*.private.blob.vercel-storage.com）だけを許す", () => {
+  it("非公開ストアのホスト（https・*.private.blob.vercel-storage.com）だけを許す", () => {
     expect(isBlobUrl(BLOB)).toBe(true);
     expect(isBlobUrl("https://x.private.blob.vercel-storage.com/a.png")).toBe(true);
     // 公開ストアは受け付けない（D6: 原本を公開の場所に置かない）
@@ -56,5 +62,28 @@ describe("safeExtension: 一時保管先の名前に元ファイル名を出さ�
     expect(safeExtension("写真.jpeg")).toBe("jpeg");
     expect(safeExtension("noext")).toBe("bin");
     expect(safeExtension("a.b.c.png")).toBe("png");
+  });
+});
+
+describe("blobUrlsIn: 不正な指定からも、消すべき非公開ストアのホストの一時保管だけを拾う（2026-09-25）", () => {
+  const OWN = "https://abc.private.blob.vercel-storage.com/intake/1.pdf";
+  it("非公開ストアのホストの URL だけを拾い、よそのホスト・公開ストア・形の違うものは拾わない", () => {
+    expect(
+      blobUrlsIn([
+        { url: OWN, name: "x" },
+        { url: "https://evil.example.com/a.pdf" },
+        { url: "https://abc.public.blob.vercel-storage.com/a.pdf" },
+        { url: 3 },
+        null,
+        "https://abc.private.blob.vercel-storage.com/intake/2.pdf",
+      ]),
+    ).toEqual([OWN]);
+  });
+
+  it("配列でなければ空・多すぎる指定は先頭の上限件数まで", () => {
+    expect(blobUrlsIn(undefined)).toEqual([]);
+    expect(blobUrlsIn({ url: OWN })).toEqual([]);
+    const many = Array.from({ length: MAX_SOURCE_DOCS + 3 }, () => ({ url: OWN }));
+    expect(blobUrlsIn(many)).toHaveLength(MAX_SOURCE_DOCS);
   });
 });
