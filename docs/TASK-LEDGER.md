@@ -44,9 +44,10 @@
 - <small>根拠（開発向け）: docs/REDESIGN-A-SIGNOFF.md:16-27（状態列: 行1,2,3,5,6,7,9,11,12＝未確認、行8＝未確認（吉本さんの設定待ち）。grep -c で 済0件・未確認10件・未決定3件）／同:3-5「全部に済が付くまで main へ出さない」は 2026-09-24 の決定（wt-harness/decisions-log.md「途中段階を本番へ」）で解除／Vercel の NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL・AFTER_SIGN_UP_URL → /clients は本日 lead が変更済／本番＝main 991a753（`npx vercel inspect` target production・Ready 2026-09-24 21:35 JST、CI run 36000054861 Quality Gates success）</small>
 
 ### T-NOW-02　今日本番に出た第1段（外枠・利用者の作業台・書類保存の範囲チェック・日付 API）の独立審査（graph-doubt）をまとめて回す
-- **優先**: P0 いま最優先　**担当**: Claude　**状態**: 未着手　**大きさ**: 中(半日)
+- **優先**: P0 いま最優先　**担当**: Claude　**状態**: ✅審査は済（2026-09-25・判定＝**不合格**：重大 6件・軽微 2件が確定、未確定 41件）　**大きさ**: 中(半日)
 - **止めているもの**: 第1段は自動レビューも独立審査も通っていない状態で本番にある（安全網・データ・認証に触る変更を含む）
-- **次の一手**: main 991a753（PR #15・#16 の差分。特に lib/db/clients・POST /api/documents の範囲チェック・SharingStatus）を対象に /graph-doubt を1回通し、critical は同日に直して小さな PR で出す。結果を REDESIGN-A-SIGNOFF.md と decisions-log に残す。
+- **結果（2026-09-25）**: 一覧は docs/reviews/2026-09-25-redesign-m1-doubt.md。確定した重大6件は T-NOW-05〜10 に、軽微2件は T-HN-07・T-HN-08 に割り当てた。未確定の41件（反証の上限のため未検証）は一覧に残し、着手時に確かめ直す。
+- **次の一手（元の記載）**: main 991a753（PR #15・#16 の差分。特に lib/db/clients・POST /api/documents の範囲チェック・SharingStatus）を対象に /graph-doubt を1回通し、critical は同日に直して小さな PR で出す。結果を REDESIGN-A-SIGNOFF.md と decisions-log に残す。
 - <small>根拠（開発向け）: scratchpad/m1-status.txt 末尾: lens:delivery/invent/live/mutation/spec/survival => FAILED、merge => FAILED／scratchpad/wf-m1-finish.js:3-4,94-95（phase('Review') の await workflow('graph-doubt') が未実行）／`gh pr view 15 --json reviews` → reviews: []／`gh pr view 15 --comments`: github-actions のコメントは「Auto Review 進行中」・Critical 3項目が「サブエージェント実行中」・判定（APPROVE/…）未チェックのまま「Claude finished in 2m 25s」＝判定なしで終了（PR 側の review-pr 実行 35967886853 は success だが中身は判定なし。PR #16 の 35976526820 は完了・承認）／wt-harness/decisions-log.md 2026-09-23「出口ゲート: 安全網・データ・認証にかかわるものは独立審査」／lead 検証「milestone 1 の graph-doubt は未実施」</small>
 
 ### T-NOW-03　点検（PDF の AI 評価）は本番でいま動いていない（AI のモデル名が存在しない・Issue #4）── 直してから1回だけ確かめる
@@ -57,7 +58,7 @@
 - <small>根拠（開発向け）: app/api/evaluate/route.ts:73 `model: "claude-sonnet-4-5-20250514"`・:70 `"anthropic-beta": "pdfs-2024-09-25"`／lib/anthropic.ts:8 `CLAUDE_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8"`／`gh issue list` → #4 OPEN（本文は「Sonnet 4.5 は claude-sonnet-4-5-20250929」と指摘。2026-09-25 に claude-api スキルの正本 shared/models.md:92 で Sonnet 4.5 の ID は claude-sonnet-4-5-20250929（別名 claude-sonnet-4-5）と確認。route.ts:73 の名前はどの一覧にも無い＝本番の点検は API に弾かれている）／docs/ROADMAP.md:142／scratchpad/redesign-plan.md:336 K0・OPEN【点検が動いているか】</small>
 
 ### T-NOW-04　事業所（Clerk の組織）を作って職員を入れ、登録済み利用者を事業所へ移し、職員2人で「他人の登録利用者の名前が記号に変わる」ことを確かめて Issue #13 を閉じる（管理者手順③④・関門 G3b）
-- **優先**: P0 いま最優先　**担当**: 吉本さん＋Claude　**状態**: 未着手　**大きさ**: 中(半日)
+- **優先**: P0 いま最優先　**担当**: 吉本さん＋Claude　**状態**: ⛔止める（2026-09-25）── **先に T-NOW-05（ログインの環境）と T-NOW-06（事業所の設定）を決める**。開発用の環境で作った事業所・職員は本番用へ移せず、作り直しになるため　**大きさ**: 中(半日)
 - **止めているもの**: 複数の職員で使い始めた瞬間に、他の職員が登録した利用者の実名が AI へ出る穴が開いたまま。③と④は同じ日に続けて行う（間が空くと職員が下書きを作れなくなる）
 - **次の一手**: ①Clerk ダッシュボード → Organizations で事業所の組織を作り職員を全員入れ、org_ で始まる ID を控える ②同じ日に Supabase の SQL 画面で supabase/client_org_scope.sql【手順2】を組織 ID に置き換えて Run（0件を確認）→【手順3】→【手順4】で (a)0件・(b)3つとも0 ③各職員が画面上の帯の右側で事業所を選び「名簿を事業所で共有中」を確認 ④職員 B のメモに職員 A の利用者名を書いて下書きを作り「送る前に見る画面」で記号になっているか見る → Claude が #13 を閉じ、ADMIN-SETUP と ROADMAP の進捗欄を更新。Claude が横で手順を読み上げる。
 - <small>根拠（開発向け）: docs/ADMIN-SETUP.md:5「残りは③④です」・:32-37（同日実施の注意）・:150-179（③④・確かめ方）／docs/ROADMAP.md:39,42,66-73,80-92（本番 clients 2件・org_id 全件 null・記号重複なし＝移行は安全に通る見込み 2026-09-13 実測）／`gh issue view 13` コメント 2026-09-14「1 SQL 実行 ✅／2 Clerk で組織 ⬜／3 既存データ移行 ⬜／4 各職員が事業所を選ぶ ⬜」／docs/CONTEXT-MAP.md:207,223／実装は PR #14（MERGED 2026-09-14）で main 済／今日の lead 報告に③④の記述なし＝未着手として扱う（済んでいれば「確認待ち」に格下げ）</small>
@@ -65,6 +66,39 @@
 ## 2) 画面の作り直しの残り
 
 > 作り直し計画47段のうち main に入ったのは F0〜F7・U0〜U4・S1・U5 の API 部分・C3 のタブ・R1 まで。残りは吉本さんの順番決定（決めること1）と未回答の質問待ちが多い。
+
+### T-NOW-05　【決定】本番のログイン（Clerk）が「開発用の環境」のまま動いている ── 本番用へ切り替えるか（T-NOW-04 の前に）
+- **優先**: P0 いま最優先　**担当**: 吉本さん（決定）＋Claude　**状態**: 未着手（決定待ち）　**大きさ**: 中(半日)
+- **止めているもの**: T-NOW-04（開発用の環境で作った事業所・職員のデータは本番用へ移せない＝作り直しになる）。Clerk 公式は開発用の環境を「100人まで・本番の仕事には向かない・セッションの守りが本番の水準に無い」と書いている
+- **次の一手**: 決めること24。案A＝自分のドメインを取り、Clerk の本番用の環境を作って切り替える（認証の慎重領域＝着手前に考えの筋道を示して承認→PR→独立審査）。案B＝当面は開発用のまま続け、上の3点を承知したことを decisions-log に記帳する
+- <small>根拠（開発向け）: docs/reviews/2026-09-25-redesign-m1-doubt.md の確定1（本番の応答の X-Clerk-Auth-Reason: dev-browser-missing・公開鍵が pk_test・公式 docs の引用）</small>
+
+### T-NOW-06　【決定】Clerk の事業所の設定（1事業所5人まで・個人のアカウント不可）が、画面の作りと T-NOW-04 の手順の前提と食い違う
+- **優先**: P0 いま最優先　**担当**: 吉本さん（決定）＋Claude　**状態**: 未着手（決定待ち）　**大きさ**: 小(〜1時間)
+- **止めているもの**: T-NOW-04。6人目からの職員は、画面に緑の「事業所で共有中」が出ているのに名簿が共有されていない状態になりうる（2026-09-13 の重大な指摘と同じ種類）
+- **次の一手**: 決めること25（人数の上限・個人のアカウントを許すか）→ 決まった内容に合わせて Claude が SharingStatus と ADMIN-SETUP の手順を直す（緑は決めた事業所の ID と一致したときだけにする案も）
+- <small>根拠（開発向け）: docs/reviews/2026-09-25-redesign-m1-doubt.md の確定2（公開設定の max_allowed_memberships:5・force_organization_selection:true と components/SharingStatus.tsx:39,63,71,73）</small>
+
+### T-NOW-07　本番への公開が自動チェック（CI）の結果を待たない ── 見張りが落ちても main に入れば本番に出る
+- **優先**: P0 いま最優先　**担当**: 吉本さん（承認）＋Claude　**状態**: 未着手（決定待ち）　**大きさ**: 中(半日)
+- **止めているもの**: 安全テストの見張り（tools/run-tests.mjs）が本番の手前で止める力を持たない。第1段の公開は3回とも CI の完了より先に本番へ出ていた（実害は無し）
+- **次の一手**: 決めること26 → インフラの変更なので着手前に考えの筋道を示して承認→PR→独立審査
+- <small>根拠（開発向け）: docs/reviews/2026-09-25-redesign-m1-doubt.md の確定3（main の保護なし・公開と CI 完了の時刻の比較）</small>
+
+### T-NOW-08　「一式まとめて」が、どの利用者から来たか（?client=）を受け取らず、保存先の既定が「新しい利用者」── 同じ方を二重に登録する道
+- **優先**: P1 次にやる　**担当**: Claude　**状態**: 未着手　**大きさ**: 小(〜1時間)
+- **次の一手**: app/(dashboard)/rescue/page.tsx で ?client= を読み、一覧にあればその方を保存先の既定にし「B様に保存します」と文字で出す。一覧に無ければその旨を出し、新しい利用者を既定にしない。受け取る側の画面のテストを足し、安全テストの一覧にも載せる
+- <small>根拠（開発向け）: docs/reviews/2026-09-25-redesign-m1-doubt.md の確定4（components/clients/ClientPane.tsx:241・rescue/page.tsx:277,796,852）</small>
+
+### T-NOW-09　名簿の共有状態の表示を「スマホで隠す」「スクロールで流す」ようにしても、テストが気づかない（2026-09-13 の重大な指摘の再発を止める見張りが無い）
+- **優先**: P1 次にやる　**担当**: Claude　**状態**: 未着手　**大きさ**: 小(〜1時間)
+- **次の一手**: SharingStatus・TopBar のテストに「画面幅つきの隠す印が付いていない」と「globals.css でどの幅でも隠していない・上の帯は sticky」の検査を足す。わざと隠して赤になることを確かめる
+- <small>根拠（開発向け）: docs/reviews/2026-09-25-redesign-m1-doubt.md の確定5（変異 U01〜U05 を全部入れても 1189 件が緑）</small>
+
+### T-NOW-10　書類の持ち主の絞り込み（created_by）3か所を消しても、テストが気づかない（サーバーは行の保護 RLS を通らないので、この3行が唯一の守り）
+- **優先**: P1 次にやる　**担当**: Claude　**状態**: 未着手　**大きさ**: 小(〜1時間)
+- **次の一手**: lib/db/documents.test.ts に「getDocumentsByClient・approveDocument・unapproveDocument は必ず本人で絞る」を足し、PATCH /api/documents/[id] のテストも足す。安全テストの一覧の理由に書き足す
+- <small>根拠（開発向け）: docs/reviews/2026-09-25-redesign-m1-doubt.md の確定6（lib/db/documents.ts:157,245,275）</small>
 
 ### T-UI-01　点検・履歴・救済モード・使い方の新しい見た目（枝 redesign/a-restyle の3コミット）を main に取り込む（衝突6ファイル）
 - **優先**: P1 次にやる　**担当**: Claude　**状態**: 途中　**大きさ**: 中(半日)
@@ -553,11 +587,13 @@
 - **優先**: P1 次にやる　**担当**: Claude＋吉本さん　**状態**: 確認待ち　**大きさ**: 小(〜1時間)
 - **次の一手**: 吉本さんが #38 の変更案（tools/run-tests.mjs・safety-tests.json・testManifest.mjs・testManifest.test.ts を Edit/Write 時の注意喚起に足す）を承認（決めること15）→ decisions-log に1行 → T-HN-02 の PR で #38 を閉じる。旧枝 harness/h3-safety-advisory（ab5e3ad）は wt-maou の版に置き換わったので後片付けへ。
 - <small>根拠（開発向け）: `gh issue view 38 -R satoshiyoshimoto0426/maoucastle-game` = OPEN・needs-decision・「入口: 吉本さんが承認し decisions-log に記帳」／docs/CONTEXT-MAP.md:378-379「本番へ出す前に必須」／wt-maou/.claude/steering-log.md 追記 #28「issue #38 はこの変更で解消」／wt-harness/decisions-log.md の 09-23 ハーネスの項に #38 の記載なし／別枝 harness/h3-safety-advisory（ab5e3ad・未 push）との差 +683/-61</small>
+- **追記（2026-09-25 第1段の独立審査・確定8）**: CONTEXT-MAP.md の「本番へ出す前に必須」とされた注意喚起（ab5e3ad）が、本番公開の後も main に入っておらず動いていない。PR にして独立審査→main、すぐ入れないなら吉本さんの承認を記帳して CONTEXT-MAP の文を直す（docs/reviews/2026-09-25-redesign-m1-doubt.md）
 
 ### T-HN-08　Issue maoucastle-game #37 自動レビューが大きい PR で完走しない（40ターン超過・再試行なし）── 3案から選ぶ
 - **優先**: P1 次にやる　**担当**: 吉本さん　**状態**: 確認待ち　**大きさ**: 小(〜1時間)
 - **次の一手**: (a) 自動レビューの上限回数を 40→60 に増やす (b) 審査の指示文を軽くする (c) API の一時エラーで1回やり直す、から選ぶ（決めること16。まず (a) を試すのがおすすめ）。本番に出す PR で再発したので「10月の健診まで様子見」はやめ、次の PR の前に (a) を入れる。
 - <small>根拠（開発向け）: `gh issue view 37 -R satoshiyoshimoto0426/maoucastle-game` = OPEN・harness-checkup・needs-decision（2026-09-06 起票）／2026-09-24 に本番へ出した PR #15（18ファイル）で再発: review-pr は 2m25s で判定なしに終了。PR #16（小さい）は完了・APPROVE</small>
+- **追記（2026-09-25 第1段の独立審査・確定7）**: PR #15 の自動レビューは 40 ターンの手前（26）で「成功」のまま判定を出さずに終わっていた＝#37 とは別の原因。自動レビューの最後に「判定が投稿されたか」を確かめて、無ければ失敗にする段を足す案（ハーネスの変更）（docs/reviews/2026-09-25-redesign-m1-doubt.md）
 
 ### T-HN-09　月1ハーネス健診の3回目（10月）と「3ヶ月試行を続けるか」の判断・DB バックアップ増加の原因特定（server #29）・steering-log:123 の整合
 - **優先**: P2 そのあと　**担当**: Claude＋吉本さん　**状態**: 未着手　**大きさ**: 中(半日)
@@ -666,7 +702,7 @@
 - **次の一手**: このタスク管理書を正本にして、3ファイルの「次の一手」と索引の1行を書き換える（動画は ch1〜4・6・7 収録済み・A案採用済み・09-24 に第1段を本番へ）。
 - <small>根拠（開発向け）: memory MEMORY.md:19「次＝…動画収録」（実際は6章を 2026-09-16 に収録済み・残りは ch5）・:20「3方向案…選択待ち」（A案は 2026-09-23 に採用済み）／project_carenote_call_pipeline.md:19「動画は未収録」（古い）</small>
 
-## 吉本さんが決めること（23件）
+## 吉本さんが決めること（27件）
 
 > 1問ずつで大丈夫です。返事は Claude が記帳します。番号は本文の「決めること N」と対応。
 
@@ -695,6 +731,10 @@
 | 21 | 暗号鍵 CARENOTE_PII_KEY を誰が・どこに控えるか | 紙で金庫／パスワード管理ソフト／両方 | 両方（パスワード管理ソフト＋紙を金庫）。控える人は吉本さん＋予備1人。鍵の値は Claude に見せない | T-OPS-09 |
 | 22 | 旧画面を映している使い方の動画6本を「準備中」に切り替えるか、旧画面のまま残すか |  | 「準備中」に切り替える。旧画面を「使い方」として見せ続けるより誤案内が少ない。撮り直しは新しい画面が本番にそろってから | T-DOC-01 |
 | 23 | 作り直しの案に描いた新機能（Ctrl K・分割の常時プレビュー・手順レール）を作るか |  | 常時プレビューは C5 として計画に残す。Ctrl K と手順レールは見送り（作り過ぎない §2.5-F） |  |
+| 24 | 本番のログイン（Clerk）を本番用の環境へ切り替えるか（自分のドメインが要る） | （ア）ドメインを取って切り替え、事業所づくり（T-NOW-04）はその後／（イ）当面は開発用のまま（100人まで・守りの水準が低い・データを移せない、を承知して記帳） | （ア）。職員を入れる前に切り替えないと、入れた後で作り直しになる。ドメインの費用と手順は Claude が調べて示す | T-NOW-04・T-NOW-05 |
+| 25 | Clerk の事業所の人数の上限（今は5人）と、個人のアカウントを許すか | 上限を職員数に合わせて上げる／そのまま。個人のアカウントを許す／許さない | 上限は職員数に余裕を足して上げる。個人のアカウントは許さない（事業所で共有する前提をはっきりさせ、画面の「自分の登録分のみ」の状態を実態に合わせて直す） | T-NOW-04・T-NOW-06 |
+| 26 | 本番へ出す前に、自動チェックの合格を必須にするか | 案A: main を PR 必須にし、検査の合格を必須に（説明書だけの変更を例外にするかも決める）／案B: 自動チェックが全部通った後だけ本番へ出す／案C: 本番の後にチェックが赤なら必ず通知（公開は止まらない） | 案A。いちばん単純で、今の「PR を出してから取り込む」流れと同じ | T-NOW-07 |
+| 27 | carenote-ai のコードの保管場所（GitHub）が「公開」になっている。非公開にするか | （ア）非公開にする（自動チェックの無料の使用量に上限がかかる。量は要確認）／（イ）公開のまま | （ア）を検討。事業所向けの説明書・品質ルール（吉本さんの知見）・安全の仕組みの中身を誰でも読める状態。費用と手順は Claude が調べて示す | ── |
 
 ## これからの7日間（提案）
 
