@@ -96,8 +96,9 @@
 - <small>根拠（開発向け）: docs/reviews/2026-09-25-redesign-m1-doubt.md の確定5（変異 U01〜U05 を全部入れても 1189 件が緑）</small>
 
 ### T-NOW-10　書類の持ち主の絞り込み（created_by）3か所を消しても、テストが気づかない（サーバーは行の保護 RLS を通らないので、この3行が唯一の守り）
-- **優先**: P1 次にやる　**担当**: Claude　**状態**: 未着手　**大きさ**: 小(〜1時間)
-- **次の一手**: lib/db/documents.test.ts に「getDocumentsByClient・approveDocument・unapproveDocument は必ず本人で絞る」を足し、PATCH /api/documents/[id] のテストも足す。安全テストの一覧の理由に書き足す
+- **優先**: P1 次にやる　**担当**: Claude　**状態**: PR 中（2026-09-25・枝 test/owner-scope-sensors）　**大きさ**: 小(〜1時間)
+- **やったこと（2026-09-25）**: lib/db/ownerScope.test.ts を追加。偽の保管庫が条件で本当に行を絞るので、絞り込みの行を消すと他の職員の書類・履歴が返って赤になる。4行（書類の一覧・承認・承認の取り消し・点検の履歴 lib/db.ts）を1つずつ消し、どれも赤になることを確認。安全テストの一覧に追加。
+- **次の一手（元の記載）**: lib/db/documents.test.ts に「getDocumentsByClient・approveDocument・unapproveDocument は必ず本人で絞る」を足し、PATCH /api/documents/[id] のテストも足す。安全テストの一覧の理由に書き足す
 - <small>根拠（開発向け）: docs/reviews/2026-09-25-redesign-m1-doubt.md の確定6（lib/db/documents.ts:157,245,275）</small>
 
 ### T-UI-01　点検・履歴・救済モード・使い方の新しい見た目（枝 redesign/a-restyle の3コミット）を main に取り込む（衝突6ファイル）
