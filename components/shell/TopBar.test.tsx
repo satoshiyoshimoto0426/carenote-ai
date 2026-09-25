@@ -250,3 +250,155 @@ describe("帯の高さを読む CSS（app/globals.css）", () => {
     expect(stripCssComments(CSS)).not.toMatch(/calc\(\s*100d?vh\s*-/);
   });
 });
+
+/**
+ * 名簿の共有状態の表示を、どの幅でも隠さない・流さない（2026-09-25 作り直し第1段の独立審査・確定5・T-NOW-09）。
+ *
+ * なぜ必要か: 共有状態（事業所で共有中／自分の登録分のみ）と、共有していないときの注意の帯は、実名が AI へ出るかどうかを
+ *   職員が見分ける唯一の表示（2026-09-13 の重大な指摘）。ところが、次のどれを入れても全テストが緑のままだった:
+ *   帯に「スマホでは隠す」印（max-md:hidden）を付ける／globals.css の @media で display:none にする／
+ *   注意の帯を消す／上の帯を「上に貼りつく」から外す。tests/helpers/markup.ts は画面幅つきの隠し方と CSS ファイルを
+ *   判定しない（そう明記している）ので、ここで別に見張る。
+ * 見張る物: 上の帯のまとまり（.shell-head）・帯（.topbar）・右側（.topbar-right）・共有状態（.sharing-bar・.sharing-dot・
+ *   .sharing-label）・注意の帯（.sharing-strip・.sharing-strip-icon と中の強調）。事業所の名前（.sharing-org）は長いと
+ *   省略する指定があるので外す（状態の言葉は .sharing-label が必ず出す）。
+ */
+describe("名簿の共有状態の表示を、どの幅でも隠さない・流さない（T-NOW-09）", () => {
+  const WATCHED = [
+    "shell-head",
+    "topbar",
+    "topbar-right",
+    "sharing-bar",
+    "sharing-dot",
+    "sharing-label",
+    "sharing-strip",
+    "sharing-strip-icon",
+  ];
+
+  /** 隠す・画面の外へ出す・大きさを 0 にする宣言（見張る規則の中にあってはいけない） */
+  const HIDING: { property: RegExp; value: RegExp }[] = [
+    { property: /^display$/, value: /^none\b/ },
+    { property: /^visibility$/, value: /^(hidden|collapse)\b/ },
+    { property: /^opacity$/, value: /^0(\.0*)?(\s|$|!)/ },
+    { property: /^content-visibility$/, value: /^hidden\b/ },
+    { property: /^(clip|clip-path)$/, value: /./ },
+    { property: /^(width|height|max-width|max-height)$/, value: /^(0|1px)\b/ },
+    { property: /^font-size$/, value: /^0\b/ },
+    { property: /^transform$/, value: /translate/ },
+    { property: /^(left|top|right|bottom|margin[a-z-]*|text-indent)$/, value: /-\d{3,}/ },
+  ];
+
+  /** css の中で、選択子に watched の class が入っている規則（@media / @layer の中も）の宣言を、前置きつきで集める */
+  function watchedDeclarations(css: string, watched: readonly string[]) {
+    const out: { at: string; selector: string; property: string; value: string }[] = [];
+    const mentions = (selector: string) =>
+      watched.some((c) => new RegExp(`\\.${c}(?![\\w-])`).test(selector));
+    const visit = (nodes: CssNode[], at: string) => {
+      for (const node of nodes) {
+        if (node.prelude.startsWith("@")) {
+          visit(node.children, node.prelude.startsWith("@media") ? node.prelude : at);
+          continue;
+        }
+        if (mentions(node.prelude)) {
+          for (const decl of node.declarations.split(";")) {
+            const i = decl.indexOf(":");
+            if (i < 0) continue;
+            out.push({
+              at,
+              selector: node.prelude.trim().replace(/\s+/g, " "),
+              property: decl.slice(0, i).trim(),
+              value: decl.slice(i + 1).trim(),
+            });
+          }
+        }
+        visit(node.children, at);
+      }
+    };
+    visit(parseCss(css), "");
+    return out;
+  }
+
+  const hidingIn = (css: string) =>
+    watchedDeclarations(css, WATCHED).filter((d) =>
+      HIDING.some((h) => h.property.test(d.property) && h.value.test(d.value)),
+    );
+
+  const CSS = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
+
+  it("globals.css のどの幅の指定でも、共有状態・注意の帯・上の帯を隠さない・大きさ 0 にしない・画面の外へ出さない", () => {
+    expect(hidingIn(CSS)).toEqual([]);
+  });
+
+  it("上の帯のまとまりは、どの幅でもスクロールで流れず上に貼りつく（position: sticky・top: 0）", () => {
+    const decls = watchedDeclarations(CSS, ["shell-head"]).filter(
+      (d) => d.selector === ".shell-head",
+    );
+    const positions = decls.filter((d) => d.property === "position").map((d) => d.value);
+    expect(positions.length).toBeGreaterThan(0);
+    expect(positions.every((v) => v === "sticky")).toBe(true);
+    expect(decls.some((d) => d.property === "top" && d.value === "0")).toBe(true);
+  });
+
+  it("検査そのものが壊れていない（@media の中の display:none・注意の帯の強調を消す指定・sticky 外しを見つける）", () => {
+    const bad = [
+      "@media (max-width: 767px) { .sharing-bar { display: none; } }",
+      ".sharing-strip strong { visibility: hidden; }",
+      "@layer base { .topbar-right { width: 0; } }",
+    ].join("\n");
+    expect(hidingIn(bad).map((d) => d.selector)).toEqual([
+      ".sharing-bar",
+      ".sharing-strip strong",
+      ".topbar-right",
+    ]);
+    // 見張らない class（例: 使い方の文字の読み上げ専用）は数えない
+    expect(
+      hidingIn(".topbar-help-text { position: absolute; width: 1px; clip: rect(0,0,0,0); }"),
+    ).toEqual([]);
+  });
+
+  /** 画面幅つきも含めて、要素を隠す class の1語（hidden・max-md:hidden・sm:sr-only・invisible など） */
+  const HIDING_CLASS =
+    /^(?:[a-z0-9-[\]&_:.]+:)?(?:hidden|invisible|sr-only|opacity-0|h-0|w-0|collapse)$/;
+
+  /** el から根まで、隠す印（隠す class・hidden 属性・aria-hidden="true"）を持つ要素の class を集める */
+  function hidingMarksUpFrom(el: MarkupElement): string[] {
+    const found: string[] = [];
+    let node: MarkupElement | null = el;
+    while (node && "attrs" in node) {
+      const cls = (attrOf(node, "class") ?? "").split(/\s+/).filter(Boolean);
+      for (const c of cls) if (HIDING_CLASS.test(c)) found.push(`${node.tagName}.${c}`);
+      if (attrOf(node, "hidden") !== undefined) found.push(`${node.tagName}[hidden]`);
+      if (attrOf(node, "aria-hidden") === "true" && !hasClass(node, "sharing-dot")) {
+        found.push(`${node.tagName}[aria-hidden]`);
+      }
+      node = (node.parentNode as MarkupElement | null) ?? null;
+    }
+    return found;
+  }
+
+  it("共有状態の言葉と、その祖先のどこにも、どの幅でも隠す印が付いていない（共有していないとき・共有中のとき）", () => {
+    for (const org of [null, { name: "テスト事業所" }]) {
+      env.org = { isLoaded: true, organization: org };
+      const els = elementsOf(draw("/clients"));
+      const label = els.find((el) => hasClass(el, "sharing-label"));
+      if (!label) throw new Error("共有状態の言葉が描かれていません");
+      expect(hidingMarksUpFrom(label)).toEqual([]);
+    }
+  });
+
+  it("共有していないときの注意の帯と、その祖先のどこにも、どの幅でも隠す印が付いていない", () => {
+    env.org = { isLoaded: true, organization: null };
+    const strip = elementsOf(draw("/clients")).find((el) => hasClass(el, "sharing-strip"));
+    if (!strip) throw new Error("注意の帯が描かれていません");
+    expect(hidingMarksUpFrom(strip)).toEqual([]);
+  });
+
+  it("隠す印の検査そのものが壊れていない（画面幅つきの印も見つける）", () => {
+    const els = elementsOf(
+      '<div class="shell-head"><div class="topbar-right max-md:hidden"><span class="sharing-label">x</span></div></div>',
+    );
+    const label = els.find((el) => hasClass(el, "sharing-label"));
+    if (!label) throw new Error("見本が読めていません");
+    expect(hidingMarksUpFrom(label)).toEqual(["div.max-md:hidden"]);
+  });
+});

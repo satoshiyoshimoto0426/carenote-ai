@@ -91,8 +91,9 @@
 - <small>根拠（開発向け）: docs/reviews/2026-09-25-redesign-m1-doubt.md の確定4（components/clients/ClientPane.tsx:241・rescue/page.tsx:277,796,852）</small>
 
 ### T-NOW-09　名簿の共有状態の表示を「スマホで隠す」「スクロールで流す」ようにしても、テストが気づかない（2026-09-13 の重大な指摘の再発を止める見張りが無い）
-- **優先**: P1 次にやる　**担当**: Claude　**状態**: 未着手　**大きさ**: 小(〜1時間)
-- **次の一手**: SharingStatus・TopBar のテストに「画面幅つきの隠す印が付いていない」と「globals.css でどの幅でも隠していない・上の帯は sticky」の検査を足す。わざと隠して赤になることを確かめる
+- **優先**: P1 次にやる　**担当**: Claude　**状態**: PR 中（2026-09-25・枝 test/sharing-status-visibility）　**大きさ**: 小(〜1時間)
+- **やったこと（2026-09-25）**: components/shell/TopBar.test.tsx に見張りを足した ── globals.css のどの幅の指定でも共有状態・注意の帯・上の帯を隠さない（display:none・visibility・大きさ 0・画面の外 など）／上の帯は sticky のまま／共有状態の言葉と注意の帯の祖先に、画面幅つきも含めて隠す印が無い。審査の変異と同じ5つ（帯に max-md:hidden・右側に max-md:hidden・@media で display:none・注意の帯を消す・sticky を外す）で、どれも赤になることを確認。
+- **次の一手（元の記載）**: SharingStatus・TopBar のテストに「画面幅つきの隠す印が付いていない」と「globals.css でどの幅でも隠していない・上の帯は sticky」の検査を足す。わざと隠して赤になることを確かめる
 - <small>根拠（開発向け）: docs/reviews/2026-09-25-redesign-m1-doubt.md の確定5（変異 U01〜U05 を全部入れても 1189 件が緑）</small>
 
 ### T-NOW-10　書類の持ち主の絞り込み（created_by）3か所を消しても、テストが気づかない（サーバーは行の保護 RLS を通らないので、この3行が唯一の守り）
