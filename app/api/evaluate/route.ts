@@ -1,10 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
-import { del } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
+import { deleteTempBlobs } from "@/lib/blob/deleteTemp";
 import { readPrivateBlob } from "@/lib/blob/readPrivate";
 import { saveEvaluation } from "@/lib/db";
 import { EVALUATE_MODEL } from "@/lib/evaluate/model";
 import { EVALUATION_STORED_FILE_NAME } from "@/lib/evaluate/storedFileName";
+import { aiTimeoutMs } from "@/lib/evaluate/timeBudget";
 import { EVALUATION_CRITERIA } from "@/lib/evaluationCriteria";
 import { parseEvaluationJson } from "@/lib/parseEvaluationJson";
 import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
@@ -17,16 +18,16 @@ export const maxDuration = 120;
  *
  * 受け取る本文: `blobUrl`（非公開ストアに一時保管した PDF。本番）か `pdf`（base64。ローカル開発用）のどちらか。
  *   `fileName` は来ても読まない（元のファイル名には実名が入りうる ── Issue #10・lib/evaluate/storedFileName.ts）。
- * 流れ: 認証 → PDF を読む（lib/blob/readPrivate.ts）→ AI（lib/evaluate/model.ts のモデル）→ 形の検査
- *   （lib/parseEvaluationJson.ts）→ 履歴へ保存（lib/db.ts saveEvaluation・待たない）→ 一時保管を削除。
- * 何を返すか: 評価結果の JSON。失敗は 400（読めない）・401・413（大きすぎる）・500／503（AI 側）と職員向けの文。
+ * 流れ: 認証 → PDF を読む（lib/blob/readPrivate.ts）→ **すぐ一時保管を消す**（lib/blob/deleteTemp.ts・失敗や時間切れは
+ *   `warnings` として以後の返事すべてに載せ、画面が警告を出す）→ AI（lib/evaluate/model.ts のモデル）→ 形の検査
+ *   （lib/parseEvaluationJson.ts）→ 履歴へ保存（lib/db.ts saveEvaluation・待たない）。
+ * 何を返すか: 評価結果の JSON。失敗は職員向けの文と、400（読めない）・401・413（大きすぎる）・500・503・504 のほか、
+ *   AI 側の状態番号をそのまま返すことがある（429 など）。一時保管を消さない返事は 401（ログインしていない人の指定では
+ *   消さない）と本文が読めない 400（URL が分からない）だけ。
  */
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "APIキーが設定されていません。" }, { status: 500 });
-  }
-
+  // AI を待てる時間は、ここから数えた持ち時間から差し引いて決める（lib/evaluate/timeBudget.ts）
+  const startedAt = Date.now();
   // ── 認証チェック ──
   const { userId } = await auth();
   if (!userId) {
@@ -36,6 +37,10 @@ export async function POST(req: NextRequest) {
   // ── リクエスト解析（Vercel Blob URL or base64フォールバック） ──
   let base64: string;
   let blobUrl: string | null = null;
+  /** 一時保管の削除に失敗したときの警告。削除の後に作る返事すべてに載せる（reply） */
+  let warnings: string[] = [];
+  const reply = (payload: object, status = 200) =>
+    NextResponse.json(warnings.length > 0 ? { ...payload, warnings } : payload, { status });
   // 元のファイル名（本文の fileName）は読まない。実名が入りうるため、履歴には決まった名前だけを残す（Issue #10）
 
   // 本文は lib/requestBody.ts の readJsonObject で読む（オブジェクトでなければ 400。2026-09-24 検収の指摘で他の入口と揃えた）
@@ -47,11 +52,14 @@ export async function POST(req: NextRequest) {
       // ── Vercel Blob 経由（本番） ──
       // 文字列でなければ空にして、下の許可リストで止める（読みに行かない）
       blobUrl = typeof body.blobUrl === "string" ? body.blobUrl : "";
-      // 自前の非公開ストア以外は読みに行かない（SSRF 対策）。非公開なので認証つき get() で読む
+      // 非公開ストアのホスト以外は読みに行かない（SSRF 対策）。非公開なので認証つき get() で読む
       if (!isBlobUrl(blobUrl)) throw new Error("Blob URL not allowed");
       const arrayBuffer = await readPrivateBlob(blobUrl);
       if (!arrayBuffer) throw new Error("Blob not found");
       base64 = Buffer.from(arrayBuffer).toString("base64");
+      // 読んだら、AI へ送る前にすぐ消す（すみやかに削除。この後で時間切れに打ち切られても残らない ── 2026-09-25 独立審査）
+      warnings = await deleteTempBlobs(blobUrl, "evaluate");
+      blobUrl = null;
     } else if (typeof body.pdf === "string" && body.pdf !== "") {
       // ── base64 直接送信（ローカル開発用フォールバック） ──
       base64 = body.pdf;
@@ -60,12 +68,16 @@ export async function POST(req: NextRequest) {
     }
   } catch {
     // 読み取れなかった時も一時保管を残さない（許可したホストの URL のみ削除を試みる）
-    if (blobUrl && isBlobUrl(blobUrl)) del(blobUrl).catch(() => {});
-    return NextResponse.json({ error: "リクエストの解析に失敗しました。" }, { status: 400 });
+    if (blobUrl && isBlobUrl(blobUrl)) warnings = await deleteTempBlobs(blobUrl, "evaluate");
+    return reply({ error: "リクエストの解析に失敗しました。" }, 400);
   }
 
+  // 設定の抜け（本番で鍵が無い）も、一時保管を消した後で知らせる（資料を残さない）
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return reply({ error: "APIキーが設定されていません。" }, 500);
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 115000);
+  const timeout = setTimeout(() => controller.abort(), aiTimeoutMs(startedAt, Date.now()));
 
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -98,9 +110,6 @@ export async function POST(req: NextRequest) {
 
     clearTimeout(timeout);
 
-    // ── Blob削除（個人情報保護） ──
-    if (blobUrl) del(blobUrl).catch((e) => console.error("[evaluate] blob delete:", e));
-
     if (!resp.ok) {
       const errBody = await resp.text();
       let errMsg = `API Error (${resp.status})`;
@@ -109,18 +118,17 @@ export async function POST(req: NextRequest) {
       } catch {}
 
       if (resp.status === 413 || errMsg.includes("too large"))
-        return NextResponse.json(
+        return reply(
           { error: "PDFのサイズが大きすぎます。ページ数の少ないPDFで試してください。" },
-          { status: 413 },
+          413,
         );
       if (resp.status === 529 || resp.status === 503)
-        return NextResponse.json(
+        return reply(
           { error: "APIサーバーが混み合っています。少し時間をおいて再試行してください。" },
-          { status: 503 },
+          503,
         );
-      if (resp.status === 401)
-        return NextResponse.json({ error: "APIキーの認証に失敗しました。" }, { status: 401 });
-      return NextResponse.json({ error: errMsg }, { status: resp.status });
+      if (resp.status === 401) return reply({ error: "APIキーの認証に失敗しました。" }, 401);
+      return reply({ error: errMsg }, resp.status);
     }
 
     const data = await resp.json();
@@ -132,9 +140,18 @@ export async function POST(req: NextRequest) {
         parseResult.reason === "invalid_shape"
           ? "評価結果のフォーマットが不正です。再試行してください。"
           : "評価結果の解析に失敗しました。再試行してください。";
-      return NextResponse.json({ error }, { status: 500 });
+      return reply({ error }, 500);
     }
-    const parsed = parseResult.data;
+    // AI の返事の一番上に warnings が紛れていても、削除の警告として画面に出さない
+    // （資料の中の指示文に AI が従った場合などに、「システムの警告」の見た目で出せてしまうため ── 2026-09-25 独立審査）
+    const { warnings: aiWarnings, ...parsed } = parseResult.data as typeof parseResult.data & {
+      warnings?: unknown;
+    };
+    if (aiWarnings !== undefined) {
+      console.warn(
+        "[evaluate] AI の返事の warnings は使わない（一時保管の削除の警告と取り違えないため）",
+      );
+    }
 
     // ── Supabaseに保存（ノンブロッキング） ──
     saveEvaluation({
@@ -145,21 +162,17 @@ export async function POST(req: NextRequest) {
       result: parsed,
     }).catch((e) => console.error("[evaluate] DB save failed:", e));
 
-    return NextResponse.json(parsed);
+    return reply(parsed);
   } catch (e: unknown) {
     clearTimeout(timeout);
-    if (blobUrl) del(blobUrl).catch(() => {});
     if (e instanceof Error && e.name === "AbortError")
-      return NextResponse.json(
+      return reply(
         {
           error:
             "処理がタイムアウトしました。ページ数の少ないPDFで試すか、少し時間をおいて再試行してください。",
         },
-        { status: 504 },
+        504,
       );
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "不明なエラーが発生しました" },
-      { status: 500 },
-    );
+    return reply({ error: e instanceof Error ? e.message : "不明なエラーが発生しました" }, 500);
   }
 }

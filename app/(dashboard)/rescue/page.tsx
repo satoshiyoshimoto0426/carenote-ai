@@ -15,6 +15,7 @@ import CarePlanDraftView from "@/components/drafts/CarePlanDraftView";
 import MeetingSummaryDraftView from "@/components/drafts/MeetingSummaryDraftView";
 import MonitoringDraftView from "@/components/drafts/MonitoringDraftView";
 import SupportLogDraftView from "@/components/drafts/SupportLogDraftView";
+import TempDeleteWarnings, { warningsOf } from "@/components/TempDeleteWarnings";
 import {
   IconAlert,
   IconArrowRight,
@@ -260,6 +261,8 @@ export default function RescuePage() {
   const [loadingMsg, setLoadingMsg] = useState("一式を作成中です…");
   const [error, setError] = useState<string | null>(null);
   const [bundle, setBundle] = useState<RescueBundle | null>(null);
+  // 一時保管の削除に失敗したときの警告（サーバーの返事の warnings・成功でも失敗でも出す）
+  const [tempWarnings, setTempWarnings] = useState<string[]>([]);
   const [intake, setIntake] = useState<IntakeResult | null>(null);
   /** 第6段: 資料ごとの種別（職員が選ぶ。読みどころが変わる）。キーは name+size */
   const [docTypes, setDocTypes] = useState<Record<string, IntakeDocType>>({});
@@ -344,6 +347,7 @@ export default function RescuePage() {
     setError(null);
     setBundle(null);
     setIntake(null);
+    setTempWarnings([]);
     resetSave();
     try {
       // ── Step 1: 参考資料を Vercel Blob へアップロード（evaluate と同じ経路） ──
@@ -385,6 +389,7 @@ export default function RescuePage() {
         }),
       });
       const data = await resp.json();
+      setTempWarnings(warningsOf(data));
       if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
       const result = data as RescueResponse;
       setIntake(result.intake ?? null);
@@ -615,6 +620,8 @@ export default function RescuePage() {
             )}
           </div>
 
+          {/* 一時保管の削除の警告: 入力の画面では、押したボタンとエラーのすぐ上に出す（ページの上だと画面の外になる） */}
+          <TempDeleteWarnings warnings={tempWarnings} />
           {error && <ErrorNotice message={error} />}
 
           <div className="flex flex-wrap items-center gap-4 pt-1">
@@ -636,6 +643,8 @@ export default function RescuePage() {
         </div>
       ) : (
         <div className="animate-fadeIn space-y-5">
+          {/* 作成が成功して削除だけ失敗したとき: 結果の先頭に出し、画面の中へ動かす（スクロールの位置は入力のときのまま残るため） */}
+          <TempDeleteWarnings warnings={tempWarnings} scrollIntoView />
           {intake && (
             <Card className="space-y-3 p-6">
               <SectionTitle>提供書類の読み取り（AI統合）</SectionTitle>
@@ -862,6 +871,7 @@ export default function RescuePage() {
                 setBundle(null);
                 setIntake(null);
                 setError(null);
+                setTempWarnings([]);
               }}
               className={btnSecondary}
             >

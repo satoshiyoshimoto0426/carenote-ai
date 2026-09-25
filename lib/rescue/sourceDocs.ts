@@ -29,8 +29,9 @@ export interface SourceDoc {
 }
 
 /**
- * sourceDocs のURLが自前の Vercel Blob のものかを検証する（SSRF対策）。
- * クライアント指定のURLをサーバー側で fetch するため、自前の Blob ストア以外へは出さない。
+ * sourceDocs のURLが Vercel Blob の非公開ストアのホスト（https・*.private.blob.vercel-storage.com）のものかを検証する（SSRF対策）。
+ * クライアント指定のURLをサーバー側で読むため、このホスト以外へは出さない。ストアの ID までは確かめない（他人の非公開ストアの
+ * URL も形としては通る。読み書きは自分のストアの鍵でしかできない）。
  * https のみ・ホストは **非公開ストア**（*.private.blob.vercel-storage.com）に限る（D6・2026-09-12）。
  * 公開ストアの URL は受け付けない（原本を公開の場所に置かない約束を入口で守る）。
  */
@@ -79,4 +80,20 @@ export function safeExtension(filename: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
   return ext && ext.length <= 8 ? ext : "bin";
+}
+
+/**
+ * 資料の指定の中から、非公開ストアのホスト（*.private.blob.vercel-storage.com ── isBlobUrl）の URL だけを拾う
+ * （parseSourceDocs が null を返した不正な指定でも使う）。ストアの ID までは確かめない（isBlobUrl と同じ）。
+ * なぜ: 1件だけ種類が不正でも全体が 400 になり、正しく上げた他の資料が一時保管に残っていた（2026-09-25 独立審査）。
+ *   400 を返す前にこれで拾って消す（app/api/rescue/route.ts）。
+ * 拾うのは先頭の MAX_SOURCE_DOCS 件まで（画面はそれ以上上げない。多すぎる指定のために消す件数を増やさない）。
+ */
+export function blobUrlsIn(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, MAX_SOURCE_DOCS).flatMap((item) => {
+    const url =
+      typeof item === "object" && item !== null ? (item as Record<string, unknown>).url : undefined;
+    return typeof url === "string" && isBlobUrl(url) ? [url] : [];
+  });
 }

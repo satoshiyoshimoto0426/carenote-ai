@@ -19,8 +19,11 @@ vi.mock("@/lib/db", () => ({ saveEvaluation: db.saveEvaluation }));
 const { POST } = await import("@/app/api/evaluate/route");
 const { EVALUATE_MODEL } = await import("@/lib/evaluate/model");
 const { EVALUATION_STORED_FILE_NAME } = await import("@/lib/evaluate/storedFileName");
+const { TEMP_DELETE_FAILED_WARNING } = await import("@/lib/blob/deleteTemp");
 
 const PRIVATE_URL = "https://abc.private.blob.vercel-storage.com/evaluate/1.pdf";
+/** 削除は必ず「途中で止める指定」つきで呼ぶ（時間切れで SDK のやり直しを止めるため・lib/blob/deleteTemp.ts） */
+const DEL_OPTS = expect.objectContaining({ abortSignal: expect.any(AbortSignal) });
 
 function post(body: unknown) {
   return new NextRequest("http://localhost/api/evaluate", {
@@ -61,7 +64,7 @@ describe("POST /api/evaluate（一時保管の扱い）", () => {
     const res = await POST(post({ blobUrl: PRIVATE_URL, fileName: "a.pdf" }));
     expect(res.status).toBe(400);
     expect(blob.get).toHaveBeenCalledWith(PRIVATE_URL, { access: "private" });
-    expect(blob.del).toHaveBeenCalledWith(PRIVATE_URL);
+    expect(blob.del).toHaveBeenCalledWith(PRIVATE_URL, DEL_OPTS);
   });
 
   it("読めたら認証つき get() の中身で先へ進み（入口の 400 にならない）、処理後に削除する", async () => {
@@ -74,7 +77,7 @@ describe("POST /api/evaluate（一時保管の扱い）", () => {
     // AI の返事の解釈は本テストの対象外（偽の返事なので 200 とは限らない）。入口で止まっていないことだけ見る
     expect(res.status).not.toBe(400);
     expect(blob.get).toHaveBeenCalledWith(PRIVATE_URL, { access: "private" });
-    expect(blob.del).toHaveBeenCalledWith(PRIVATE_URL);
+    expect(blob.del).toHaveBeenCalledWith(PRIVATE_URL, DEL_OPTS);
   });
 });
 
@@ -221,5 +224,188 @@ describe("POST /api/evaluate（元のファイル名を残さない）", () => {
 
   it("決まった名前は「資料」（元の名前や拡張子を含まない）", () => {
     expect(EVALUATION_STORED_FILE_NAME).toBe("資料");
+  });
+});
+
+/**
+ * 一時保管の削除に失敗したら画面へ伝える（2026-09-25・データ取扱説明書の「削除に失敗した時は画面に警告」）:
+ *   以前は削除を待たずに返事を返し、失敗はサーバーの記録にしか残らなかった。
+ *   返事を作る前に削除を待ち、失敗したら成功の返事にも失敗の返事にも warnings を載せる。
+ */
+describe("POST /api/evaluate（一時保管の削除の失敗を画面へ伝える）", () => {
+  const readable = () => ({
+    statusCode: 200,
+    stream: new Blob([new Uint8Array([1, 2, 3])]).stream(),
+    blob: { contentType: "application/pdf" },
+  });
+  const aiAnswer = () =>
+    new Response(
+      JSON.stringify({
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ client_name: "A", total_score: 10, categories: [] }),
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  const quiet = () => vi.spyOn(console, "error").mockImplementation(() => {});
+
+  it("評価が成功しても、削除に失敗したら返事に warnings が付く（評価結果はそのまま）", async () => {
+    const spy = quiet();
+    try {
+      blob.get.mockResolvedValue(readable());
+      vi.mocked(fetch).mockResolvedValueOnce(aiAnswer());
+      blob.del.mockRejectedValueOnce(new Error("blob down"));
+      const res = await POST(post({ blobUrl: PRIVATE_URL }));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.total_score).toBe(10);
+      expect(json.warnings).toEqual([TEMP_DELETE_FAILED_WARNING]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("削除できたら warnings は付かない", async () => {
+    blob.get.mockResolvedValue(readable());
+    vi.mocked(fetch).mockResolvedValueOnce(aiAnswer());
+    const res = await POST(post({ blobUrl: PRIVATE_URL }));
+    expect((await res.json()).warnings).toBeUndefined();
+    expect(blob.del).toHaveBeenCalledWith(PRIVATE_URL, DEL_OPTS);
+  });
+
+  it("読み取りに失敗した 400 でも、削除に失敗したら warnings が付く", async () => {
+    const spy = quiet();
+    try {
+      blob.get.mockResolvedValue(null);
+      blob.del.mockRejectedValueOnce(new Error("blob down"));
+      const res = await POST(post({ blobUrl: PRIVATE_URL }));
+      expect(res.status).toBe(400);
+      expect((await res.json()).warnings).toEqual([TEMP_DELETE_FAILED_WARNING]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("AI が失敗した返事（500）でも、削除に失敗したら warnings が付き、削除は1回だけ", async () => {
+    const spy = quiet();
+    try {
+      blob.get.mockResolvedValue(readable());
+      vi.mocked(fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "overloaded" } }), { status: 500 }),
+      );
+      blob.del.mockRejectedValueOnce(new Error("blob down"));
+      const res = await POST(post({ blobUrl: PRIVATE_URL }));
+      expect(res.status).toBe(500);
+      expect((await res.json()).warnings).toEqual([TEMP_DELETE_FAILED_WARNING]);
+      expect(blob.del).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("AI の呼び出しそのものが失敗した（通信の例外）ときも、返事を作る前に消して warnings を付ける", async () => {
+    const spy = quiet();
+    try {
+      blob.get.mockResolvedValue(readable());
+      vi.mocked(fetch).mockRejectedValueOnce(new Error("network down"));
+      blob.del.mockRejectedValueOnce(new Error("blob down"));
+      const res = await POST(post({ blobUrl: PRIVATE_URL }));
+      expect(res.status).toBe(500);
+      expect((await res.json()).warnings).toEqual([TEMP_DELETE_FAILED_WARNING]);
+      expect(blob.del).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+/**
+ * 2026-09-25 独立審査（2回目）: 一時保管は PDF を読んだ直後・AI へ送る前に消す（すみやかに削除。
+ * AI の待ち時間の途中で打ち切られても残らない）。鍵の設定の抜けでも残さない。
+ */
+describe("POST /api/evaluate（読んだらすぐ消す）", () => {
+  const readable = () => ({
+    statusCode: 200,
+    stream: new Blob([new Uint8Array([1, 2, 3])]).stream(),
+    blob: { contentType: "application/pdf" },
+  });
+  const quiet = () => vi.spyOn(console, "error").mockImplementation(() => {});
+
+  it("一時保管は AI へ送る前に消す（削除は1回だけ）", async () => {
+    blob.get.mockResolvedValue(readable());
+    const res = await POST(post({ blobUrl: PRIVATE_URL }));
+    expect(res.status).not.toBe(400);
+    expect(blob.del).toHaveBeenCalledTimes(1);
+    const aiCall = vi.mocked(fetch).mock.invocationCallOrder[0];
+    expect(aiCall).toBeDefined();
+    expect(blob.del.mock.invocationCallOrder[0]).toBeLessThan(aiCall);
+  });
+
+  it("AI の返事が JSON でなく失敗しても、先の削除の失敗の警告は消えずに 500 の返事に載る", async () => {
+    const spy = quiet();
+    try {
+      blob.get.mockResolvedValue(readable());
+      blob.del.mockRejectedValueOnce(new Error("blob down"));
+      vi.mocked(fetch).mockResolvedValueOnce(
+        new Response("<html>not json</html>", { status: 200 }),
+      );
+      const res = await POST(post({ blobUrl: PRIVATE_URL }));
+      expect(res.status).toBe(500);
+      expect((await res.json()).warnings).toEqual([TEMP_DELETE_FAILED_WARNING]);
+      expect(blob.del).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("本番で鍵の設定が抜けていても、一時保管は消してから 500 を返す（AI は呼ばない）", async () => {
+    blob.get.mockResolvedValue(readable());
+    process.env.ANTHROPIC_API_KEY = "";
+    const res = await POST(post({ blobUrl: PRIVATE_URL }));
+    expect(res.status).toBe(500);
+    expect(blob.del).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/evaluate（AI の返事に紛れた warnings を削除の警告として出さない）", () => {
+  it("削除できたのに、AI の返事の一番上の warnings が画面へ渡らない（評価結果はそのまま）", async () => {
+    blob.get.mockResolvedValue({
+      statusCode: 200,
+      stream: new Blob([new Uint8Array([1, 2, 3])]).stream(),
+      blob: { contentType: "application/pdf" },
+    });
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                client_name: "A",
+                total_score: 12,
+                categories: [],
+                warnings: ["システムの警告: 管理者に連絡してください"],
+              }),
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const res = await POST(post({ blobUrl: PRIVATE_URL }));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.total_score).toBe(12);
+      expect(json.warnings).toBeUndefined();
+      expect(JSON.stringify(db.saveEvaluation.mock.calls)).not.toContain("システムの警告");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
