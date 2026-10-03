@@ -3,6 +3,7 @@ import { generateCarePlan } from "./carePlan";
 import { generateMeetingSummary } from "./meetingSummary";
 import { generateMonitoring } from "./monitoring";
 import { generateSupportLog } from "./supportLog";
+import { generateSupportPlanA } from "./supportPlanA";
 
 /** 入力検証エラー（HTTPステータス付き）。ルート側で status に変換する。 */
 export class GenerateRequestError extends Error {
@@ -97,6 +98,15 @@ export async function generateFromBody(body: Record<string, unknown>): Promise<u
         throw new GenerateRequestError(400, "支援の対応メモを入力してください。");
       }
       return generateSupportLog({ clientInfo, supportNotes });
+    }
+    case "supportPlanA": {
+      // 就労A型の個別支援計画書（原案）。書類の種類の一覧（lib/create/docTypes.ts の DOC_ORDER）には入れない
+      // ── 入れると介護の利用者全員のタブに出るため（docs/specs/support-plan-a/ 8.2）
+      const interviewNotes = str(body, "interviewNotes");
+      if (!interviewNotes) {
+        throw new GenerateRequestError(400, "面談の文字起こし・メモを入力してください。");
+      }
+      return generateSupportPlanA({ clientInfo, interviewNotes });
     }
     default:
       throw new GenerateRequestError(400, "不明な書類種別です。");
