@@ -273,6 +273,7 @@ export default function SupportPlanAWorkbench() {
               </h2>
               <label className="flex items-start gap-2 text-[13.5px] leading-[1.8] text-[var(--ink)]">
                 <input
+                  id="sp-agree"
                   type="checkbox"
                   className="mt-1.5"
                   checked={consent}
@@ -319,6 +320,7 @@ export default function SupportPlanAWorkbench() {
 
             <div className="flex flex-wrap items-center gap-3">
               <button
+                id="sp-finish"
                 type="button"
                 className={btnPrimary}
                 onClick={finishInterview}

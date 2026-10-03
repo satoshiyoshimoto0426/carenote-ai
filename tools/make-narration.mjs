@@ -10,7 +10,9 @@
  *   検査 = tools/check-reading.mjs（作った音声を文字起こしし直して台本と突き合わせる）
  *
  * すでにある音声は作り直さない（台本を直した章だけ --force で撮り直す）。
- * 使い方: node tools/make-narration.mjs <出力先> [章のslug…] [--force] [--voice=<声のid>]
+ * 使い方: node tools/make-narration.mjs <出力先> [章のslug…] [--force] [--voice=<声のid>] [--script=<台本>]
+ *   --script を付けなければ docs/MANUAL-VIDEO-SPEC.md。就労A型の計画書は
+ *   --script=docs/specs/support-plan-a/VIDEO-SCRIPT.md（CareNote の本体マニュアルとは別の台本）。
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -22,7 +24,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const force = args.includes("--force");
 const voiceArg = args.find((a) => a.startsWith("--voice="))?.slice("--voice=".length);
-const rest = args.filter((a) => a !== "--force" && !a.startsWith("--voice="));
+const scriptArg = args.find((a) => a.startsWith("--script="))?.slice("--script=".length);
+const rest = args.filter(
+  (a) => a !== "--force" && !a.startsWith("--voice=") && !a.startsWith("--script="),
+);
 const OUT = rest[0];
 const only = rest.slice(1);
 if (!OUT) {
@@ -78,7 +83,12 @@ const VOICE = {
 const LANGUAGE = "Japanese";
 const TONE = toReadingTone();
 
-const chapters = parseVideoScript(readFileSync(join(ROOT, "docs", "MANUAL-VIDEO-SPEC.md"), "utf8"));
+const chapters = parseVideoScript(
+  readFileSync(
+    scriptArg ? join(ROOT, scriptArg) : join(ROOT, "docs", "MANUAL-VIDEO-SPEC.md"),
+    "utf8",
+  ),
+);
 const targets = only.length ? chapters.filter((c) => only.includes(c.slug)) : chapters;
 
 console.log(
