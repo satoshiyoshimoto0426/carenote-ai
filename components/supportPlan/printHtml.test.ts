@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { buildSupportPlanAView, SUPPORT_PLAN_A_CHAPTERS } from "@/lib/supportPlan/format";
 import { SAMPLE_META, sampleDraft } from "@/lib/supportPlan/testFixtures";
-import { buildSupportPlanPrintHtml, PAGEDJS_SRC, PRINT_MESSAGE } from "./printHtml";
+import { SUPPORT_PLAN_PRINT_CSS } from "./printCss";
+import {
+  buildSupportPlanPrintHtml,
+  PAGEDJS_SRC,
+  PRINT_MESSAGE,
+  SCREEN_PREVIEW_CSS,
+} from "./printHtml";
 
 /** 印刷用ページ（画面の sandbox の iframe に入れる1枚の HTML）。架空の利用者 K-014。 */
 
@@ -36,5 +42,11 @@ describe("印刷用ページ", () => {
 
   it("題名の文字も書き出す前に無害にする", () => {
     expect(html(sampleDraft(), "</title><script>x</script>")).not.toContain("</title><script>x");
+  });
+
+  it('画面で見るときだけの見た目は media="screen" の style に分ける（Paged.js が @media screen を捨てるため・印刷には効かせない）', () => {
+    expect(html()).toContain(`<style media="screen">${SCREEN_PREVIEW_CSS}</style>`);
+    expect(SUPPORT_PLAN_PRINT_CSS).not.toContain("@media screen");
+    expect(SUPPORT_PLAN_PRINT_CSS).not.toContain(".pagedjs_pages");
   });
 });
