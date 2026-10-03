@@ -107,8 +107,9 @@ describe("就労A型の単独の画面", () => {
 
   it("面談を終える → 確認 → 送る で、AI は確認の後に1回だけ呼ばれ、様式どおりの原案が出る", async () => {
     await fillAndFinish();
-    // 話に出たかの目安は、端末の中だけで変わる（通信していない）
-    expect(container.textContent).toContain("話に出たかの目安 2/9");
+    // 話に出たかの目安は、端末の中だけで変わる（通信していない）。
+    // 基本情報（年齢）を入れたので「1. 基本情報」、話から「仕事」「体調」の2つ ＝ 3/10
+    expect(container.textContent).toContain("話に出たかの目安 3/10");
     expect(calls).toEqual([]);
 
     await act(async () => consentBox().click());
@@ -134,7 +135,74 @@ describe("就労A型の単独の画面", () => {
     const doc = frame?.getAttribute("srcdoc") ?? "";
     for (const ch of SUPPORT_PLAN_A_CHAPTERS) expect(doc).toContain(ch);
     expect(doc).toContain("K-014");
-    // 要確認事項は画面にも出す
-    expect(container.textContent).toContain(sampleDraft().itemsToConfirm[0]);
+    // 表紙の呼び名は、空なら「利用者」＋コードの先頭の英字
+    expect(doc).toContain("利用者K（K-014）");
+    // 右に「要記入」の一覧と、AI からの確認のお願い（原案の itemsToConfirm）を出す
+    const pending = container.querySelector("#sp-pending-list");
+    expect(shownText(container, pending)).toContain("生年月日");
+    expect(shownText(container, pending)).toContain("次回見直し予定日");
+    const ask = container.querySelector('[aria-labelledby="sp-ask"]');
+    expect(shownText(container, ask)).toContain(sampleDraft().itemsToConfirm[0]);
+    // 何も保存しないことを、原案の上で言う
+    expect(shownText(container, container.querySelector("#sp-not-saved"))).toContain(
+      "この画面は保存しません",
+    );
+  });
+});
+
+describe("失敗の表示", () => {
+  async function finishWith(code = "K-014") {
+    await fillAndFinish(code);
+    await act(async () => consentBox().click());
+    await act(async () => button(container, "面談を終える").click());
+    await flush();
+  }
+
+  it("サーバーが返した日本語の文（422＝名前が残っていて送れない）をそのまま出し、AI へは進まない", async () => {
+    const msg = "実名が残っている可能性があるため、送信を中止しました。";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: { body: string }) => {
+        calls.push({ url, body: JSON.parse(init.body) as Record<string, unknown> });
+        return new Response(JSON.stringify({ error: msg }), { status: 422 });
+      }),
+    );
+    await finishWith();
+    expect(calls.map((c) => c.url)).toEqual(["/api/preview"]);
+    expect(shownText(container, container.querySelector('[role="alert"]'))).toBe(msg);
+    expect(container.querySelector("iframe")).toBeNull();
+  });
+
+  it("通信そのものが失敗したら、英語ではなく日本語で知らせる", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    await finishWith();
+    const alert = shownText(container, container.querySelector('[role="alert"]'));
+    expect(alert).toContain("通信に失敗しました");
+    expect(alert).not.toContain("Failed to fetch");
+  });
+});
+
+describe("入力の決まり", () => {
+  it("利用者コードに空白の入った名前（ローマ字）を入れたら止める（英数字とハイフンだけ）", async () => {
+    await fillAndFinish("Yamada Taro");
+    await act(async () => consentBox().click());
+    await act(async () => button(container, "面談を終える").click());
+    await flush();
+    expect(calls).toEqual([]);
+    expect(shownText(container, container.querySelector('[role="alert"]'))).toContain(
+      "英数字とハイフン",
+    );
+  });
+
+  it("氏名・受給者証番号を入れないよう、基本情報の上に注意書きを出す", async () => {
+    await fillAndFinish();
+    expect(shownText(container, container.querySelector("#sp-no-names"))).toContain(
+      "氏名・受給者証番号は入れないでください",
+    );
   });
 });
