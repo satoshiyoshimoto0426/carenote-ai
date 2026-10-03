@@ -4,17 +4,41 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SUPPORT_PLAN_A_CHAPTERS } from "@/lib/supportPlan/format";
 import { sampleDraft } from "@/lib/supportPlan/testFixtures";
+import { TRANSCRIPT_HEADING } from "@/lib/transcribe/appendTranscript";
 import { isShown, shownText } from "@/tests/helpers/markup";
 import SupportPlanAWorkbench from "./SupportPlanAWorkbench";
 
 /**
  * 就労A型の単独の画面（段階2）を**実際に動かして**、入力 → 面談を終える → 送る前の確認 → 作成 → 様式の表示まで通す。
- * 偽物にするのは通信（fetch）だけ。黒塗りの確認画面（PreSendPreview）・様式の組み立ては本物を使う。
+ * 偽物にするのは通信（fetch）と録音の部品だけ（マイク・MediaRecorder は jsdom に無いので、押すと区切り1つぶんの
+ * 文字起こしを渡すボタンに置き換える。録音の部品そのものの試験は components/recording/ にある）。
+ * 黒塗りの確認画面（PreSendPreview）・様式の組み立ては本物を使う。
  * 決定①「面談を終えてから1回で作る」を、AI を呼ぶ入口（/api/generate）が確認の後に1回だけ呼ばれることで見張る。
  * 利用者はすべて架空（K-014）。
  */
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
+/** 録音の部品の代役: 押すと、区切り1つぶんの文字起こしを画面へ渡す */
+const RECORDED_TEXT = "録音から起こした文です。";
+vi.mock("@/components/recording/RecordingPanel", async () => {
+  const { createElement } = await import("react");
+  return {
+    RECORDING_ENABLED: true,
+    default: ({
+      onTranscript,
+      disabled = false,
+    }: {
+      onTranscript: (text: string) => void;
+      disabled?: boolean;
+    }) =>
+      createElement(
+        "button",
+        { type: "button", id: "fake-rec", disabled, onClick: () => onTranscript(RECORDED_TEXT) },
+        "録音の区切りが文字になった",
+      ),
+  };
+});
 
 const flush = async () => {
   for (let i = 0; i < 4; i++) {
@@ -137,6 +161,8 @@ describe("就労A型の単独の画面", () => {
     expect(doc).toContain("K-014");
     // 表紙の呼び名は、空なら「利用者」＋コードの先頭の英字
     expect(doc).toContain("利用者K（K-014）");
+    // 録音していない（貼り付け・手書き）ので、出典は「面談の記録」
+    expect(doc).toContain("面談の記録（K-014 アセスメント面談）をもとに作成");
     // 右に「要記入」の一覧と、AI からの確認のお願い（原案の itemsToConfirm）を出す
     const pending = container.querySelector("#sp-pending-list");
     expect(shownText(container, pending)).toContain("生年月日");
@@ -147,6 +173,30 @@ describe("就労A型の単独の画面", () => {
     expect(shownText(container, container.querySelector("#sp-not-saved"))).toContain(
       "この画面は保存しません",
     );
+  });
+});
+
+describe("録音", () => {
+  it("同意の前は録音できず、録音の文字起こしは書いたメモの後ろに見出しを付けて足し、出典は決定④の書き方になる", async () => {
+    await fillAndFinish();
+    const rec = () => container.querySelector<HTMLButtonElement>("#fake-rec") as HTMLButtonElement;
+    expect(rec().disabled).toBe(true);
+
+    await act(async () => consentBox().click());
+    expect(rec().disabled).toBe(false);
+    await act(async () => rec().click());
+    await flush();
+    const notes = container.querySelector<HTMLTextAreaElement>("#sp-notes") as HTMLTextAreaElement;
+    expect(notes.value).toBe(
+      `仕事は検品を続けたいです。体調は朝が悪いです。\n\n${TRANSCRIPT_HEADING}\n${RECORDED_TEXT}`,
+    );
+
+    await act(async () => button(container, "面談を終える").click());
+    await flush();
+    await act(async () => button(container, "この内容でAIに送る").click());
+    await flush();
+    const doc = container.querySelector("iframe")?.getAttribute("srcdoc") ?? "";
+    expect(doc).toContain("面談の録音の文字起こし（K-014 アセスメント面談）をもとに作成");
   });
 });
 
