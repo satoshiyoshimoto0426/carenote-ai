@@ -5,6 +5,7 @@ import { SUPPORT_PLAN_PRINT_CSS } from "./printCss";
 import {
   buildSupportPlanPrintHtml,
   PAGEDJS_SRC,
+  PRINT_FONT_HREF,
   PRINT_MESSAGE,
   SCREEN_PREVIEW_CSS,
 } from "./printHtml";
@@ -23,6 +24,15 @@ describe("印刷用ページ", () => {
   it("ページ組みの道具（Paged.js）は段階1の試験と同じ版を読む", () => {
     expect(html()).toContain(`<script src="${PAGEDJS_SRC}">`);
     expect(PAGEDJS_SRC).toContain("pagedjs@0.4.3");
+  });
+
+  it("様式の書体（Noto Sans JP）を、組む前（Paged.js より先）に読む", () => {
+    const out = html();
+    const link = `<link rel="stylesheet" href="${PRINT_FONT_HREF}">`;
+    expect(out).toContain(link);
+    expect(PRINT_FONT_HREF).toContain("family=Noto+Sans+JP");
+    expect(SUPPORT_PLAN_PRINT_CSS).toContain('font-family: "Noto Sans JP"');
+    expect(out.indexOf(link)).toBeLessThan(out.indexOf(`<script src="${PAGEDJS_SRC}">`));
   });
 
   it("印刷は親の画面からの合図だけで開く（受け口が合図の送り主を確かめる）", () => {
