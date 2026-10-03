@@ -404,15 +404,51 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
   `docs/MANUAL-VIDEO-SPEC.md`:207（ch1 #6「画面の上に並ぶ帳票の種類」）・239（ch3 #2「5つの書類ボタン」）（形が文字のタブに）、
   公開中の ch1・ch3 の動画（書類の種類がボタンの並びで、送る前の画面の帯と枠が角の丸い箱で映っている ── 色の呼び方〔緑の帯・赤い枠〕と文字は今と同じ）。
 
+### 就労A型 個別支援計画（単独の公開先）（T-SPA-01 段階1・2・2026-10-03・枝 `feat/support-plan-a`）
+> 仕様（決定①〜⑤・画面の流れ・公開の仕方）の正本は [`specs/support-plan-a/README.md`](specs/support-plan-a/README.md)。
+> 介護（ケアマネ）の CareNote とは別の利用者（就労継続支援A型）向け。**CareNote のメニュー・名簿・書類の種類の一覧には足さない**（決定②）。
+
+- **印（ビルド時の環境の値）** `NEXT_PUBLIC_SUPPORT_PLAN_A=on`（前の名前 `standalone` も同じ意味）。読むのは `lib/supportPlan/edition.ts` の
+  `isSupportPlanAEdition()` だけ。同じコードを印つきで**別の URL**（別の Vercel のプロジェクト）に公開する。印の無い今の本番は何も変わらない。
+  印が on の版の振り分け: `app/page.tsx`（「/」→ `/support-plan-a`）・`app/(dashboard)/layout.tsx`（CareNote の画面 → `/support-plan-a`）。
+  印が無ければ `app/support-plan-a/layout.tsx`・`page.tsx` が `notFound()`（404）。`middleware.ts`（Clerk のログイン）は変えていない。
+- **画面** `app/support-plan-a/layout.tsx`（CareNote の外枠 Rail・TopBar を使わない専用の外枠: 「個別支援計画（就労A型）」＋ Clerk の UserButton）→
+  `page.tsx` → `components/supportPlan/SupportPlanAWorkbench.tsx`（クライアントの部品。何も保存しない）。
+  - 入力欄 → 1章の名簿の値（`rosterOf`）・AI への「利用者の基本情報」の文（`clientInfoOf`）・様式の外の値（`metaOf`）: `lib/supportPlan/standalone.ts`
+    （利用者コードは英数字とハイフンだけ・20字まで。氏名・受給者証番号は受け取らない）
+  - 面談の進め方と話に出たかの目安（パソコンの中だけ・AI を使わない）: `lib/supportPlan/coverage.ts`
+  - 録音は CareNote と同じ `components/recording/RecordingPanel.tsx`（`NEXT_PUBLIC_CARENOTE_RECORDING=on` のときだけ出る）。足し方は `lib/transcribe/appendTranscript.ts`
+  - 送信と失敗の日本語: `lib/supportPlan/request.ts`（サーバーの `error` はそのまま、通信の失敗・JSON でない返事も日本語に）
+  - 結果: 様式の値 `lib/supportPlan/format.ts` の `buildSupportPlanAView` → 描画 `components/supportPlan/SupportPlanDocument.tsx` →
+    印刷用ページ `components/supportPlan/printHtml.ts`（`printCss.ts`・Noto Sans JP・Paged.js 0.4.3 を CDN から）を
+    `sandbox="allow-scripts allow-modals"` の iframe（`allow-same-origin` なし）に入れる。印刷は親からの postMessage。
+    右に「要記入」の一覧（`lib/supportPlan/pending.ts`）と原案の `itemsToConfirm`（`components/drafts/ItemsToConfirm.tsx`）
+- **API の流れ**（CareNote と同じ入口・同じ黒塗り）:
+  ```
+  [面談を終える] ─ POST /api/preview { documentType:"supportPlanA", interviewNotes, clientInfo }
+                    └─ maskRequestBody（名簿＋型の置換）→ 黒塗り後の文を返すだけ（AI へは送らない）
+                 → components/drafts/PreSendPreview.tsx（欄の名前 interviewNotes＝「面談の文字起こし・メモ」）
+  [この内容で AI に送る] ─ POST /api/generate（同じ本文）
+                    └─ maskRequestBody → lib/generation/dispatch.ts の case "supportPlanA"（interviewNotes 必須）
+                       → lib/generation/supportPlanA.ts（スキーマ）＋ supportPlanAPrompt.ts（lib/rules/supportPlanA.ts v0.1）
+                       → structured.ts → 原案 SupportPlanADraft（types/supportPlanA.ts）
+  [結果] buildSupportPlanAView(draft, meta, roster) → 印刷用ページ → 印刷・PDF（保存は段階3）
+  ```
+- **試験**: `lib/supportPlan/*.test.ts`（edition・standalone・coverage・pending・request・format）・`components/supportPlan/*.test.ts(x)`
+  （画面の通し `SupportPlanAWorkbench.live.test.tsx`・印刷用ページ・様式の描画）・`app/page.test.ts`・`app/(dashboard)/layout.test.tsx`・
+  `app/support-plan-a/layout.test.tsx`・操作動画の台本 `lib/manual/supportPlanVideoScript.test.ts`。本物の API の試験は手動 `scripts/supportPlanAGeneration.itest.ts`（課金あり）。
+
 ## 4. 更新トリガ（いつここを直すか）
 - モジュール（ディレクトリ）を新設・廃止したとき
 - API ルートの追加・データフローの変更
 - 外部サービスの追加・変更
 - ブラウザ拡張のソフト別アダプタを追加したとき
 - 安全テストを足した・消した・名前を変えたとき（`tools/safety-tests.json` も同じコミットで直す）
+- ビルド時の印（`NEXT_PUBLIC_*`）で出し分ける画面・振り分けを足した・変えたとき（例: §3「就労A型 個別支援計画（単独の公開先）」）
 
 ---
-*最終更新: 2026-09-24 / 枝 `redesign/a-restyle`（つくると共通部品の A案の見た目・動きと文字は変えない・送る前の画面の緑の帯と赤い枠は残す）を取り込んだ（今夜の本番公開用）*
+*最終更新: 2026-10-03 / 就労A型の個別支援計画書を単独で公開する版（印 `NEXT_PUBLIC_SUPPORT_PLAN_A=on`・`/support-plan-a`・振り分け・API の流れ）を §3 に追記（枝 `feat/support-plan-a`）*
+*2026-09-24 / 枝 `redesign/a-restyle`（つくると共通部品の A案の見た目・動きと文字は変えない・送る前の画面の緑の帯と赤い枠は残す）を取り込んだ（今夜の本番公開用）*
 *2026-09-24 / 見張り（tools/run-tests.mjs）が一時レポートを消す所で、日本語を含む置き場所だとプロセスごと落ちていた（合否を出さずに 127）のを unlinkSync に直し、tools の道具に rmSync を戻さない検査を足した*
 *2026-09-24 / 枝 `redesign/a-backend`（API・DB の失敗の扱い・安全テストの見張り・書類の日付の API）を `redesign/a` へ取り込んだ。利用者の一覧の読み方を `lib/clients/listError.ts` の `fetchClientList` に1つにし、利用者の画面の検査6つを安全テストの一覧へ足した。利用者の画面・外枠の検査の「出ている」を `tests/helpers/markup.ts`（jsdom の橋 `shownText`・`isShown` を足した）で読む形に寄せた*
 *2026-09-24 / 利用者一覧の書類の日付の API（`GET /api/clients/latest-docs`・`getLatestDocMeta`・`lib/documents/latest.ts`）を足した（作り直し計画 U5 の API 部分。画面の列は統合の後）。範囲を使うルートは 12ファイル・17ハンドラ*
