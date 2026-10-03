@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -7,8 +8,10 @@ import { describe, expect, it } from "vitest";
 /**
  * 実 Claude API を呼ぶ統合テスト（課金あり・手動実行専用）。就労A型の個別支援計画書（原案）。
  * 実行: `npm run test:integration -- scripts/supportPlanAGeneration.itest.ts`
- * 出力: scripts/.output/supportPlanA.json（原案）と supportPlanA.html（様式どおりの印刷用。Chrome で開くと
- *   Paged.js がページを組む。PDF にするときは Chrome の印刷で「PDF に保存」）。
+ * 出力: scripts/.output/supportPlanA.json（原案）と、一時フォルダの carenote-supportPlanA.html（様式どおりの印刷用。
+ *   Chrome で開くと Paged.js がページを組む。PDF にするときは Chrome の印刷で「PDF に保存」）。
+ *   HTML を scripts/.output に置かないのは、Biome が HTML の中の印刷用の CSS（string() など）を知らない関数として
+ *   落とし、試験のあとで `npx biome check .` が赤くなるため（2026-10-03）。
  */
 function loadEnvLocal(): void {
   const envPath = resolve(process.cwd(), ".env.local");
@@ -75,8 +78,9 @@ describe("generateSupportPlanA 統合テスト（実API）", () => {
       JSON.stringify({ seconds, draft }, null, 2),
       "utf-8",
     );
-    writeFileSync(resolve(dir, "supportPlanA.html"), html, "utf-8");
-    console.log(`saved: scripts/.output/supportPlanA.{json,html}（${seconds}秒）`);
+    const htmlPath = resolve(tmpdir(), "carenote-supportPlanA.html");
+    writeFileSync(htmlPath, html, "utf-8");
+    console.log(`saved: scripts/.output/supportPlanA.json と ${htmlPath}（${seconds}秒）`);
 
     // 話に出たことは埋まる
     expect(draft.intentions.work).toContain("「");
