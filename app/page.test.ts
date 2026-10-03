@@ -15,12 +15,26 @@ vi.mock("next/navigation", () => ({ redirect }));
 
 beforeEach(() => {
   redirect.mockClear();
+  vi.unstubAllEnvs();
 });
 
 describe("RootPage（/）", () => {
   it("利用者の一覧（/clients）へ送る", () => {
     RootPage();
     expect(redirect).toHaveBeenCalledTimes(1);
+    expect(redirect).toHaveBeenCalledWith("/clients");
+  });
+
+  it("就労A型の単独公開（NEXT_PUBLIC_SUPPORT_PLAN_A=standalone）では、計画書の画面だけへ送る", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "standalone");
+    RootPage();
+    expect(redirect).toHaveBeenCalledTimes(1);
+    expect(redirect).toHaveBeenCalledWith("/support-plan-a");
+  });
+
+  it("スイッチが on だけなら、今までどおり利用者の一覧へ送る（CareNote 本番の入口は変えない）", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "on");
+    RootPage();
     expect(redirect).toHaveBeenCalledWith("/clients");
   });
 });

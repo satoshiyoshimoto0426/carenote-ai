@@ -52,6 +52,7 @@ const FIELD_LABELS: Record<string, string> = {
   monitoringNotes: "最新の状況・モニタリングメモ",
   meetingNotes: "サービス担当者会議のメモ",
   supportNotes: "支援の対応メモ",
+  interviewNotes: "面談の文字起こし・メモ",
 };
 
 /** 画面に出す欄の順。赤い言葉の通し番号もこの順に振る。 */
