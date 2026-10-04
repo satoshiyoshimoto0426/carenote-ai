@@ -19,7 +19,11 @@ export const PAGEDJS_SRC = "https://cdn.jsdelivr.net/npm/pagedjs@0.4.3/dist/page
 /**
  * 様式の書体（printCss.ts の font-family の先頭「Noto Sans JP」）を Google Fonts から読む。段階1の試験と同じ指定。
  * なぜ読むか: 読まないと、その端末にある別の書体（Windows なら Yu Gothic）で組まれ、字の幅が変わって
- *   ページの切れ目・枚数が試験で確かめた PDF とずれる。
+ *   ページの切れ目・枚数が試験で確かめた PDF とずれる。 *
+ * data-pagedjs-ignore を付ける（2026-10-03）: 付けないと Paged.js がこの CSS を自分で取りに行き、取れないと
+ *   （書体の配信先へ届かない事業所のネットワークなど）ページ組みごと止まり、原案が真っ白になる（同日に再現）。
+ *   付けても書体は使われる ── ブラウザがこの CSS を読み、Paged.js は組む前に document.fonts をすべて読み込む（loadFonts）。
+ *   届かなければ端末の書体で組まれる（枚数がずれることはあるが、原案は出る）。
  */
 export const PRINT_FONT_HREF =
   "https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap";
@@ -48,7 +52,7 @@ export function buildSupportPlanPrintHtml(view: SupportPlanAView, title: string)
 window.PagedConfig={auto:true,after:function(){done=true;document.documentElement.dataset.paged="done";if(want){want=false;window.print();}}};
 window.addEventListener("message",function(e){if(e.source!==window.parent||e.data!==${JSON.stringify(PRINT_MESSAGE)})return;if(done)window.print();else want=true;});})();`;
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
-<link rel="stylesheet" href="${PRINT_FONT_HREF}">
+<link rel="stylesheet" data-pagedjs-ignore href="${PRINT_FONT_HREF}">
 <style>${SUPPORT_PLAN_PRINT_CSS}</style>
 <style media="screen">${SCREEN_PREVIEW_CSS}</style>
 <script>${receiver}</script>

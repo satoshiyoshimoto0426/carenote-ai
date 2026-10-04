@@ -28,7 +28,7 @@ describe("印刷用ページ", () => {
 
   it("様式の書体（Noto Sans JP）を、組む前（Paged.js より先）に読む", () => {
     const out = html();
-    const link = `<link rel="stylesheet" href="${PRINT_FONT_HREF}">`;
+    const link = `<link rel="stylesheet" data-pagedjs-ignore href="${PRINT_FONT_HREF}">`;
     expect(out).toContain(link);
     expect(PRINT_FONT_HREF).toContain("family=Noto+Sans+JP");
     expect(SUPPORT_PLAN_PRINT_CSS).toContain('font-family: "Noto Sans JP"');
@@ -58,5 +58,11 @@ describe("印刷用ページ", () => {
     expect(html()).toContain(`<style media="screen">${SCREEN_PREVIEW_CSS}</style>`);
     expect(SUPPORT_PLAN_PRINT_CSS).not.toContain("@media screen");
     expect(SUPPORT_PLAN_PRINT_CSS).not.toContain(".pagedjs_pages");
+  });
+
+  it("書体の CSS は Paged.js に取りに行かせない（取れないとページ組みごと止まり原案が真っ白になる・2026-10-03 再現）", () => {
+    const links = html().match(/<link [^>]*>/g) ?? [];
+    expect(links.length).toBeGreaterThan(0);
+    for (const l of links) expect(l).toContain("data-pagedjs-ignore");
   });
 });
