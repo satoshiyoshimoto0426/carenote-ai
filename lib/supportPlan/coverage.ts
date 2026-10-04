@@ -18,9 +18,20 @@ export interface InterviewTopic {
   ask: string;
   /** この言葉のどれかが文字起こしにあれば「出た」とみなす */
   words: readonly string[];
+  /** true なら、画面の基本情報の欄に入れたことでも「出た」とみなす（1章は名簿の代わりの入力欄から書くため） */
+  fromInput?: boolean;
 }
 
+/** 様式の章の順（1 → 8）。画面はこの順に並べる */
 export const INTERVIEW_TOPICS: readonly InterviewTopic[] = [
+  {
+    id: "basic",
+    chapter: "1. 基本情報",
+    label: "基本情報（手帳・勤務の条件など）",
+    ask: "手帳の等級や、今の勤務の日数・時間に変わりはありませんか。（分かっていれば左の基本情報の欄へ）",
+    words: ["手帳", "等級", "勤務日数", "勤務時間", "時給", "賃金", "年齢", "通所"],
+    fromInput: true,
+  },
   {
     id: "work-wish",
     chapter: "2. 意向",
@@ -65,15 +76,15 @@ export const INTERVIEW_TOPICS: readonly InterviewTopic[] = [
   },
   {
     id: "work-side",
-    chapter: "3. 課題",
+    chapter: "3-1. 課題",
     label: "作業面（得意・苦手・手順）",
     ask: "今の作業で得意なこと、難しいと感じること、ミスが出やすい場面は。",
     words: ["得意", "苦手", "手順", "ミス", "集中", "速さ", "丁寧", "覚え", "指示"],
   },
   {
     id: "social-side",
-    chapter: "3. 課題",
-    label: "心理・人との関わり",
+    chapter: "3-2. 課題",
+    label: "心理・社会参加面（人との関わり）",
     ask: "職場の人との関わりで、気になること・助かっていることは。",
     words: [
       "人間関係",
@@ -89,7 +100,7 @@ export const INTERVIEW_TOPICS: readonly InterviewTopic[] = [
   },
   {
     id: "health-side",
-    chapter: "3. 課題",
+    chapter: "3-3. 課題",
     label: "健康面（体調・通院・服薬）",
     ask: "体調の波や通院・お薬のこと。疲れやすい時間帯は。",
     words: ["体調", "通院", "服薬", "薬", "病院", "疲れ", "睡眠", "頭痛", "主治医", "休憩"],
@@ -132,11 +143,15 @@ export interface TopicCoverage {
   heard: boolean;
 }
 
-/** 文字起こしの中で、話題ごとに言葉が出たかを返す（空白・改行の違いは無視） */
-export function topicCoverage(transcript: string): TopicCoverage[] {
+/**
+ * 文字起こしの中で、話題ごとに言葉が出たかを返す（空白・改行の違いは無視）。
+ * basicEntered: 画面の基本情報の欄に入れたか（lib/supportPlan/standalone.ts の hasBasicInput）。
+ *   true なら「1. 基本情報」を出たことにする（1章は面談の話より入力欄の値を優先して書くため）。
+ */
+export function topicCoverage(transcript: string, basicEntered = false): TopicCoverage[] {
   const text = transcript.replace(/\s+/g, "");
   return INTERVIEW_TOPICS.map((topic) => ({
     topic,
-    heard: topic.words.some((w) => text.includes(w)),
+    heard: (topic.fromInput === true && basicEntered) || topic.words.some((w) => text.includes(w)),
   }));
 }

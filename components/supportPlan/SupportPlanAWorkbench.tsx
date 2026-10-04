@@ -6,6 +6,8 @@
  * 流れ: ①基本情報（名簿の代わり）→ ②本人への説明と同意 → ③面談（録音または文字起こしの貼り付け。
  *   話題ごとの「話に出たか」の目安を横に出す）→「面談を終える」→ ④送る前の確認（/api/preview・PreSendPreview）
  *   → ⑤ /api/generate（documentType "supportPlanA"）→ ⑥様式どおりの表示（Paged.js・sandbox の iframe）→ 印刷・PDF。
+ *   ⑥では右に「要記入」の一覧（lib/supportPlan/pending.ts）と AI からの確認のお願い（原案の itemsToConfirm）を並べる。
+ * 仕様: docs/specs/support-plan-a/README.md。画面を出すかどうかの印は lib/supportPlan/edition.ts（app/support-plan-a/ が見る）。
  *
  * なぜこの作りか:
  *   - 決定①「面談を終えてから1回で作る」: AI へ送るのは「面談を終える」の後の1回だけ。目安の判定は端末の中だけで行う。
@@ -14,6 +16,9 @@
  *   - 何も保存しない: 文字起こし・原案はこの画面の中（メモリ）だけにある。閉じる・再読み込みで消えるので、
  *     入力があるうちは離れる前にブラウザが確かめる（beforeunload）。残すときは印刷・PDF に保存する。
  *   - 黒塗りと「送る前に見る」は CareNote と同じ経路（/api/preview と /api/generate が同じ maskRequestBody を通る）。
+ *   - 録音の文字起こしは、つくる（app/(dashboard)/create/page.tsx）と同じ足し方（lib/transcribe/appendTranscript.ts）で
+ *     欄の末尾に足す（手で書いた分と録音の分の境目に見出しを付ける ── docs/specs/recording-pipeline.md R1）。
+ *   - 失敗の文はサーバーの日本語をそのまま出し、通信の失敗も日本語にする（lib/supportPlan/request.ts）。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import ItemsToConfirm from "@/components/drafts/ItemsToConfirm";
@@ -28,15 +33,20 @@ import {
 } from "@/components/ui/primitives";
 import { topicCoverage } from "@/lib/supportPlan/coverage";
 import { buildSupportPlanAView } from "@/lib/supportPlan/format";
+import { groupPendingByChapter, pendingFields } from "@/lib/supportPlan/pending";
+import { postJson } from "@/lib/supportPlan/request";
 import {
   BASIC_FIELDS,
   clientInfoOf,
+  defaultClientLabel,
   emptyForm,
   formProblems,
+  hasBasicInput,
   metaOf,
   rosterOf,
   type SupportPlanAForm,
 } from "@/lib/supportPlan/standalone";
+import { appendTranscript } from "@/lib/transcribe/appendTranscript";
 import type { SupportPlanADraft } from "@/types/supportPlanA";
 import { buildSupportPlanPrintHtml, PRINT_MESSAGE } from "./printHtml";
 
@@ -54,7 +64,8 @@ export default function SupportPlanAWorkbench() {
   const [error, setError] = useState<string | null>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
 
-  const coverage = useMemo(() => topicCoverage(notes), [notes]);
+  const basicEntered = hasBasicInput(form);
+  const coverage = useMemo(() => topicCoverage(notes, basicEntered), [notes, basicEntered]);
   const heardCount = coverage.filter((c) => c.heard).length;
   const problems = formProblems(form);
 
@@ -69,10 +80,14 @@ export default function SupportPlanAWorkbench() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  const printHtml = useMemo(() => {
-    if (!draft) return "";
-    const view = buildSupportPlanAView(draft, metaOf(form, recorded), rosterOf(form));
-    return buildSupportPlanPrintHtml(view, `個別支援計画書（${form.clientCode.trim()}）`);
+  const result = useMemo(() => {
+    if (!draft) return null;
+    const meta = metaOf(form, recorded);
+    const view = buildSupportPlanAView(draft, meta, rosterOf(form));
+    return {
+      html: buildSupportPlanPrintHtml(view, `個別支援計画書（${meta.clientCode}）`),
+      pending: pendingFields(view),
+    };
   }, [draft, form, recorded]);
 
   const setBasic = (key: keyof SupportPlanAForm["basic"], value: string) =>
@@ -100,43 +115,29 @@ export default function SupportPlanAWorkbench() {
     }
     setLoading(true);
     setError(null);
-    try {
-      const resp = await fetch("/api/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload()),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
-      setPreview(data as PreviewData);
-      setStep("preview");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "不明なエラーが発生しました");
-    } finally {
-      setLoading(false);
+    const res = await postJson("/api/preview", payload());
+    setLoading(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
     }
+    setPreview(res.data as PreviewData);
+    setStep("preview");
   };
 
   /** 確認のあと AI へ送り、原案を作る（約30秒〜1分） */
   const generate = async () => {
     setLoading(true);
     setError(null);
-    try {
-      const resp = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload()),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || `エラーが発生しました (${resp.status})`);
-      setDraft(data as SupportPlanADraft);
-      setPreview(null);
-      setStep("result");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "不明なエラーが発生しました");
-    } finally {
-      setLoading(false);
+    const res = await postJson("/api/generate", payload());
+    setLoading(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
     }
+    setDraft(res.data as SupportPlanADraft);
+    setPreview(null);
+    setStep("result");
   };
 
   const print = () => frameRef.current?.contentWindow?.postMessage(PRINT_MESSAGE, "*");
@@ -180,11 +181,17 @@ export default function SupportPlanAWorkbench() {
               <h2 id="sp-basic" className="mb-3 text-[16px] font-bold text-[var(--ink)]">
                 ① 基本情報
               </h2>
+              <p
+                id="sp-no-names"
+                className="mb-4 border border-[var(--amber-line)] bg-[var(--amber-soft)] px-4 py-2.5 text-[13px] leading-[1.8] text-[var(--ink)]"
+              >
+                氏名・受給者証番号は入れないでください（計画書には利用者コードだけを書きます）。
+              </p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field
                   label="利用者コード（必須）"
                   htmlFor="sp-code"
-                  hint="氏名は書きません（様式の ID化の原則）。例「K-014」"
+                  hint="英数字とハイフンだけ・20字まで。例「K-014」"
                 >
                   <input
                     id="sp-code"
@@ -192,6 +199,22 @@ export default function SupportPlanAWorkbench() {
                     value={form.clientCode}
                     onChange={(e) => setForm((f) => ({ ...f, clientCode: e.target.value }))}
                     autoComplete="off"
+                    aria-describedby="sp-no-names"
+                  />
+                </Field>
+                <Field
+                  label="表紙の呼び名（任意）"
+                  htmlFor="sp-label"
+                  hint={`空なら「${defaultClientLabel(form.clientCode)}」になります`}
+                >
+                  <input
+                    id="sp-label"
+                    className={inputClass}
+                    value={form.clientLabel}
+                    placeholder={defaultClientLabel(form.clientCode)}
+                    onChange={(e) => setForm((f) => ({ ...f, clientLabel: e.target.value }))}
+                    autoComplete="off"
+                    aria-describedby="sp-no-names"
                   />
                 </Field>
                 <Field
@@ -294,7 +317,7 @@ export default function SupportPlanAWorkbench() {
                     disabled={!consent || loading}
                     onTranscript={(text) => {
                       setRecorded(true);
-                      setNotes((n) => (n.trim() ? `${n.trimEnd()}\n${text}` : text));
+                      setNotes((n) => appendTranscript(n, text));
                     }}
                   />
                   {!consent ? (
@@ -390,7 +413,7 @@ export default function SupportPlanAWorkbench() {
         </section>
       ) : null}
 
-      {step === "result" && draft ? (
+      {step === "result" && draft && result ? (
         <section aria-labelledby="sp-result">
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <h2 id="sp-result" className="mr-auto text-[16px] font-bold text-[var(--ink)]">
@@ -412,18 +435,54 @@ export default function SupportPlanAWorkbench() {
               最初からやり直す
             </button>
           </div>
-          <p className="mb-3 text-[12.5px] leading-[1.7] text-[var(--muted)]">
-            PDF にするときは、印刷の画面で送り先を「PDF に保存」にしてください。
-            「（要記入）」は面談で話に出なかった欄です。サービス管理責任者が記入・確認してください。
+          <p
+            id="sp-not-saved"
+            className="mb-4 border border-[var(--amber-line)] bg-[var(--amber-soft)] px-4 py-2.5 text-[13px] leading-[1.8] text-[var(--ink)]"
+          >
+            この画面は保存しません。PDF
+            に保存してください（「印刷・PDFに保存」を押し、印刷の画面で送り先を「PDF
+            に保存」にします）。
           </p>
-          <ItemsToConfirm items={draft.itemsToConfirm} />
-          <iframe
-            ref={frameRef}
-            title="個別支援計画書（原案）"
-            sandbox="allow-scripts allow-modals"
-            srcDoc={printHtml}
-            className="mt-4 h-[80vh] w-full border border-[var(--line)] bg-white"
-          />
+          <div className="grid gap-6 md:grid-cols-[1fr_300px]">
+            <iframe
+              ref={frameRef}
+              title="個別支援計画書（原案）"
+              sandbox="allow-scripts allow-modals"
+              srcDoc={result.html}
+              className="h-[80vh] w-full min-w-0 border border-[var(--line)] bg-white"
+            />
+            <aside aria-label="仕上げに要ること" className="space-y-6 md:self-start">
+              <section aria-labelledby="sp-pending">
+                <h3 id="sp-pending" className="mb-1 text-[14.5px] font-bold text-[var(--ink)]">
+                  要記入（{result.pending.length}件）
+                </h3>
+                <p className="mb-2 text-[12px] leading-[1.7] text-[var(--muted)]">
+                  面談で話に出なかった欄と、手書きにする欄です。サービス管理責任者が記入してください。
+                </p>
+                <dl id="sp-pending-list" className="space-y-2 text-[13px] leading-[1.7]">
+                  {groupPendingByChapter(result.pending).map(({ chapter, labels }) => (
+                    <div key={chapter}>
+                      <dt className="font-bold text-[var(--ink)]">{chapter}</dt>
+                      <dd className="text-[var(--ink-2)]">{labels.join("、")}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+              <section aria-labelledby="sp-ask">
+                <h3 id="sp-ask" className="mb-1 text-[14.5px] font-bold text-[var(--ink)]">
+                  AI からの確認のお願い
+                </h3>
+                {draft.itemsToConfirm.length > 0 ? (
+                  // ItemsToConfirm は つくる の結果の下に置く前提の上の余白（mt-6）を持つので、ここでは消す
+                  <div className="[&>div]:mt-0">
+                    <ItemsToConfirm items={draft.itemsToConfirm} />
+                  </div>
+                ) : (
+                  <p className="text-[13px] text-[var(--muted)]">ありません。</p>
+                )}
+              </section>
+            </aside>
+          </div>
         </section>
       ) : null}
     </div>
