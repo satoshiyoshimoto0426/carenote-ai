@@ -7,18 +7,25 @@
 
 ## 作り方（吉本さんのパソコンで・リポジトリの根で）
 
+### いちばん早い方法: 録画済みの画面に声を重ねる（撮り直さない）
+2026-10-03 にクラウド環境で、台本どおりに画面を録画してある（無音・字幕なし）。
+`docs/specs/support-plan-a/video/silent.mp4` と、場面の区切り `video/scenes.json`。
+公開前だったため、ログインと AI の結果だけ録画用の見本に差し替えている（画面そのものは本物・利用者は架空の K-014）。
+
 ```
-# 1. 声（MiniMax）── 鍵は今までどおり .env.local の MINIMAX_API_KEY
+# 1. 声（MiniMax）── 鍵は .env.local の MINIMAX_API_KEY
 node tools/make-narration.mjs D:/video-spa spa1 --script=docs/specs/support-plan-a/VIDEO-SCRIPT.md
-# 2. 読み間違いの確認（OpenAI の文字起こしで台本と突き合わせる）
+# 2. 読み間違いの確認（OpenAI の文字起こしで台本と突き合わせる。.env.local の OPENAI_API_KEY）
 node tools/check-reading.mjs D:/video-spa spa1 --script=docs/specs/support-plan-a/VIDEO-SCRIPT.md
-# 3. 画面の撮影（SHOOT_BASE・SHOOT_EMAIL・SHOOT_PASSWORD を .env.local に入れておく）
-node tools/shoot-run.mjs D:/video-spa spa1
-# 4. 合成（字幕を焼き込んだ mp4）
-cd D:/video-spa/spa1 && node <リポジトリ>/tools/make-video.mjs . spa1 --script=docs/specs/support-plan-a/VIDEO-SCRIPT.md
+# 3. 録画に声と字幕を重ねる（声が長い場面は最後のコマを止めて延ばす）
+node tools/dub-support-plan-video.mjs D:/video-spa
 ```
 
-出来上がり: `D:/video-spa/spa1/spa1.mp4`（と実尺に合わせた字幕 spa1.vtt）。
+出来上がり: `D:/video-spa/spa1/spa1-dubbed.mp4`（と字幕 spa1.vtt）。台本の文を直したら、1 を `--force` で作り直してから 3。
+
+### 公開した画面で撮り直す方法（画面を変えたとき）
+`.env.local` に SHOOT_BASE（公開した URL）・SHOOT_EMAIL・SHOOT_PASSWORD を入れて
+`node tools/shoot-run.mjs D:/video-spa spa1` → `cd D:/video-spa/spa1 && node <リポジトリ>/tools/make-video.mjs . spa1 --script=docs/specs/support-plan-a/VIDEO-SCRIPT.md`。
 撮影の手順のデータは `tools/shoot-plans.mjs` の `spa1`。
 
 ## 5. 場面割り（本体の MANUAL-VIDEO-SPEC.md §5 と同じ書き方・道具は「## 5.」の下だけを読む）
