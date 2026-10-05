@@ -74,6 +74,24 @@ describe("計画書の画面の外枠（印が on の版）", () => {
   });
 });
 
+describe("ログインなしの試行版（印 open）", () => {
+  it("上の帯の下に「架空のデータだけで」の注意を出す（名簿が無く名前が自動で置き換わらないため）", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    const notes = elementsOf(renderLayout()).filter(
+      (el) => attrOf(el, "role") === "note" && isReachable(el),
+    );
+    expect(notes).toHaveLength(1);
+    expect(textOf(notes[0])).toContain("架空の利用者・架空の面談だけ");
+    expect(textOf(notes[0])).toContain("ログインなし");
+  });
+
+  it("ログインが要る版（on）では、その注意は出さない", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "on");
+    const notes = elementsOf(renderLayout()).filter((el) => attrOf(el, "role") === "note");
+    expect(notes).toHaveLength(0);
+  });
+});
+
 describe("印が無い今の CareNote 本番", () => {
   it("外枠ごと 404 にする（画面の名前も出さない）", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "");

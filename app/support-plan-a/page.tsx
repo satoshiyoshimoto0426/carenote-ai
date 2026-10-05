@@ -8,7 +8,7 @@ import { isSupportPlanAEdition } from "@/lib/supportPlan/edition";
  *
  * (dashboard) の外に置く: CareNote の外枠（Rail・TopBar）と名簿を使わない（2026-10-03 吉本さんの決定②「単独で出す」）。
  *   この画面だけの外枠（画面の名前・ログアウト）は同じフォルダの layout.tsx。
- * ログインは他の画面と同じく middleware.ts（Clerk）が守る（公開の道は増やしていない）。
+ * ログインは他の画面と同じく middleware.ts（Clerk）が守る（ログインなしの試行版＝印 "open" だけは、この画面と3つの道を開ける）。
  * 印 NEXT_PUBLIC_SUPPORT_PLAN_A=on（lib/supportPlan/edition.ts）のときだけ開ける。今の CareNote 本番では設定しない＝404。
  *   外枠（layout.tsx）でも止めているが、ページでも止める ── Next.js は画面を移るときに外枠を描き直さないことがあり、
  *   外枠だけの見張りに頼らないため。

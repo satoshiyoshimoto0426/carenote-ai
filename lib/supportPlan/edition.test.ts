@@ -1,7 +1,12 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isSupportPlanAEdition, SUPPORT_PLAN_A_PATH } from "./edition";
+import {
+  isSupportPlanAEdition,
+  isSupportPlanAOpen,
+  SUPPORT_PLAN_A_PATH,
+  supportPlanAMode,
+} from "./edition";
 
 /**
  * 計画書を単独で公開する版の印（NEXT_PUBLIC_SUPPORT_PLAN_A）。
@@ -19,9 +24,24 @@ describe("単独で公開する版の印", () => {
   });
 
   it("未設定・打ち間違い（大文字・true・空白つき）は今の CareNote のまま", () => {
-    for (const v of [undefined, "", "ON", "On", "true", "1", " on", "off"]) {
+    for (const v of [undefined, "", "ON", "On", "true", "1", " on", "off", "OPEN", " open"]) {
       expect(isSupportPlanAEdition(v)).toBe(false);
+      expect(isSupportPlanAOpen(v)).toBe(false);
     }
+  });
+
+  it("open は計画書だけの版で、しかもログインなし（2026-10-05 吉本さんの決定）", () => {
+    expect(supportPlanAMode("open")).toBe("open");
+    expect(isSupportPlanAEdition("open")).toBe(true);
+    expect(isSupportPlanAOpen("open")).toBe(true);
+  });
+
+  it("on・standalone はログインが要るまま（ログインなしになるのは open だけ）", () => {
+    for (const v of ["on", "standalone"]) {
+      expect(supportPlanAMode(v)).toBe("login");
+      expect(isSupportPlanAOpen(v)).toBe(false);
+    }
+    expect(supportPlanAMode(undefined)).toBe("off");
   });
 
   it("引数を省くと、ビルド時の環境の値を読む", () => {

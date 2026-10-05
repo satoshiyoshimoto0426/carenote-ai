@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * /api/transcribe の入口の検査（2026-09-17 新設）。
@@ -135,5 +135,47 @@ describe("回数の数え方", () => {
     const body = await last?.json();
     expect(body.error).toContain("1時間");
     expect(body.error).toContain("30回");
+  });
+});
+
+/**
+ * ログインなしの試行版（印 NEXT_PUBLIC_SUPPORT_PLAN_A=open ── 2026-10-05 吉本さんの決定）。
+ * 計画書の画面の録音は、ログインしていない人でも文字にする。そのかわり IP アドレスごとに1時間30回・
+ * 全員で1日240回までに絞る（音声を外へ出す回数と費用の歯止め ── lib/supportPlan/guestAccess.ts）。
+ */
+describe("ログインなしの試行版（印 open）", () => {
+  function postFrom(ip: string) {
+    const req = post("call.mp3", 1024);
+    req.headers.set("x-forwarded-for", ip);
+    return req;
+  }
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("ログインしていなくても文字にする", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    const res = await POST(postFrom("198.51.100.1"));
+    expect(res.status).toBe(200);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("印が on（ログインが要る版）なら、ログインしていない人は 401 のまま", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "on");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    const res = await POST(postFrom("198.51.100.2"));
+    expect(res.status).toBe(401);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("同じ IP アドレスからは1時間30回で止め、隣の人は使える", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    for (let i = 0; i < 30; i++) expect((await POST(postFrom("203.0.113.30"))).status).toBe(200);
+    const over = await POST(postFrom("203.0.113.30"));
+    expect(over.status).toBe(429);
+    expect((await over.json()).error).toContain("1時間");
+    expect((await POST(postFrom("203.0.113.31"))).status).toBe(200);
   });
 });

@@ -40,21 +40,41 @@
 ## 3. 安全のための作り
 
 - 氏名・受給者証番号は受け取らない（様式の ID化の原則）。利用者コードは AI に送らない（表紙・様式の側で書く）。
-- 送る文章は CareNote と同じ黒塗り（`/api/preview` と `/api/generate` が同じ `maskRequestBody` を通る）。
+- 送る文章は CareNote と同じ黒塗りを通る（`/api/preview` と `/api/generate` が同じ `maskRequestBody`）。ただし単独の版には
+  **名簿が無い**ので、電話番号などの型は置き換わるが、**人の名前は置き換わらない**。名前らしい語は送る前の画面で赤い候補として
+  人が確かめる（独立審査 2026-10-04 中2）。試行は架空のデータだけで行う（ログインなしの版は画面の上にも注意を出す）。
 - 様式の表示は `sandbox="allow-scripts allow-modals"` の iframe（`allow-same-origin` を付けない）。CDN から読む Paged.js・書体が、
   画面のログイン情報に触れないため。印刷は親の画面からの合図（postMessage）で開く。
-- ログインは CareNote と同じ Clerk（`middleware.ts` は変えていない）。
+- ログイン: 印 `on` の版は CareNote と同じ Clerk のログインが要る。印 `open` の版（ログインなしの試行版・2026-10-05 吉本さんの決定
+  「営業の際にログインが手間」）は、`middleware.ts` がこの画面と3つの道（`/api/preview`・`/api/generate`・`/api/transcribe`）だけを
+  ログインなしで通す。3つの道はログインしていない人を中で絞る（`lib/supportPlan/guestAccess.ts`）: 計画書づくり（documentType
+  `supportPlanA`）以外は 401、名簿は読まない、AI の原案づくりは**全員で1日30回・同じ IP アドレスから1時間10回**、文字起こしは
+  全員で1日240回・同じ IP から1時間30回。回数はサーバーの実体ごとの記憶で数えるので、きっちりの上限ではなく目安の歯止め
+  （実体が分かれる・入れ替わると数え直し）。CareNote の利用者・書類の道（`/api/clients` など）は、試行版でもログインが要る。
 
 ## 4. 公開の仕方（決定②）
 
-- **同じコード**を、別の Vercel のプロジェクトでビルドする。そのプロジェクトの環境の値に `NEXT_PUBLIC_SUPPORT_PLAN_A=on`
-  （前の名前 `standalone` も同じ意味で受け付ける）。`NEXT_PUBLIC_` の値は**ビルドの時に**埋め込まれるので、値を変えたら作り直し（Redeploy）が要る。
-- 印が on の版では: 「/」→ `/support-plan-a`、CareNote の画面（利用者・つくる・点検・使い方）→ `/support-plan-a`、
-  計画書の画面の上に「個別支援計画（就労A型）」とログアウトのボタン。
-- 印の無い今の本番（carenote-ai.vercel.app）は何も変わらない: `/support-plan-a` は 404、「/」は利用者の一覧。
-- 単独の版のログイン（Clerk）・DB（Supabase）・AI の鍵は、CareNote 本番とは別に用意する（台帳 T-SPA-01「案A」）。
-- 印が on の版でも、CareNote の API（`/api/clients` など）は URL を打てば呼べる（画面から行く道は無い。ログインは要る）。
-  案A のとおり別の DB を用意すれば、CareNote 本番のデータには届かない（DB を CareNote 本番と同じにすると届くので、そうしない）。
+- **同じコード**を、印 `NEXT_PUBLIC_SUPPORT_PLAN_A` を付けてビルドし、**別の URL** に出す。値は3つ:
+  `on`（前の名前 `standalone` も同じ意味）＝計画書だけ・ログインあり／`open`＝計画書だけ・**ログインなし**／それ以外＝今の CareNote。
+  `NEXT_PUBLIC_` の値は**ビルドの時に**埋め込まれるので、値を変えたら作り直しが要る。
+- 試行（2026-10-04〜）の出し方（decisions-log 2026-10-04・10-05）: 今の CareNote と**同じ Vercel プロジェクト**の別のデプロイ。
+  ログイン（Clerk の開発用の環境）・DB（Supabase）・AI の鍵は CareNote 本番と**共用**（吉本さん承認）。
+  公開は吉本さんが PowerShell で実行する（Claude の `vercel deploy --prod` はアプリの安全装置が止めるため）:
+  1. `git archive <コミット> | tar -x -C <空の置き場>` で **.git の無い置き場**を作る（Hobby は、作者のメールが GitHub に
+     登録されていない記録からの公開を「Deployment Blocked」で差し止める ── 2026-10-04 に2回）
+  2. その置き場へ `carenote-ai\.vercel` を写す
+  3. `npx.cmd vercel deploy --cwd "<置き場>" --prod --skip-domain -b NEXT_PUBLIC_SUPPORT_PLAN_A=open -y`
+     （`--skip-domain` で carenote-ai.vercel.app は動かない。管理画面では「Production Staged」）
+- してはいけないこと: 印を Vercel のプロジェクト設定の環境の値に入れる（次に main へ push したとき、本番が計画書だけの版になる）／
+  試行のデプロイを Promote・Instant Rollback の行き先に選ぶ（本番の URL が計画書だけの版に変わる）。
+- 印が on / open の版では: 「/」→ `/support-plan-a`、CareNote の画面（利用者・つくる・点検・使い方）→ `/support-plan-a`。
+  画面の上に「個別支援計画（就労A型）」とログアウトのボタン（ログインしていなければ出ない）。open の版は「架空のデータだけで」の注意も出す。
+- 印の無い今の本番（carenote-ai.vercel.app）: `/support-plan-a` は 404、「/」は利用者の一覧、ログインなしの道は1本も開かない
+  （`tests/middleware.test.ts`）。ただし `/api/generate`・`/api/extension/generate` は documentType `supportPlanA` を受け付ける
+  （ログインと黒塗りは同じなので害は無い ── 独立審査 2026-10-04 小1）。
+- 共用している間の注意: 試行版でログインした人は CareNote 本番にも同じアカウントで入れる（見えるのは自分の範囲だけ）。
+  試行の参加者を CareNote の事業所（Clerk の組織）に入れない。AI の残高は CareNote 本番と同じ財布なので、試行の前に残高を確かめる。
+  本物のデータを扱う前に、ログイン・DB・鍵を CareNote 本番と分ける（台帳 T-SPA-01「案A」の本来の形）。
 - 文章の長さの上限は CareNote と同じ（1つの欄 4万字・合計 6万字。超えると `/api/generate` が 413 と日本語の文を返す ── `lib/generation/dispatch.ts`）。
 
 ## 5. コードと試験
@@ -62,6 +82,7 @@
 | 何 | どこ | 試験 |
 |---|---|---|
 | 印の読み取り | `lib/supportPlan/edition.ts` | `edition.test.ts`・`app/page.test.ts`・`app/(dashboard)/layout.test.tsx`・`app/support-plan-a/layout.test.tsx` |
+| ログインなしの試行版（道の開け閉め・ゲストの受け付け・回数の上限） | `middleware.ts`・`lib/supportPlan/guestAccess.ts`・`app/api/{preview,generate,transcribe}/route.ts` | `tests/middleware.test.ts`・`guestAccess.test.ts`・`tests/api/generate.route.test.ts`・`tests/api/transcribe.route.test.ts` |
 | 画面の外枠・入口 | `app/support-plan-a/{layout,page}.tsx` | `app/support-plan-a/layout.test.tsx` |
 | 画面 | `components/supportPlan/SupportPlanAWorkbench.tsx` | `SupportPlanAWorkbench.live.test.tsx`（jsdom で通す） |
 | 入力欄 → 名簿・AI への文・様式の外の値 | `lib/supportPlan/standalone.ts` | `standalone.test.ts` |

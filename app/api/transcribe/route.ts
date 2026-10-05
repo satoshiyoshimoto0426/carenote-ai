@@ -1,6 +1,13 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
 import { hitRateLimit, type RateState } from "@/lib/extensionAuth";
+import { isSupportPlanAOpen } from "@/lib/supportPlan/edition";
+import {
+  clientIpOf,
+  GUEST_TRANSCRIBE_DAILY_LIMIT,
+  newGuestQuotaStore,
+  takeGuestTurn,
+} from "@/lib/supportPlan/guestAccess";
 import { createOpenAiTranscriber, TranscribeError } from "@/lib/transcribe/provider";
 import { TRANSCRIBE_RATE_LIMIT, validateAudio } from "@/lib/transcribe/validate";
 
@@ -21,6 +28,8 @@ export const maxDuration = 300;
  */
 const RATE_LIMIT = TRANSCRIBE_RATE_LIMIT;
 const rateStore = new Map<string, RateState>();
+/** ログインなしの試行版で、ログインしていない人の文字起こしを数える置き場（lib/supportPlan/guestAccess.ts） */
+const guestTranscribes = newGuestQuotaStore();
 
 /**
  * 電話の録音ファイルを文字にして返す（第3段・docs/specs/call-pipeline.md）。
@@ -29,7 +38,12 @@ const rateStore = new Map<string, RateState>();
  */
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  // ログインなしの試行版（印 NEXT_PUBLIC_SUPPORT_PLAN_A=open）だけ、ログインしていない人の録音も文字にする
+  // （計画書の画面の録音 ── 2026-10-05 吉本さんの決定）。回数は IP アドレスごと・1日の上限で絞る
+  const guest = !userId && isSupportPlanAOpen();
+  if (!userId && !guest) {
+    return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  }
 
   const transcriber = createOpenAiTranscriber();
   if (!transcriber) {
@@ -57,14 +71,24 @@ export async function POST(req: NextRequest) {
 
   // 数えるのは**外へ送る直前**。形式違い・大きさ超過・鍵未設定で弾いたものは1回に数えない
   // （押し間違いで枠を使い切ると、直したときには送れなくなる ── 独立審査 2026-09-17）
-  const rate = hitRateLimit(rateStore, userId, Date.now(), RATE_LIMIT);
-  if (rate.limited) {
-    return NextResponse.json(
-      {
-        error: `文字にする回数が1時間の上限（${RATE_LIMIT.limit}回）に達しました。1時間ほど空けてからもう一度お試しください。急ぐときは管理者に相談してください。`,
-      },
-      { status: 429 },
-    );
+  if (userId) {
+    const rate = hitRateLimit(rateStore, userId, Date.now(), RATE_LIMIT);
+    if (rate.limited) {
+      return NextResponse.json(
+        {
+          error: `文字にする回数が1時間の上限（${RATE_LIMIT.limit}回）に達しました。1時間ほど空けてからもう一度お試しください。急ぐときは管理者に相談してください。`,
+        },
+        { status: 429 },
+      );
+    }
+  } else {
+    // ゲスト（試行版）は IP アドレスごとに1時間 RATE_LIMIT.limit 回・全員で1日 GUEST_TRANSCRIBE_DAILY_LIMIT 回まで
+    const turn = takeGuestTurn(guestTranscribes, clientIpOf(req.headers), Date.now(), {
+      daily: GUEST_TRANSCRIBE_DAILY_LIMIT,
+      perIpHourly: RATE_LIMIT.limit,
+      label: "文字起こし",
+    });
+    if (!turn.ok) return NextResponse.json({ error: turn.error }, { status: 429 });
   }
 
   try {

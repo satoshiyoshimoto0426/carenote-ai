@@ -12,27 +12,52 @@ import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskRequestBody } from "@/lib/privacy/maskBody";
 import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
 import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
+import { isSupportPlanAOpen } from "@/lib/supportPlan/edition";
+import {
+  clientIpOf,
+  GUEST_PLAN_DAILY_LIMIT,
+  GUEST_PLAN_HOURLY_PER_IP,
+  isGuestPlanRequest,
+  newGuestQuotaStore,
+  releaseGuestTurn,
+  takeGuestTurn,
+} from "@/lib/supportPlan/guestAccess";
 
 // Opus + adaptive thinking は時間がかかるため余裕を持たせる
 export const maxDuration = 300;
 
-/** Webアプリ（Clerkログイン）からの生成リクエスト。 */
+/** ログインなしの試行版で、ログインしていない人の原案づくりを数える置き場（lib/supportPlan/guestAccess.ts） */
+const guestPlans = newGuestQuotaStore();
+
+/**
+ * Webアプリ（Clerkログイン）からの生成リクエスト。
+ * ログインなしの試行版（印 NEXT_PUBLIC_SUPPORT_PLAN_A=open）に限り、ログインしていない人の計画書づくり
+ * （documentType "supportPlanA"）も受け付ける ── 名簿は使わず（試行版は名簿を持たない）、黒塗りの型の置換と
+ * 漏れ検査はそのまま通し、AI の回数を1日 GUEST_PLAN_DAILY_LIMIT 回までに絞る（2026-10-05 吉本さんの決定）。
+ */
 export async function POST(req: NextRequest) {
   const { userId, orgId } = await auth();
-  if (!userId) {
+  if (!userId && !isSupportPlanAOpen()) {
     return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
   }
 
-  let scope: DataScope;
-  try {
-    scope = resolveScope(userId, orgId);
-  } catch {
-    return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+  let scope: DataScope | null = null;
+  if (userId) {
+    try {
+      scope = resolveScope(userId, orgId);
+    } catch {
+      return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+    }
   }
 
   const parsed = await readJsonObject(req);
   if (!parsed) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
   let body: Record<string, unknown> = parsed;
+  // ログインしていない人に許すのは、試行版の計画書づくりだけ（CareNote の書類はログインが要る）
+  const guest = !scope && isGuestPlanRequest(userId, body.documentType);
+  if (!scope && !guest) {
+    return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  }
 
   // 黒塗り（SPEC §7・docs/specs/call-pipeline.md §2.1）: 名簿置換→型置換→自己点検を maskPii で
   // 一括適用してからAIへ送る。名簿が空でも型置換は動く。残っていれば 422 で送信を中止（fail-closed）。
@@ -40,13 +65,16 @@ export async function POST(req: NextRequest) {
   // 二枚方式（§2.5）: 型置換の元の値はリクエスト内の札入れが覚え、AIの返事で手元に戻す。
   // /api/preview と同じ maskRequestBody を通す（画面で見せた文章とAIに送る文章を一致させる）。
   // 名簿が読めなければ送らない（fail-closed）。名簿なしで進むと実名が消えないまま AI へ出る。
-  let aliases: Awaited<ReturnType<typeof getClientAliases>>;
-  try {
-    aliases = await getClientAliases(scope);
-  } catch (e) {
-    if (e instanceof AliasLoadError)
-      return NextResponse.json({ error: e.message }, { status: 503 });
-    throw e;
+  // ゲスト（試行版）は名簿を持たないので空 ── 名前は置き換わらない。送る前の画面で人が確かめる（README §3）
+  let aliases: Awaited<ReturnType<typeof getClientAliases>> = [];
+  if (scope) {
+    try {
+      aliases = await getClientAliases(scope);
+    } catch (e) {
+      if (e instanceof AliasLoadError)
+        return NextResponse.json({ error: e.message }, { status: 503 });
+      throw e;
+    }
   }
   const vault = createPiiVault();
   const masked = { names: 0, patterns: 0 };
@@ -64,6 +92,16 @@ export async function POST(req: NextRequest) {
   // 件数のみ記録する（本文・原文はログに出さない）
   if (masked.names + masked.patterns > 0) console.info("[generate] pii masked", masked);
 
+  // ゲストの回数は AI へ送る直前に数える（黒塗りで止まったものは数えない）
+  if (guest) {
+    const turn = takeGuestTurn(guestPlans, clientIpOf(req.headers), Date.now(), {
+      daily: GUEST_PLAN_DAILY_LIMIT,
+      perIpHourly: GUEST_PLAN_HOURLY_PER_IP,
+      label: "原案づくり",
+    });
+    if (!turn.ok) return NextResponse.json({ error: turn.error }, { status: 429 });
+  }
+
   try {
     const draft = await generateFromBody(body);
     // AIの返事に残る札（〔電話番号1〕等）を手元で元の値に戻してから返す（名前の記号はそのまま）。
@@ -71,6 +109,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(restoreDeep(draft, vault, { skipKeys: ["appointments"] }));
   } catch (e: unknown) {
     if (e instanceof GenerateRequestError) {
+      // 頼みの中身の誤り（長すぎる・欄が無い）は AI を呼ぶ前に止まる ── ゲストの1回を戻す
+      if (guest) releaseGuestTurn(guestPlans, Date.now());
       return NextResponse.json({ error: e.message }, { status: e.status });
     }
     // 内部エラー詳細はクライアントに返さない（情報漏えい対策）。詳細はサーバログのみ。

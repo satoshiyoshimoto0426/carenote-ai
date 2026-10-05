@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
 
 /**
@@ -112,5 +112,115 @@ describe("POST /api/preview", () => {
     expect(res.status).toBe(422);
     expect(await res.json()).toMatchObject({ error: expect.stringContaining("中止") });
     expect(PiiLeakError).toBeDefined();
+  });
+});
+
+/**
+ * ログインなしの試行版（印 NEXT_PUBLIC_SUPPORT_PLAN_A=open ── 2026-10-05 吉本さんの決定）。
+ * 守ること: ①ログインしていない人に開くのは計画書づくり（supportPlanA）だけ ②名簿は読まない（試行版は名簿を持たない）が、
+ *   番号などの型の黒塗りはそのまま通る ③AI の回数は1日30回で止まる（残高を使い切られて本番の AI まで止まらないため）
+ *   ④AI を呼ぶ前に止まった頼みは回数に数えない ⑤印が無い今の本番では、ログインしていない人は今までどおり 401。
+ */
+describe("ログインなしの試行版（印 open）", () => {
+  const PLAN = {
+    documentType: "supportPlanA",
+    interviewNotes: "K様より。困ったら 090-1234-5678 に電話してほしい。",
+  };
+  let ipSeq = 0;
+  /** ログインしていない人の頼み（IP は毎回変える ── 同じ IP の1時間の上限に先に当たらないため） */
+  async function asGuest(path: string, body: unknown, ip = `198.51.100.${++ipSeq % 250}`) {
+    const { auth } = await import("@clerk/nextjs/server");
+    vi.mocked(auth).mockResolvedValueOnce({ userId: null, orgId: null } as never);
+    const req = post(path, body);
+    req.headers.set("x-forwarded-for", ip);
+    return req;
+  }
+
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    ai.generateFromBody.mockResolvedValue({ ok: true });
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+  });
+
+  it("計画書づくりは、ログインしていなくても原案を返す（名簿は読まず、番号は黒塗りして送る）", async () => {
+    const res = await generate(await asGuest("/api/generate", PLAN));
+    expect(res.status).toBe(200);
+    expect(db.getClientAliases).not.toHaveBeenCalled();
+    const sent = ai.generateFromBody.mock.calls[0][0] as Record<string, unknown>;
+    expect(String(sent.interviewNotes)).not.toContain("1234");
+    expect(String(sent.interviewNotes)).toContain("〔電話番号1〕");
+  });
+
+  it("CareNote の書類は、試行版でもログインが要る（401・AI を呼ばない）", async () => {
+    const res = await generate(await asGuest("/api/generate", MEMO));
+    expect(res.status).toBe(401);
+    expect(ai.generateFromBody).not.toHaveBeenCalled();
+  });
+
+  it("印が無い今の本番では、計画書づくりでもログインが要る（401）", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "");
+    const res = await generate(await asGuest("/api/generate", PLAN));
+    expect(res.status).toBe(401);
+    expect(ai.generateFromBody).not.toHaveBeenCalled();
+  });
+
+  it("印が on（ログインが要る版）でも、ログインしていなければ 401", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "on");
+    const res = await generate(await asGuest("/api/generate", PLAN));
+    expect(res.status).toBe(401);
+  });
+
+  it("AI は1日30回で止める（31回目は 429・AI を呼ばない）", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-01-01T03:00:00Z"));
+    for (let i = 0; i < 30; i++) {
+      expect((await generate(await asGuest("/api/generate", PLAN))).status).toBe(200);
+    }
+    const over = await generate(await asGuest("/api/generate", PLAN));
+    expect(over.status).toBe(429);
+    expect((await over.json()).error).toContain("30回");
+    expect(ai.generateFromBody).toHaveBeenCalledTimes(30);
+  });
+
+  it("同じ IP アドレスからは1時間10回で止める", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-01-02T03:00:00Z"));
+    for (let i = 0; i < 10; i++) {
+      expect((await generate(await asGuest("/api/generate", PLAN, "203.0.113.9"))).status).toBe(
+        200,
+      );
+    }
+    expect((await generate(await asGuest("/api/generate", PLAN, "203.0.113.9"))).status).toBe(429);
+    expect((await generate(await asGuest("/api/generate", PLAN, "203.0.113.10"))).status).toBe(200);
+  });
+
+  it("AI を呼ぶ前に止まった頼み（中身の誤り）は、1日の回数に数えない", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-01-03T03:00:00Z"));
+    const { GenerateRequestError } = await import("@/lib/generation/dispatch");
+    ai.generateFromBody.mockRejectedValueOnce(
+      new GenerateRequestError(413, "入力が大きすぎます。"),
+    );
+    expect((await generate(await asGuest("/api/generate", PLAN))).status).toBe(413);
+    for (let i = 0; i < 30; i++) {
+      expect((await generate(await asGuest("/api/generate", PLAN))).status).toBe(200);
+    }
+  });
+
+  it("送る前の確認も、計画書づくりならログインなしで返す（名簿は読まない・AI は呼ばない）", async () => {
+    const res = await preview(await asGuest("/api/preview", PLAN));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.fields.interviewNotes).toContain("〔電話番号1〕");
+    expect(db.getClientAliases).not.toHaveBeenCalled();
+    expect(ai.generateFromBody).not.toHaveBeenCalled();
+  });
+
+  it("送る前の確認も、CareNote の書類はログインが要る（401）", async () => {
+    const res = await preview(await asGuest("/api/preview", MEMO));
+    expect(res.status).toBe(401);
   });
 });

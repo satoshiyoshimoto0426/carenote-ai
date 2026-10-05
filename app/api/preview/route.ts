@@ -12,6 +12,8 @@ import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskRequestBody } from "@/lib/privacy/maskBody";
 import { createPiiVault } from "@/lib/privacy/vault";
 import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
+import { isSupportPlanAOpen } from "@/lib/supportPlan/edition";
+import { isGuestPlanRequest } from "@/lib/supportPlan/guestAccess";
 
 /**
  * 送る前に見る（docs/specs/call-pipeline.md 第2段）。
@@ -31,28 +33,38 @@ export interface PreviewResponse {
  */
 export async function POST(req: NextRequest) {
   const { userId, orgId } = await auth();
-  if (!userId) {
+  if (!userId && !isSupportPlanAOpen()) {
     return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
   }
 
-  let scope: DataScope;
-  try {
-    scope = resolveScope(userId, orgId);
-  } catch {
-    return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+  let scope: DataScope | null = null;
+  if (userId) {
+    try {
+      scope = resolveScope(userId, orgId);
+    } catch {
+      return NextResponse.json({ error: SCOPE_ERROR_MESSAGE }, { status: 503 });
+    }
   }
 
   const body = await readJsonObject(req);
   if (!body) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
+  // ログインしていない人に許すのは、ログインなしの試行版の計画書づくりだけ（lib/supportPlan/guestAccess.ts）。
+  // AI は呼ばないので回数は数えない（数えるのは /api/generate）。
+  if (!scope && !isGuestPlanRequest(userId, body.documentType)) {
+    return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  }
 
-  // 名簿が読めなければ確認画面も出さない（実名が残った文章を「送っていい」と見せないため）
-  let aliases: Awaited<ReturnType<typeof getClientAliases>>;
-  try {
-    aliases = await getClientAliases(scope);
-  } catch (e) {
-    if (e instanceof AliasLoadError)
-      return NextResponse.json({ error: e.message }, { status: 503 });
-    throw e;
+  // 名簿が読めなければ確認画面も出さない（実名が残った文章を「送っていい」と見せないため）。
+  // ゲスト（試行版）は名簿を持たないので空 ── 名前は置き換わらず、名前らしい語は赤い候補として人に見せる
+  let aliases: Awaited<ReturnType<typeof getClientAliases>> = [];
+  if (scope) {
+    try {
+      aliases = await getClientAliases(scope);
+    } catch (e) {
+      if (e instanceof AliasLoadError)
+        return NextResponse.json({ error: e.message }, { status: 503 });
+      throw e;
+    }
   }
   try {
     const masked = maskRequestBody(body, aliases, createPiiVault());

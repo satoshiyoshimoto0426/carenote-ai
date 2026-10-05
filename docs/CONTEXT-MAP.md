@@ -408,10 +408,17 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 > 仕様（決定①〜⑤・画面の流れ・公開の仕方）の正本は [`specs/support-plan-a/README.md`](specs/support-plan-a/README.md)。
 > 介護（ケアマネ）の CareNote とは別の利用者（就労継続支援A型）向け。**CareNote のメニュー・名簿・書類の種類の一覧には足さない**（決定②）。
 
-- **印（ビルド時の環境の値）** `NEXT_PUBLIC_SUPPORT_PLAN_A=on`（前の名前 `standalone` も同じ意味）。読むのは `lib/supportPlan/edition.ts` の
-  `isSupportPlanAEdition()` だけ。同じコードを印つきで**別の URL**（別の Vercel のプロジェクト）に公開する。印の無い今の本番は何も変わらない。
-  印が on の版の振り分け: `app/page.tsx`（「/」→ `/support-plan-a`）・`app/(dashboard)/layout.tsx`（CareNote の画面 → `/support-plan-a`）。
-  印が無ければ `app/support-plan-a/layout.tsx`・`page.tsx` が `notFound()`（404）。`middleware.ts`（Clerk のログイン）は変えていない。
+- **印（ビルド時の環境の値）** `NEXT_PUBLIC_SUPPORT_PLAN_A`: `on`（前の名前 `standalone` も同じ）＝計画書だけ・ログインあり／
+  `open`＝計画書だけ・**ログインなし**（2026-10-05 吉本さんの決定）／それ以外＝今の CareNote。読むのは `lib/supportPlan/edition.ts`
+  （`supportPlanAMode`・`isSupportPlanAEdition`・`isSupportPlanAOpen`）だけ。同じコードを印つきで**別の URL**に公開する
+  （試行は同じ Vercel プロジェクトの別のデプロイ・ログイン／DB／AI の鍵は本番と共用 ── 出し方は README §4）。印の無い今の本番は何も変わらない。
+  印が on / open の版の振り分け: `app/page.tsx`（「/」→ `/support-plan-a`）・`app/(dashboard)/layout.tsx`（CareNote の画面 → `/support-plan-a`）。
+  印が無ければ `app/support-plan-a/layout.tsx`・`page.tsx` が `notFound()`（404）。
+- **ログインなしの試行版（印 open）** `middleware.ts` が「/」・`/support-plan-a`・`/api/preview`・`/api/generate`・`/api/transcribe` だけを
+  ログインなしで通し、CareNote の画面へ来た人は計画書の画面へ送る（CareNote の API はログインが要るまま）。3つの道は
+  `lib/supportPlan/guestAccess.ts` でログインしていない人を絞る: 計画書づくり（documentType `supportPlanA`）だけ・名簿は読まない・
+  原案づくりは全員で1日30回／同じ IP から1時間10回・文字起こしは1日240回／同じ IP から1時間30回（サーバーの実体ごとの記憶＝目安の歯止め）。
+  IP は Vercel が上書きする `x-forwarded-for` の先頭。外枠は「架空のデータだけで」の注意を出す。
 - **画面** `app/support-plan-a/layout.tsx`（CareNote の外枠 Rail・TopBar を使わない専用の外枠: 「個別支援計画（就労A型）」＋ Clerk の UserButton）→
   `page.tsx` → `components/supportPlan/SupportPlanAWorkbench.tsx`（クライアントの部品。何も保存しない）。
   - 入力欄 → 1章の名簿の値（`rosterOf`）・AI への「利用者の基本情報」の文（`clientInfoOf`）・様式の外の値（`metaOf`）: `lib/supportPlan/standalone.ts`
@@ -426,15 +433,16 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - **API の流れ**（CareNote と同じ入口・同じ黒塗り）:
   ```
   [面談を終える] ─ POST /api/preview { documentType:"supportPlanA", interviewNotes, clientInfo }
-                    └─ maskRequestBody（名簿＋型の置換）→ 黒塗り後の文を返すだけ（AI へは送らない）
+                    └─ maskRequestBody（名簿＋型の置換。ログインなしの試行版は名簿なし＝型だけ）→ 黒塗り後の文を返すだけ（AI へは送らない）
                  → components/drafts/PreSendPreview.tsx（欄の名前 interviewNotes＝「面談の文字起こし・メモ」）
   [この内容で AI に送る] ─ POST /api/generate（同じ本文）
-                    └─ maskRequestBody → lib/generation/dispatch.ts の case "supportPlanA"（interviewNotes 必須）
+                    └─ maskRequestBody →（ゲストは guestAccess の回数を数える）→ lib/generation/dispatch.ts の case "supportPlanA"（interviewNotes 必須）
                        → lib/generation/supportPlanA.ts（スキーマ）＋ supportPlanAPrompt.ts（lib/rules/supportPlanA.ts v0.1）
                        → structured.ts → 原案 SupportPlanADraft（types/supportPlanA.ts）
   [結果] buildSupportPlanAView(draft, meta, roster) → 印刷用ページ → 印刷・PDF（保存は段階3）
   ```
-- **試験**: `lib/supportPlan/*.test.ts`（edition・standalone・coverage・pending・request・format）・`components/supportPlan/*.test.ts(x)`
+- **試験**: `lib/supportPlan/*.test.ts`（edition・guestAccess・standalone・coverage・pending・request・format）・`tests/middleware.test.ts`（道の開け閉め）・
+  `tests/api/generate.route.test.ts`・`tests/api/transcribe.route.test.ts`（ゲストの受け付けと回数の上限）・`components/supportPlan/*.test.ts(x)`
   （画面の通し `SupportPlanAWorkbench.live.test.tsx`・印刷用ページ・様式の描画）・`app/page.test.ts`・`app/(dashboard)/layout.test.tsx`・
   `app/support-plan-a/layout.test.tsx`・操作動画の台本 `lib/manual/supportPlanVideoScript.test.ts`。本物の API の試験は手動 `scripts/supportPlanAGeneration.itest.ts`（課金あり）。
 
@@ -447,7 +455,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - ビルド時の印（`NEXT_PUBLIC_*`）で出し分ける画面・振り分けを足した・変えたとき（例: §3「就労A型 個別支援計画（単独の公開先）」）
 
 ---
-*最終更新: 2026-10-03 / 就労A型の個別支援計画書を単独で公開する版（印 `NEXT_PUBLIC_SUPPORT_PLAN_A=on`・`/support-plan-a`・振り分け・API の流れ）を §3 に追記（枝 `feat/support-plan-a`）*
+*最終更新: 2026-10-05 / ログインなしの試行版（印 `open`・middleware の道の開け閉め・`lib/supportPlan/guestAccess.ts` のゲストの受け付けと回数の上限）を §3 に追記（枝 `feat/support-plan-a`）*
+*2026-10-03 / 就労A型の個別支援計画書を単独で公開する版（印 `NEXT_PUBLIC_SUPPORT_PLAN_A=on`・`/support-plan-a`・振り分け・API の流れ）を §3 に追記（枝 `feat/support-plan-a`）*
 *2026-09-24 / 枝 `redesign/a-restyle`（つくると共通部品の A案の見た目・動きと文字は変えない・送る前の画面の緑の帯と赤い枠は残す）を取り込んだ（今夜の本番公開用）*
 *2026-09-24 / 見張り（tools/run-tests.mjs）が一時レポートを消す所で、日本語を含む置き場所だとプロセスごと落ちていた（合否を出さずに 127）のを unlinkSync に直し、tools の道具に rmSync を戻さない検査を足した*
 *2026-09-24 / 枝 `redesign/a-backend`（API・DB の失敗の扱い・安全テストの見張り・書類の日付の API）を `redesign/a` へ取り込んだ。利用者の一覧の読み方を `lib/clients/listError.ts` の `fetchClientList` に1つにし、利用者の画面の検査6つを安全テストの一覧へ足した。利用者の画面・外枠の検査の「出ている」を `tests/helpers/markup.ts`（jsdom の橋 `shownText`・`isShown` を足した）で読む形に寄せた*
