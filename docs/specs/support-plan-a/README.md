@@ -4,6 +4,7 @@
 > 印刷・PDF に保存する画面。原案はサービス管理責任者が確かめて仕上げる。
 > 進み具合と次の一手の正本は [`../../TASK-LEDGER.md`](../../TASK-LEDGER.md) の T-SPA-01。コードの地図は
 > [`../../CONTEXT-MAP.md`](../../CONTEXT-MAP.md)「就労A型 個別支援計画（単独の公開先）」。
+> ログインなしの試行版を公開する手順（PowerShell に貼るだけ）は [`DEPLOY.md`](DEPLOY.md)。
 
 ## 1. 決まっていること（2026-10-03 吉本さん）
 
@@ -59,12 +60,13 @@
   `NEXT_PUBLIC_` の値は**ビルドの時に**埋め込まれるので、値を変えたら作り直しが要る。
 - 試行（2026-10-04〜）の出し方（decisions-log 2026-10-04・10-05）: 今の CareNote と**同じ Vercel プロジェクト**の別のデプロイ。
   ログイン（Clerk の開発用の環境）・DB（Supabase）・AI の鍵は CareNote 本番と**共用**（吉本さん承認）。
-  公開は吉本さんが PowerShell で実行する（Claude の `vercel deploy --prod` はアプリの安全装置が止めるため）:
-  1. `git archive <コミット> | tar -x -C <空の置き場>` で **.git の無い置き場**を作る（Hobby は、作者のメールが GitHub に
-     登録されていない記録からの公開を「Deployment Blocked」で差し止める ── 2026-10-04 に2回）
-  2. その置き場へ `carenote-ai\.vercel` を写す
-  3. `npx.cmd vercel deploy --cwd "<置き場>" --prod --skip-domain -b NEXT_PUBLIC_SUPPORT_PLAN_A=open -y`
-     （`--skip-domain` で carenote-ai.vercel.app は動かない。管理画面では「Production Staged」）
+  公開は吉本さんが PowerShell で実行する（Claude の `vercel deploy --prod` はアプリの安全装置が止めるため）。
+  **手順は [`DEPLOY.md`](DEPLOY.md) の枠をまるごと貼るだけ**（書き換える所は無い・2026-10-05 にこの形で公開して6点とも OK）。
+  枠がしていること: `main` の最新を zip で **.git の無い置き場**に取り出す（Hobby の「Deployment Blocked」を避ける・
+  日本語のファイル名を化かさない）→ `carenote-ai\.vercel` を写す →
+  `vercel deploy --prod --skip-domain -b NEXT_PUBLIC_SUPPORT_PLAN_A=open`（`--skip-domain` で carenote-ai.vercel.app は動かない。
+  管理画面では「Production Staged」）→ 試行版と本番の6点を確かめる。なぜこの形か（つまずいた所）は DEPLOY.md §5。
+  試行版の URL は公開のリポジトリ（この repo を含む）に書かない（広まると AI の残高が減る）。
 - してはいけないこと: 印を Vercel のプロジェクト設定の環境の値に入れる（次に main へ push したとき、本番が計画書だけの版になる）／
   試行のデプロイを Promote・Instant Rollback の行き先に選ぶ（本番の URL が計画書だけの版に変わる）。
 - 印が on / open の版では: 「/」→ `/support-plan-a`、CareNote の画面（利用者・つくる・点検・使い方）→ `/support-plan-a`。

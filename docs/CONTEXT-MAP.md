@@ -406,6 +406,7 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 
 ### 就労A型 個別支援計画（単独の公開先）（T-SPA-01 段階1・2・2026-10-03・枝 `feat/support-plan-a`）
 > 仕様（決定①〜⑤・画面の流れ・公開の仕方）の正本は [`specs/support-plan-a/README.md`](specs/support-plan-a/README.md)。
+> ログインなしの試行版を公開する手順（吉本さんが PowerShell に貼るだけ・6点の確認つき）は [`specs/support-plan-a/DEPLOY.md`](specs/support-plan-a/DEPLOY.md)。
 > 介護（ケアマネ）の CareNote とは別の利用者（就労継続支援A型）向け。**CareNote のメニュー・名簿・書類の種類の一覧には足さない**（決定②）。
 
 - **印（ビルド時の環境の値）** `NEXT_PUBLIC_SUPPORT_PLAN_A`: `on`（前の名前 `standalone` も同じ）＝計画書だけ・ログインあり／
@@ -455,7 +456,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - ビルド時の印（`NEXT_PUBLIC_*`）で出し分ける画面・振り分けを足した・変えたとき（例: §3「就労A型 個別支援計画（単独の公開先）」）
 
 ---
-*最終更新: 2026-10-05 / ログインなしの試行版（印 `open`・middleware の道の開け閉め・`lib/supportPlan/guestAccess.ts` のゲストの受け付けと回数の上限）を §3 に追記（枝 `feat/support-plan-a`）*
+*最終更新: 2026-10-05 / 試行版の公開手順 `specs/support-plan-a/DEPLOY.md` を §3 の就労A型の節から指す（枝 `feat/support-plan-a`）*
+*2026-10-05 / ログインなしの試行版（印 `open`・middleware の道の開け閉め・`lib/supportPlan/guestAccess.ts` のゲストの受け付けと回数の上限）を §3 に追記（枝 `feat/support-plan-a`）*
 *2026-10-03 / 就労A型の個別支援計画書を単独で公開する版（印 `NEXT_PUBLIC_SUPPORT_PLAN_A=on`・`/support-plan-a`・振り分け・API の流れ）を §3 に追記（枝 `feat/support-plan-a`）*
 *2026-09-24 / 枝 `redesign/a-restyle`（つくると共通部品の A案の見た目・動きと文字は変えない・送る前の画面の緑の帯と赤い枠は残す）を取り込んだ（今夜の本番公開用）*
 *2026-09-24 / 見張り（tools/run-tests.mjs）が一時レポートを消す所で、日本語を含む置き場所だとプロセスごと落ちていた（合否を出さずに 127）のを unlinkSync に直し、tools の道具に rmSync を戻さない検査を足した*
