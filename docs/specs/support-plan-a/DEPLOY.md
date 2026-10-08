@@ -114,7 +114,7 @@
   git -C $repo fetch origin $branch
   if ($LASTEXITCODE -ne 0) { Write-Host '止めました: GitHub から最新を取れませんでした。この画面をClaudeに貼ってください。' -ForegroundColor Red; return }
   # 審査を通った版に固定する（枝のその時の最新ではなく ── 独立審査 2026-10-08 再審査 中3）。新しく審査を通したら、Claude がこの行を直す
-  $pin = '745a8ed1b8e29b76597945826bea6eb3c13e7419'
+  $pin = '398d4d8092bcc55409ade2da82b6825f8ced986d'
   git -C $repo merge-base --is-ancestor $pin $ref 2>$null
   if ($LASTEXITCODE -ne 0) { Write-Host "止めました: 審査を通った版（$($pin.Substring(0, 7))）が $branch に見つかりません。この画面をClaudeに貼ってください。" -ForegroundColor Red; return }
   $sha = $pin
