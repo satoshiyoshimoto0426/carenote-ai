@@ -13,8 +13,14 @@ import { parseVideoScript } from "./videoScript";
  * はここで落とす。
  */
 
-const SPEC = readFileSync(join(process.cwd(), "docs", "MANUAL-VIDEO-SPEC.md"), "utf8");
-const CORPUS = parseVideoScript(SPEC).flatMap((c) => c.scenes.map((s) => s.narration));
+// 辞書は本体マニュアルと、計画書（就労A型）の動画の台本の両方で使う（tools/make-narration.mjs --script=）
+const SCRIPTS = [
+  join("docs", "MANUAL-VIDEO-SPEC.md"),
+  join("docs", "specs", "support-plan-a", "VIDEO-SCRIPT.md"),
+].map((p) => readFileSync(join(process.cwd(), p), "utf8"));
+const CORPUS = SCRIPTS.flatMap((s) =>
+  parseVideoScript(s).flatMap((c) => c.scenes.map((sc) => sc.narration)),
+);
 
 describe("読み辞書", () => {
   it("どの語も台本に実際に出てくる（消し忘れが残らない）", () => {

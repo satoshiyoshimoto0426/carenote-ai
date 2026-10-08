@@ -1,6 +1,8 @@
+import { redirect } from "next/navigation";
 import Rail from "@/components/shell/Rail";
 import TopBar from "@/components/shell/TopBar";
 import { TopBarSlotProvider } from "@/components/shell/TopBarSlot";
+import { isSupportPlanAEdition, SUPPORT_PLAN_A_PATH } from "@/lib/supportPlan/edition";
 
 /**
  * ログイン後の全画面の外枠（A案「作業台」・2026-09-23）。
@@ -23,9 +25,13 @@ import { TopBarSlotProvider } from "@/components/shell/TopBarSlot";
  * レイアウトは globals.css の素の CSS（.app-shell / .app-column / .rail* / .topbar* など）で組む。
  * Tailwind のクラス生成に頼らない理由: (dashboard) 配下のスキャン取りこぼしで
  * md:ml-[220px] 等が本番CSSに入らず、メニューが本文に重なった（2026-07-09）。
- * テスト: app/(dashboard)/layout.test.tsx（帯・共有状態・4項目・送り先の表示が外枠に入っていること）。
+ * 個別支援計画書（就労A型）を単独で公開する版（印 NEXT_PUBLIC_SUPPORT_PLAN_A=on ── lib/supportPlan/edition.ts）では、
+ * この外枠の下の画面（利用者・つくる・点検・使い方）には入れず、計画書の画面（/support-plan-a）へ送る
+ * （2026-10-03 吉本さんの決定②「単独で出す」。URL を打ち込んでも CareNote の画面に入れないようにする）。
+ * テスト: app/(dashboard)/layout.test.tsx（帯・共有状態・4項目・送り先の表示が外枠に入っていること・単独の版で送ること）。
  */
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  if (isSupportPlanAEdition()) redirect(SUPPORT_PLAN_A_PATH);
   return (
     <div className="app-shell">
       <Rail />

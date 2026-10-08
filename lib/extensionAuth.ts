@@ -98,6 +98,9 @@ export interface RateState {
   hits: number[];
 }
 
+/** この数を超えたら、窓の外に出た記録を片付ける（hitRateLimit） */
+export const RATE_STORE_PRUNE_AT = 5_000;
+
 /**
  * 簡易スライディングウィンドウ・レート制限（純粋・store は呼び出し側が保持する Map）。
  * @returns limited=true なら上限超過。
@@ -110,8 +113,14 @@ export function hitRateLimit(
   now: number,
   opts: { limit: number; windowMs: number },
 ): { limited: boolean; remaining: number } {
-  const state = store.get(key) ?? { hits: [] };
   const cutoff = now - opts.windowMs;
+  // 記録が増えたら、窓の外に出た人の記録を片付ける（多くの IP から来ても記憶が増え続けない ── 独立審査 2026-10-08 3回目 小4）
+  if (store.size > RATE_STORE_PRUNE_AT) {
+    for (const [k, s] of store) {
+      if (!s.hits.some((t) => t > cutoff)) store.delete(k);
+    }
+  }
+  const state = store.get(key) ?? { hits: [] };
   const recent = state.hits.filter((t) => t > cutoff);
   if (recent.length >= opts.limit) {
     store.set(key, { hits: recent });

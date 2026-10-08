@@ -3,6 +3,7 @@ import {
   hitRateLimit,
   matchBearer,
   parseExtensionTokens,
+  RATE_STORE_PRUNE_AT,
   type RateState,
   resolveCorsOrigin,
 } from "./extensionAuth";
@@ -86,6 +87,18 @@ describe("resolveCorsOrigin", () => {
 });
 
 describe("hitRateLimit", () => {
+  it("記録が増えたら、窓の外に出た人の記録を片付ける（多くの IP から来ても記憶が増え続けない）", () => {
+    const store = new Map<string, RateState>();
+    const opts = { limit: 3, windowMs: 1_000 };
+    for (let i = 0; i <= RATE_STORE_PRUNE_AT; i++) hitRateLimit(store, `old${i}`, 0, opts);
+    expect(store.size).toBe(RATE_STORE_PRUNE_AT + 1);
+    hitRateLimit(store, "recent", 500, opts); // まだ窓の中: 片付けない
+    expect(store.size).toBe(RATE_STORE_PRUNE_AT + 2);
+    hitRateLimit(store, "new", 5_000, opts); // 窓の外に出た old* は片付く
+    expect(store.has("old0")).toBe(false);
+    expect([...store.keys()]).toEqual(["new"]);
+  });
+
   it("上限までは通し、超過で limited", () => {
     const store = new Map<string, RateState>();
     const opts = { limit: 3, windowMs: 60_000 };

@@ -18,7 +18,7 @@
  *   辞書 = lib/manual/readingDict.ts（ここで見つけた読み間違いを直す場所）
  *   鍵   = .env.local の OPENAI_API_KEY（文字起こし。音声は保存されない）
  *
- * 使い方: node tools/check-reading.mjs <作業フォルダ> [章のslug…]
+ * 使い方: node tools/check-reading.mjs <作業フォルダ> [章のslug…] [--script=<台本>]
  *   出力: <作業フォルダ>/reading-check.json と、食い違いの一覧（標準出力）
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -27,12 +27,15 @@ import { fileURLToPath } from "node:url";
 import { parseVideoScript } from "../lib/manual/videoScript.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const OUT = process.argv[2];
+const ARGS = process.argv.slice(2);
+const scriptArg = ARGS.find((a) => a.startsWith("--script="))?.slice("--script=".length);
+const POS = ARGS.filter((a) => !a.startsWith("--script="));
+const OUT = POS[0];
 if (!OUT) {
   console.error("使い方: node tools/check-reading.mjs <作業フォルダ> [章のslug…]");
   process.exit(1);
 }
-const only = process.argv.slice(3);
+const only = POS.slice(1);
 
 const env = Object.fromEntries(
   readFileSync(join(ROOT, ".env.local"), "utf8")
@@ -51,7 +54,13 @@ if (!env.OPENAI_API_KEY) {
 /** 句読点や空白の差は読み間違いではないので、比べる前に落とす。 */
 const normalize = (s) => (s ?? "").replace(/[、。・「」\s]/g, "");
 
-const chapters = parseVideoScript(readFileSync(join(ROOT, "docs", "MANUAL-VIDEO-SPEC.md"), "utf8"));
+// --script=<台本>（無ければ本体マニュアルの台本）。就労A型の計画書は docs/specs/support-plan-a/VIDEO-SCRIPT.md
+const chapters = parseVideoScript(
+  readFileSync(
+    scriptArg ? join(ROOT, scriptArg) : join(ROOT, "docs", "MANUAL-VIDEO-SPEC.md"),
+    "utf8",
+  ),
+);
 const targets = only.length ? chapters.filter((c) => only.includes(c.slug)) : chapters;
 
 const jobs = [];

@@ -3,11 +3,26 @@
   "_why": "消しても・飛ばしても緑のままだった穴を塞ぐ（2026-09-23 吉本さん決定「安全テストが消えない・飛ばされない見張り」）。テストファイル数の突き合わせだけでは、1つ消すと両方の数が減って合格してしまう。",
   "_how": "protectedDirs=フォルダごとの最低件数（今日の件数。新しいテストは自動で見張り対象になる）。files=名指しで守るファイルと、守る理由。安全テストを足したらここにも足す。消す・弱めるのは吉本さんの承認（横断規約 §2.7-C）のうえで、同じコミットでここを直す。",
   "protectedDirs": [
-    { "dir": "lib/privacy", "minFiles": 13 },
-    { "dir": "tests/api", "minFiles": 12 },
-    { "dir": "lib/recording", "minFiles": 3 },
-    { "dir": "lib/transcribe", "minFiles": 3 },
-    { "dir": "lib/rescue", "minFiles": 2 }
+    {
+      "dir": "lib/privacy",
+      "minFiles": 13
+    },
+    {
+      "dir": "tests/api",
+      "minFiles": 12
+    },
+    {
+      "dir": "lib/recording",
+      "minFiles": 3
+    },
+    {
+      "dir": "lib/transcribe",
+      "minFiles": 3
+    },
+    {
+      "dir": "lib/rescue",
+      "minFiles": 2
+    }
   ],
   "files": [
     {
@@ -277,6 +292,34 @@
     {
       "path": "tools/testManifest.test.ts",
       "why": "この見張り自身の検査（消えると見張りが黙って効かなくなる）"
+    },
+    {
+      "path": "tests/middleware.test.ts",
+      "why": "ログインなしで通す道を、試行版（印 open）の計画書の画面と3つの道だけに限る（印の無い本番では1本も開かない・CareNote の利用者・書類の道は閉じたまま）"
+    },
+    {
+      "path": "lib/supportPlan/guestAccess.test.ts",
+      "why": "試行版でログインしていない人を受け付けるのは計画書づくりだけ・AI は1日30回と同じ IP の1時間の上限で止める（残高を使い切られて本番の AI まで止まらないため）"
+    },
+    {
+      "path": "lib/supportPlan/edition.test.ts",
+      "why": "印の読み方（打ち間違いは off に倒す・ログインなしになるのは open だけ）"
+    },
+    {
+      "path": "app/support-plan-a/layout.test.tsx",
+      "why": "印の無い本番では計画書の画面ごと 404・試行版では「架空のデータだけで」の注意を出す"
+    },
+    {
+      "path": "lib/privacy/maskSpeed.test.ts",
+      "why": "黒塗りが送れる上限の長さの意地悪な文でもすぐ終わる（型の作り込みで長さの2乗の時間になり、ログインなしの道から計算の枠を使い切られて本番まで止まるのを防ぐ・2026-10-08 重大1）"
+    },
+    {
+      "path": "tests/api/transcribeGuestBudget.route.test.ts",
+      "why": "試行版のゲストの文字起こしの1日の枠を、回数ではなく音声の大きさの合計で数える（大きなファイルで枠の何倍も外へ送らせない・2026-10-08 再審査 中2(b)）"
+    },
+    {
+      "path": "tests/noRealDeploymentUrl.test.ts",
+      "why": "公開のリポジトリに本物のデプロイごとの URL（ログインなしの試行版など）を載せない（2026-10-08 3回目 重大2・試験のファイルに本物の試行版の URL を書いて送ってしまった）"
     }
   ]
 }

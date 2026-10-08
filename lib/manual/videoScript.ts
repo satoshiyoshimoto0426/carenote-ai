@@ -39,7 +39,8 @@ export interface VideoChapter {
   scenes: VideoScene[];
 }
 
-const CHAPTER_HEADING = /^###\s+(.+?)\s*──\s*`(ch\d+)\.mp4`/;
+/** 章の slug: CareNote の本体マニュアルは chN、就労A型の計画書（docs/specs/support-plan-a/VIDEO-SCRIPT.md）は spaN。 */
+const CHAPTER_HEADING = /^###\s+(.+?)\s*──\s*`((?:ch|spa)\d+)\.mp4`/;
 const TABLE_ROW = /^\|(.+)\|\s*$/;
 /** 場面割りの表の見出し行。§5 には別の表（⑦章の「エラー画面の出し方」）も混ざるので、これで見分ける。 */
 const SCENE_HEADER = ["#", "映す画面", "操作", "ナレーション", "秒"];

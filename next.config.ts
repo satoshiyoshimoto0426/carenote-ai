@@ -1,4 +1,9 @@
 import type { NextConfig } from "next";
+import { pilotFlagBuildError } from "./lib/supportPlan/edition";
+
+// 計画書の試行版の印が、GitHub からのビルド（本番の自動公開）に入っていたら止める（独立審査 2026-10-08 中3）
+const pilotFlagError = pilotFlagBuildError(process.env);
+if (pilotFlagError) throw new Error(pilotFlagError);
 
 const nextConfig: NextConfig = {
   // ワークスペース根の誤推定対策: 親フォルダに別の package-lock.json があるため、

@@ -6,7 +6,7 @@ import {
   type RateState,
   resolveCorsOrigin,
 } from "@/lib/extensionAuth";
-import { GenerateRequestError, generateFromBody } from "@/lib/generation/dispatch";
+import { assertInputSize, GenerateRequestError, generateFromBody } from "@/lib/generation/dispatch";
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskRequestBody } from "@/lib/privacy/maskBody";
 import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
@@ -92,6 +92,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return cors(NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 }));
   }
   let body: Record<string, unknown> = parsed;
+
+  // 大きさと欄の数は黒塗りの**前**に調べる（黒塗りは長さに応じて時間がかかる ── /api/generate・/api/preview と同じ。
+  // 独立審査 2026-10-08 3回目 小3 の横展開）
+  try {
+    assertInputSize(body);
+  } catch (e) {
+    if (e instanceof GenerateRequestError) {
+      audit({ result: "bad_request", label, status: e.status });
+      return cors(NextResponse.json({ error: e.message }, { status: e.status }));
+    }
+    throw e;
+  }
 
   // 名簿なしの黒塗り（型置換＋漏れ検査）。残っていれば 422 で止める（fail-closed）
   const vault = createPiiVault();

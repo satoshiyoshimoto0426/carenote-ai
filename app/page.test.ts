@@ -15,12 +15,27 @@ vi.mock("next/navigation", () => ({ redirect }));
 
 beforeEach(() => {
   redirect.mockClear();
+  vi.unstubAllEnvs();
 });
 
 describe("RootPage（/）", () => {
-  it("利用者の一覧（/clients）へ送る", () => {
+  it("印が無い今の CareNote 本番では、利用者の一覧（/clients）へ送る", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "");
     RootPage();
     expect(redirect).toHaveBeenCalledTimes(1);
     expect(redirect).toHaveBeenCalledWith("/clients");
+  });
+
+  it("就労A型を単独で公開する版（NEXT_PUBLIC_SUPPORT_PLAN_A=on・決定②）では、計画書の画面だけへ送る", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "on");
+    RootPage();
+    expect(redirect).toHaveBeenCalledTimes(1);
+    expect(redirect).toHaveBeenCalledWith("/support-plan-a");
+  });
+
+  it("前の名前（standalone）で設定してあっても、同じく計画書の画面へ送る", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "standalone");
+    RootPage();
+    expect(redirect).toHaveBeenCalledWith("/support-plan-a");
   });
 });

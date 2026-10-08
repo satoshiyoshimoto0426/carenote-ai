@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * /api/transcribe の入口の検査（2026-09-17 新設）。
@@ -135,5 +135,84 @@ describe("回数の数え方", () => {
     const body = await last?.json();
     expect(body.error).toContain("1時間");
     expect(body.error).toContain("30回");
+  });
+});
+
+/**
+ * ログインなしの試行版（印 NEXT_PUBLIC_SUPPORT_PLAN_A=open ── 2026-10-05 吉本さんの決定）。
+ * 計画書の画面の録音は、ログインしていない人でも文字にする。そのかわり IP アドレスごとに1時間30回・
+ * 全員で1日 約20時間分（音声の大きさの合計）までに絞る（音声を外へ出す回数と費用の歯止め ── lib/supportPlan/guestAccess.ts）。
+ */
+describe("ログインなしの試行版（印 open）", () => {
+  function postFrom(ip: string) {
+    const req = post("call.mp3", 1024);
+    req.headers.set("x-forwarded-for", ip);
+    return req;
+  }
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("ログインしていなくても文字にする", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    const res = await POST(postFrom("198.51.100.1"));
+    expect(res.status).toBe(200);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("印が on（ログインが要る版）なら、ログインしていない人は 401 のまま", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "on");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    const res = await POST(postFrom("198.51.100.2"));
+    expect(res.status).toBe(401);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("1回の音声は画面の録音の1区切り（3MB＋余裕）までで、それを超えると外へ送らずに 413", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    const { GUEST_AUDIO_MAX_BYTES } = await import("@/lib/supportPlan/guestAccess");
+    const ok = post("call.mp3", GUEST_AUDIO_MAX_BYTES);
+    ok.headers.set("x-forwarded-for", "198.51.100.39");
+    expect((await POST(ok)).status).toBe(200);
+    const big = post("call.mp3", GUEST_AUDIO_MAX_BYTES + 1);
+    big.headers.set("x-forwarded-for", "198.51.100.40");
+    const res = await POST(big);
+    expect(res.status).toBe(413);
+    expect((await res.json()).error).toContain("MB");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("別のサイトからの頼みは 403（外へ送らない）", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    const req = postFrom("198.51.100.41");
+    req.headers.set("sec-fetch-site", "cross-site");
+    expect((await POST(req)).status).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("本番の名前（carenote-ai.vercel.app）では、印が open でもログインが要る（401）", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(1024)], { type: "audio/mpeg" }), "call.mp3");
+    const req = new NextRequest("https://carenote-ai.vercel.app/api/transcribe", {
+      method: "POST",
+      body: form,
+    });
+    expect((await POST(req)).status).toBe(401);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("同じ IP アドレスからは1時間30回で止め、隣の人は使える", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    for (let i = 0; i < 30; i++) expect((await POST(postFrom("203.0.113.30"))).status).toBe(200);
+    const over = await POST(postFrom("203.0.113.30"));
+    expect(over.status).toBe(429);
+    expect((await over.json()).error).toContain("1時間");
+    expect((await POST(postFrom("203.0.113.31"))).status).toBe(200);
   });
 });
