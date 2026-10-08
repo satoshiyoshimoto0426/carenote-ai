@@ -169,6 +169,39 @@ describe("ログインなしの試行版（印 open）", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("1回の音声は画面の録音の1区切り（3MB）までで、それを超えると外へ送らずに 413", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    const big = post("call.mp3", 3.5 * 1024 * 1024);
+    big.headers.set("x-forwarded-for", "198.51.100.40");
+    const res = await POST(big);
+    expect(res.status).toBe(413);
+    expect((await res.json()).error).toContain("MB");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("別のサイトからの頼みは 403（外へ送らない）", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    const req = postFrom("198.51.100.41");
+    req.headers.set("sec-fetch-site", "cross-site");
+    expect((await POST(req)).status).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("本番の名前（carenote-ai.vercel.app）では、印が open でもログインが要る（401）", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    clerk.auth.mockResolvedValue({ userId: null, orgId: null });
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(1024)], { type: "audio/mpeg" }), "call.mp3");
+    const req = new NextRequest("https://carenote-ai.vercel.app/api/transcribe", {
+      method: "POST",
+      body: form,
+    });
+    expect((await POST(req)).status).toBe(401);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("同じ IP アドレスからは1時間30回で止め、隣の人は使える", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
     clerk.auth.mockResolvedValue({ userId: null, orgId: null });

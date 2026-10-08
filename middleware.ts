@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { isSupportPlanAOpen, SUPPORT_PLAN_A_PATH } from "@/lib/supportPlan/edition";
+import { isOpenPilotAt, SUPPORT_PLAN_A_PATH } from "@/lib/supportPlan/edition";
 
 // 拡張API（generate のみ）は Clerk セッションを持たない拡張が叩くため公開扱いにし、
 // ルート内の Bearer トークン認証（lib/extensionAuth）で守る。これを外すと Clerk が
@@ -16,7 +16,9 @@ const isPublicRoute = createRouteMatcher([
 // ログインなしの試行版（印 NEXT_PUBLIC_SUPPORT_PLAN_A=open ── lib/supportPlan/edition.ts・2026-10-05 吉本さんの決定）だけで
 // ログインなしに通す道。計画書の画面と、それが使う3つの道に限る（ワイルドカードにしない）。
 // 3つの道は、ログインしていない人を中で絞る（計画書づくりだけ・回数の上限 ── lib/supportPlan/guestAccess.ts）。
-// 印の無い今の CareNote 本番では、この一覧は使われない（isSupportPlanAOpen() はビルド時に false で埋め込まれる）。
+// 印の無い今の CareNote 本番では、この一覧は使われない: NEXT_PUBLIC_ の値は、ビルドの時に**在る**ものだけが埋め込まれ、
+// 無ければ実行時の値を読む（本番はどちらにも無い＝off）。本番の名前（carenote-ai.vercel.app など）では、印が open の版が
+// 付け替えられても開かない（edition.ts の isOpenPilotAt ── 独立審査 2026-10-08 小1・中3）。
 const isOpenPilotRoute = createRouteMatcher([
   "/",
   SUPPORT_PLAN_A_PATH,
@@ -28,7 +30,7 @@ const isApiRoute = createRouteMatcher(["/api/(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (isPublicRoute(req)) return;
-  const open = isSupportPlanAOpen();
+  const open = isOpenPilotAt(req.nextUrl.hostname);
   if (open && isOpenPilotRoute(req)) return;
   const { userId } = await auth();
   if (!userId) {

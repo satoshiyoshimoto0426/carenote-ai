@@ -51,3 +51,46 @@ export function isSupportPlanAOpen(
 ): boolean {
   return supportPlanAMode(value) === "open";
 }
+
+/**
+ * CareNote 本番の名前（Vercel の本番の別名）。印が open の版がここへ付け替えられても（管理画面の Promote・Instant Rollback）、
+ * この名前ではログインなしの道を開かない（独立審査 2026-10-08 中3 ── 文書の注意だけでなく機械の歯止め）。
+ * 試行版は `vercel deploy --prod --skip-domain` の、デプロイごとの URL（carenote-<英数字>-….vercel.app）で使う。
+ */
+export const PRODUCTION_HOSTS: readonly string[] = [
+  "carenote-ai.vercel.app",
+  "carenote-ai-satoshiyoshimoto0426s-projects.vercel.app",
+  "carenote-ai-git-main-satoshiyoshimoto0426s-projects.vercel.app",
+];
+
+/**
+ * ログインなしの道を、この名前（hostname）で開いてよいか。印が open で、しかも本番の名前ではないときだけ true。
+ * 本番の名前は PRODUCTION_HOSTS と、Vercel が渡す VERCEL_PROJECT_PRODUCTION_URL（あれば。https:// の有無は問わない）。
+ * 使う所: middleware.ts（道の開け閉め）と、3つの道（app/api/{preview,generate,transcribe}/route.ts）のゲストの受け付け。
+ */
+export function isOpenPilotAt(
+  hostname: string,
+  value: string | undefined = process.env.NEXT_PUBLIC_SUPPORT_PLAN_A,
+  productionUrl: string | undefined = process.env.VERCEL_PROJECT_PRODUCTION_URL,
+): boolean {
+  if (!isSupportPlanAOpen(value)) return false;
+  const host = hostname.toLowerCase();
+  if (PRODUCTION_HOSTS.includes(host)) return false;
+  const production = productionUrl
+    ?.replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .toLowerCase();
+  return !(production && host === production);
+}
+
+/**
+ * ビルドの歯止め（next.config.ts が呼ぶ）: GitHub からのビルド（main への push で走る本番の自動公開。VERCEL_GIT_COMMIT_SHA がある）に
+ * 計画書の印が入っていたら、止める理由の文を返す。印を Vercel のプロジェクト設定の環境の値に入れてしまうと、次の push で
+ * 本番が計画書だけの版（open ならログインなし）になるため（独立審査 2026-10-08 中3）。
+ * 試行版は .git の無い置き場から CLI で出す（DEPLOY.md）ので、VERCEL_GIT_COMMIT_SHA が無く、この歯止めには当たらない。
+ */
+export function pilotFlagBuildError(env: Record<string, string | undefined>): string | null {
+  if (!isSupportPlanAEdition(env.NEXT_PUBLIC_SUPPORT_PLAN_A) || !env.VERCEL_GIT_COMMIT_SHA)
+    return null;
+  return `計画書の印 NEXT_PUBLIC_SUPPORT_PLAN_A=${env.NEXT_PUBLIC_SUPPORT_PLAN_A} が GitHub からのビルドに入っています。本番が計画書だけの版になるのを防ぐため、ビルドを止めました。Vercel のプロジェクト設定の環境の値から消してください（試行版の出し方は docs/specs/support-plan-a/DEPLOY.md）。`;
+}

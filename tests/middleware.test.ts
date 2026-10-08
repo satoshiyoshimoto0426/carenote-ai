@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join, sep } from "node:path";
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -23,9 +25,9 @@ const { default: middleware } = await import("@/middleware");
 const run = middleware as unknown as Handler;
 
 /** ログインしていない人（signedIn=false）／している人の頼みを通し、通したか・どこへ送ったかを返す */
-async function visit(path: string, signedIn = false) {
+async function visit(path: string, signedIn = false, host = "pilot.example") {
   const auth = vi.fn(async () => ({ userId: signedIn ? "u1" : null }));
-  const res = await run(auth, new NextRequest(`https://pilot.example${path}`));
+  const res = await run(auth, new NextRequest(`https://${host}${path}`));
   const location = res?.headers.get("location") ?? null;
   return { passed: res === undefined, location: location ? new URL(location).pathname : null };
 }
@@ -74,19 +76,34 @@ describe("ログインなしの試行版（印 open）", () => {
     }
   });
 
-  it("CareNote の利用者・書類の道はログインが要るまま（ログイン画面へ送る）", async () => {
+  it("CareNote の API は、許した3つ（と拡張の道）以外すべてログインが要るまま（app/api の道を全部たどる）", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
-    for (const p of [
-      "/api/clients",
-      "/api/clients/aliases",
-      "/api/documents",
-      "/api/transcripts",
-      "/api/evaluate",
-      "/api/rescue",
-      "/api/blob-upload",
-      "/api/history",
-    ]) {
+    // 名指しの一覧だと、将来足した道を見落とす（独立審査 2026-10-08 小3）。app/api の route.ts から道を作る
+    const apiDir = join(process.cwd(), "app", "api");
+    const routes = readdirSync(apiDir, { recursive: true })
+      .map(String)
+      .filter((f) => f.endsWith(`${sep}route.ts`) || f === "route.ts")
+      .map((f) => `/api/${f.split(sep).slice(0, -1).join("/")}`.replace(/\[[^\]]+\]/g, "x"));
+    const allowed = new Set([
+      "/api/preview",
+      "/api/generate",
+      "/api/transcribe",
+      "/api/extension/generate",
+    ]);
+    const closed = routes.filter((r) => !allowed.has(r));
+    expect(closed.length).toBeGreaterThan(10);
+    for (const p of closed) {
       expect(await visit(p), p).toEqual({ passed: false, location: "/sign-in" });
+    }
+  });
+
+  it("本番の名前（carenote-ai.vercel.app）では、印が open の版が付け替えられても開かない", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    for (const p of ["/", "/support-plan-a", "/api/preview", "/api/generate", "/api/transcribe"]) {
+      expect(await visit(p, false, "carenote-ai.vercel.app"), p).toEqual({
+        passed: false,
+        location: "/sign-in",
+      });
     }
   });
 

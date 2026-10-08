@@ -1,10 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { type NextRequest, NextResponse } from "next/server";
 import { hitRateLimit, type RateState } from "@/lib/extensionAuth";
-import { isSupportPlanAOpen } from "@/lib/supportPlan/edition";
+import { isOpenPilotAt } from "@/lib/supportPlan/edition";
 import {
   clientIpOf,
-  GUEST_TRANSCRIBE_DAILY_LIMIT,
+  GUEST_AUDIO_MAX_BYTES,
+  GUEST_TRANSCRIBE_DAILY_BYTES,
+  guestRequestProblem,
   newGuestQuotaStore,
   takeGuestTurn,
 } from "@/lib/supportPlan/guestAccess";
@@ -40,9 +42,15 @@ export async function POST(req: NextRequest) {
   const { userId } = await auth();
   // ログインなしの試行版（印 NEXT_PUBLIC_SUPPORT_PLAN_A=open）だけ、ログインしていない人の録音も文字にする
   // （計画書の画面の録音 ── 2026-10-05 吉本さんの決定）。回数は IP アドレスごと・1日の上限で絞る
-  const guest = !userId && isSupportPlanAOpen();
+  // 本番の名前では、印が open でもログインなしにしない（edition.ts の isOpenPilotAt）
+  const guest = !userId && isOpenPilotAt(req.nextUrl.hostname);
   if (!userId && !guest) {
     return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  }
+  // ゲストは、試行版の画面そのものからの頼みだけ（別のサイトに来た人のブラウザを使わせない）
+  if (guest) {
+    const problem = guestRequestProblem(req.headers, "form");
+    if (problem) return NextResponse.json({ error: problem.error }, { status: problem.status });
   }
 
   const transcriber = createOpenAiTranscriber();
@@ -68,6 +76,15 @@ export async function POST(req: NextRequest) {
 
   const check = validateAudio(file.name, file.size);
   if (!check.ok) return NextResponse.json({ error: check.reason }, { status: 400 });
+  // ゲストは1回の音声を画面の録音の1区切りの大きさまでにする（1回で長い音声を外へ出させない ── 独立審査 2026-10-08 中1）
+  if (guest && file.size > GUEST_AUDIO_MAX_BYTES) {
+    return NextResponse.json(
+      {
+        error: `試行版で1回に文字にできる音声は約${Math.round(GUEST_AUDIO_MAX_BYTES / 1024 / 1024)}MBまでです。画面の録音を使うか、音声を短く分けてください。`,
+      },
+      { status: 413 },
+    );
+  }
 
   // 数えるのは**外へ送る直前**。形式違い・大きさ超過・鍵未設定で弾いたものは1回に数えない
   // （押し間違いで枠を使い切ると、直したときには送れなくなる ── 独立審査 2026-09-17）
@@ -82,12 +99,20 @@ export async function POST(req: NextRequest) {
       );
     }
   } else {
-    // ゲスト（試行版）は IP アドレスごとに1時間 RATE_LIMIT.limit 回・全員で1日 GUEST_TRANSCRIBE_DAILY_LIMIT 回まで
-    const turn = takeGuestTurn(guestTranscribes, clientIpOf(req.headers), Date.now(), {
-      daily: GUEST_TRANSCRIBE_DAILY_LIMIT,
-      perIpHourly: RATE_LIMIT.limit,
-      label: "文字起こし",
-    });
+    // ゲスト（試行版）は IP アドレスごとに1時間 RATE_LIMIT.limit 回・全員で1日 GUEST_TRANSCRIBE_DAILY_BYTES まで
+    // 1日の枠は音声の大きさの合計で数える（回数だと1回を大きくしてすり抜けられた ── 独立審査 2026-10-08 中1）
+    const turn = takeGuestTurn(
+      guestTranscribes,
+      clientIpOf(req.headers),
+      Date.now(),
+      {
+        daily: GUEST_TRANSCRIBE_DAILY_BYTES,
+        perIpHourly: RATE_LIMIT.limit,
+        label: "文字起こし",
+        dailyText: "約20時間分",
+      },
+      file.size,
+    );
     if (!turn.ok) return NextResponse.json({ error: turn.error }, { status: 429 });
   }
 

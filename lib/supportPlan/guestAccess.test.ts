@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   clientIpOf,
+  GUEST_AUDIO_MAX_BYTES,
   GUEST_PLAN_DAILY_LIMIT,
   GUEST_PLAN_HOURLY_PER_IP,
+  GUEST_TRANSCRIBE_DAILY_BYTES,
+  guestRequestProblem,
+  ipv6Prefix,
   isGuestPlanRequest,
   newGuestQuotaStore,
   releaseGuestTurn,
@@ -21,6 +25,7 @@ const LIMITS = {
   daily: GUEST_PLAN_DAILY_LIMIT,
   perIpHourly: GUEST_PLAN_HOURLY_PER_IP,
   label: "原案づくり",
+  dailyText: `${GUEST_PLAN_DAILY_LIMIT}回`,
 };
 const NOON_JST = Date.parse("2026-10-05T03:00:00Z");
 
@@ -115,5 +120,91 @@ describe("頼んできた人の IP アドレス", () => {
   it("無ければ x-real-ip、どちらも無ければ unknown（全員で1つの枠＝きつい側）", () => {
     expect(clientIpOf(new Headers({ "x-real-ip": "198.51.100.7" }))).toBe("198.51.100.7");
     expect(clientIpOf(new Headers())).toBe("unknown");
+  });
+});
+
+describe("重さのある数え方（文字起こしは音声の大きさの合計で数える）", () => {
+  const AUDIO = { daily: 10_000, perIpHourly: 100, label: "文字起こし", dailyText: "約20時間分" };
+
+  it("1日の枠を超える1回は、数えずに止める（枠の手前まで使ったあとの大きな1回もすり抜けない）", () => {
+    const store = newGuestQuotaStore();
+    expect(takeGuestTurn(store, "10.0.0.1", NOON_JST, AUDIO, 6_000).ok).toBe(true);
+    const over = takeGuestTurn(store, "10.0.0.2", NOON_JST, AUDIO, 5_000);
+    expect(over.ok).toBe(false);
+    expect(over.ok ? "" : over.error).toContain("約20時間分");
+    expect(store.daily.used).toBe(6_000);
+    expect(takeGuestTurn(store, "10.0.0.2", NOON_JST, AUDIO, 4_000).ok).toBe(true);
+  });
+
+  it("戻すときも重さぶん戻し、0 より下にはしない", () => {
+    const store = newGuestQuotaStore();
+    takeGuestTurn(store, "10.0.0.1", NOON_JST, AUDIO, 300);
+    releaseGuestTurn(store, NOON_JST, 1_000);
+    expect(store.daily.used).toBe(0);
+  });
+
+  it("1回の音声の上限は画面の録音の1区切りの大きさで、1日の枠はその区切りの何十本ぶんもある", () => {
+    expect(GUEST_AUDIO_MAX_BYTES).toBeLessThanOrEqual(4 * 1024 * 1024);
+    expect(GUEST_TRANSCRIBE_DAILY_BYTES / GUEST_AUDIO_MAX_BYTES).toBeGreaterThan(50);
+  });
+});
+
+describe("IPv6 は前の64ビットで数える（区画の中で住所を変えても同じ人）", () => {
+  it("省略の無い形・省略のある形の両方を、前の4つの区切りにまとめる", () => {
+    expect(ipv6Prefix("2001:0db8:0001:0002:aaaa:bbbb:cccc:dddd")).toBe("2001:db8:1:2::/64");
+    expect(ipv6Prefix("2001:db8:1:2::1")).toBe("2001:db8:1:2::/64");
+    expect(ipv6Prefix("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(ipv6Prefix("::1")).toBe("0:0:0:0::/64");
+  });
+
+  it("同じ区画の別の住所は、同じ数え先になる", () => {
+    const a = clientIpOf(new Headers({ "x-forwarded-for": "2001:db8:1:2::aaaa" }));
+    const b = clientIpOf(new Headers({ "x-forwarded-for": "2001:db8:1:2:ffff:1:2:3" }));
+    expect(a).toBe(b);
+  });
+
+  it("IPv4 と読めない形は、そのまま", () => {
+    expect(ipv6Prefix("203.0.113.5")).toBe("203.0.113.5");
+    expect(ipv6Prefix("1:2:3")).toBe("1:2:3");
+    expect(ipv6Prefix("1::2::3")).toBe("1::2::3");
+  });
+});
+
+describe("ゲストの頼みは、試行版の画面そのものからだけ受け付ける（別のサイトに使わせない）", () => {
+  const same = { host: "pilot.example", "content-type": "application/json" };
+
+  it("同じ画面からの JSON の頼みは通す（Origin・Sec-Fetch-Site が自分と同じ）", () => {
+    const h = new Headers({
+      ...same,
+      origin: "https://pilot.example",
+      "sec-fetch-site": "same-origin",
+    });
+    expect(guestRequestProblem(h, "json")).toBeNull();
+  });
+
+  it("ブラウザではない頼み（Origin も Sec-Fetch-Site も無い）は通す ── 送り主自身の IP で数えられる", () => {
+    expect(guestRequestProblem(new Headers(same), "json")).toBeNull();
+  });
+
+  it("別のサイトからの頼みは 403（Origin が違う・Sec-Fetch-Site が cross-site・読めない Origin）", () => {
+    const crossSites: Record<string, string>[] = [
+      { origin: "https://evil.example" },
+      { "sec-fetch-site": "cross-site" },
+      { "sec-fetch-site": "same-site" },
+      { origin: "null" },
+    ];
+    for (const extra of crossSites) {
+      expect(guestRequestProblem(new Headers({ ...same, ...extra }), "json")?.status).toBe(403);
+    }
+  });
+
+  it("JSON ではない頼みは 415（別のサイトのページが確かめなしに送れる形を断る）。音声のファイルは確かめない", () => {
+    const text = new Headers({ host: "pilot.example", "content-type": "text/plain" });
+    expect(guestRequestProblem(text, "json")?.status).toBe(415);
+    const form = new Headers({
+      host: "pilot.example",
+      "content-type": "multipart/form-data; boundary=x",
+    });
+    expect(guestRequestProblem(form, "form")).toBeNull();
   });
 });

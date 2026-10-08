@@ -219,6 +219,76 @@ describe("ログインなしの試行版（印 open）", () => {
     expect(ai.generateFromBody).not.toHaveBeenCalled();
   });
 
+  it("AI を呼んだあとの失敗（500）は、1日の回数を戻さない（費用がかかっているため）", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-01-04T03:00:00Z"));
+    ai.generateFromBody.mockRejectedValueOnce(new Error("AI の会社が落ちた"));
+    expect((await generate(await asGuest("/api/generate", PLAN))).status).toBe(500);
+    for (let i = 0; i < 29; i++) {
+      expect((await generate(await asGuest("/api/generate", PLAN))).status).toBe(200);
+    }
+    expect((await generate(await asGuest("/api/generate", PLAN))).status).toBe(429);
+  });
+
+  it("黒塗りで止まった頼み（422）は、AI を呼ばず回数にも数えない", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-01-05T03:00:00Z"));
+    // 13桁の数字の並びは型で消えず、漏れ検査で止まる（名簿の無いゲストでも止まる）
+    const leak = { documentType: "supportPlanA", interviewNotes: "番号は1234567890123です。" };
+    expect((await generate(await asGuest("/api/generate", leak))).status).toBe(422);
+    for (let i = 0; i < 30; i++) {
+      expect((await generate(await asGuest("/api/generate", PLAN))).status).toBe(200);
+    }
+    expect(ai.generateFromBody).toHaveBeenCalledTimes(30);
+  });
+
+  it("上限を超える長さの文は、黒塗りの前に 413 で断る（原案づくり・送る前の確認とも。独立審査 2026-10-08 重大1）", async () => {
+    const huge = { documentType: "supportPlanA", interviewNotes: "a".repeat(200_000) };
+    for (const [route, path] of [
+      [generate, "/api/generate"],
+      [preview, "/api/preview"],
+    ] as const) {
+      const started = performance.now();
+      const res = await route(await asGuest(path, huge));
+      expect(res.status).toBe(413);
+      // 黒塗りに通していれば数十秒かかる長さ。すぐ返ること＝黒塗りの前で止めていること
+      expect(performance.now() - started).toBeLessThan(2_000);
+    }
+    expect(ai.generateFromBody).not.toHaveBeenCalled();
+  });
+
+  it("別のサイトからの頼みは 403、JSON でない頼みは 415（別のサイトに来た人のブラウザを使わせない）", async () => {
+    for (const [route, path] of [
+      [generate, "/api/generate"],
+      [preview, "/api/preview"],
+    ] as const) {
+      const cross = await asGuest(path, PLAN);
+      cross.headers.set("origin", "https://evil.example");
+      expect((await route(cross)).status).toBe(403);
+      const text = await asGuest(path, PLAN);
+      text.headers.set("content-type", "text/plain");
+      expect((await route(text)).status).toBe(415);
+    }
+    expect(ai.generateFromBody).not.toHaveBeenCalled();
+  });
+
+  it("本番の名前（carenote-ai.vercel.app）では、印が open でもログインが要る（401）", async () => {
+    const { auth } = await import("@clerk/nextjs/server");
+    for (const [route, path] of [
+      [generate, "/api/generate"],
+      [preview, "/api/preview"],
+    ] as const) {
+      vi.mocked(auth).mockResolvedValueOnce({ userId: null, orgId: null } as never);
+      const req = new NextRequest(`https://carenote-ai.vercel.app${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(PLAN),
+      });
+      expect((await route(req)).status).toBe(401);
+    }
+    expect(ai.generateFromBody).not.toHaveBeenCalled();
+  });
+
   it("送る前の確認も、CareNote の書類はログインが要る（401）", async () => {
     const res = await preview(await asGuest("/api/preview", MEMO));
     expect(res.status).toBe(401);

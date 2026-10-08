@@ -16,18 +16,19 @@
 
 ```powershell
 & {
-  $ref  = 'origin/main'
+  $branch = 'main'
+  $ref  = "origin/$branch"
   $repo = Join-Path $env:USERPROFILE 'OneDrive\デスクトップ\MaouCastle\carenote-ai'
   $prod = 'https://carenote-ai.vercel.app'
   if (-not (Test-Path (Join-Path $repo '.vercel\project.json'))) { Write-Host '止めました: carenote-ai のフォルダ（.vercel 入り）が見つかりません。この画面をClaudeに貼ってください。' -ForegroundColor Red; return }
   Write-Host "1/5 フォルダ: $repo"
 
-  git -C $repo fetch origin main
+  git -C $repo fetch origin $branch
   if ($LASTEXITCODE -ne 0) { Write-Host '止めました: GitHub から最新を取れませんでした。この画面をClaudeに貼ってください。' -ForegroundColor Red; return }
   $sha = "$(git -C $repo rev-parse $ref)".Trim()
   git -C $repo cat-file -e ($sha + ':lib/supportPlan/guestAccess.ts') 2>$null
-  if ($LASTEXITCODE -ne 0) { Write-Host '止めました: main にまだログインなしの試行版が入っていません（Pull Request が main に入ってから貼ってください）。' -ForegroundColor Red; return }
-  Write-Host "2/5 公開する版: $($sha.Substring(0, 7))（main の最新・$(git -C $repo log -1 --format=%ci $sha)）"
+  if ($LASTEXITCODE -ne 0) { Write-Host "止めました: $branch にまだログインなしの試行版が入っていません（Pull Request が入ってから貼ってください）。" -ForegroundColor Red; return }
+  Write-Host "2/5 公開する版: $($sha.Substring(0, 7))（$branch の最新・$(git -C $repo log -1 --format=%ci $sha)）"
 
   $work = Join-Path $env:TEMP ('spa-open-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
   New-Item -ItemType Directory -Path $work | Out-Null
@@ -45,7 +46,7 @@
   Write-Host "3/5 置き場: $work"
 
   Write-Host '4/5 Vercel へ公開します（数分かかります）...'
-  $out = @(npx.cmd --yes vercel deploy --cwd $work --prod --skip-domain -b NEXT_PUBLIC_SUPPORT_PLAN_A=open -y)
+  $out = @(npx.cmd --yes vercel@48.10.10 deploy --cwd $work --prod --skip-domain -b NEXT_PUBLIC_SUPPORT_PLAN_A=open -y)
   $code = $LASTEXITCODE
   $u = $null
   foreach ($line in $out) { if ("$line" -match '(https://)?([A-Za-z0-9.-]+\.vercel\.app)') { $u = 'https://' + $Matches[2] } }
@@ -79,6 +80,100 @@
   $all = (Show (($r.Path -like '/sign-in*') -or $r.Code -eq 401) '試しの版: CareNote の名簿の道はログインが要るまま' $r) -and $all
   $r = Get-Final "$u/api/preview" 'Post' $json
   $all = (Show ($r.Code -eq 200 -and $r.Path -eq '/api/preview' -and $r.Body.Contains('"fields"')) '試しの版: ログインなしで「送る前の確認」が動く（AI は呼ばない）' $r) -and $all
+  $big = '{"documentType":"supportPlanA","interviewNotes":"' + ('a' * 70000) + '"}'
+  $r = Get-Final "$u/api/preview" 'Post' $big
+  $all = (Show ($r.Code -eq 413) '試しの版: 上限を超える長さの文は、黒塗りの前に断る（413）' $r) -and $all
+  $r = $null
+  try { $x = Invoke-WebRequest -Uri "$u/api/preview" -Method Post -UseBasicParsing -Headers @{ Origin = 'https://evil.example' } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($json)); $r = [pscustomobject]@{ Code = [int]$x.StatusCode; Host = ''; Path = '' } }
+  catch { $c = 0; if ($_.Exception.Response) { $c = [int]$_.Exception.Response.StatusCode }; $r = [pscustomobject]@{ Code = $c; Host = ''; Path = '' } }
+  $all = (Show ($r.Code -eq 403) '試しの版: 別のサイトからの頼みは断る（403）' $r) -and $all
+  $r = Get-Final "$prod/support-plan-a"
+  $all = (Show ($r.Path -like '/sign-in*') '本番: 計画書の画面はログインが要るまま（今までどおり）' $r) -and $all
+  $r = Get-Final "$prod/api/preview" 'Post' $json
+  $all = (Show (-not ($r.Code -eq 200 -and $r.Path -eq '/api/preview')) '本番: ログインなしの「送る前の確認」は通らない（今までどおり）' $r) -and $all
+  if ($all) { Write-Host '全部 OK です。ブラウザで試しの版を開きます。' -ForegroundColor Green; Start-Process "$u/support-plan-a" }
+  else { Write-Host 'NG があります。この画面をそのままClaudeに貼ってください。' -ForegroundColor Red }
+}
+```
+
+### 2b. （急ぎ）main に入る前の直しを出す枠 ── 作業用の枝 `feat/support-plan-a` の最新を出す
+
+独立審査で見つかった直し（2026-10-08 の重大1など）のように、Pull Request が main に入るのを待てないときだけ使う。
+上の枠との違いは1行目の `$branch` だけ（書き換える所は無い）。main に入ったら、上の枠に戻る。
+
+```powershell
+& {
+  $branch = 'feat/support-plan-a'
+  $ref  = "origin/$branch"
+  $repo = Join-Path $env:USERPROFILE 'OneDrive\デスクトップ\MaouCastle\carenote-ai'
+  $prod = 'https://carenote-ai.vercel.app'
+  if (-not (Test-Path (Join-Path $repo '.vercel\project.json'))) { Write-Host '止めました: carenote-ai のフォルダ（.vercel 入り）が見つかりません。この画面をClaudeに貼ってください。' -ForegroundColor Red; return }
+  Write-Host "1/5 フォルダ: $repo"
+
+  git -C $repo fetch origin $branch
+  if ($LASTEXITCODE -ne 0) { Write-Host '止めました: GitHub から最新を取れませんでした。この画面をClaudeに貼ってください。' -ForegroundColor Red; return }
+  $sha = "$(git -C $repo rev-parse $ref)".Trim()
+  git -C $repo cat-file -e ($sha + ':lib/supportPlan/guestAccess.ts') 2>$null
+  if ($LASTEXITCODE -ne 0) { Write-Host "止めました: $branch にまだログインなしの試行版が入っていません（Pull Request が入ってから貼ってください）。" -ForegroundColor Red; return }
+  Write-Host "2/5 公開する版: $($sha.Substring(0, 7))（$branch の最新・$(git -C $repo log -1 --format=%ci $sha)）"
+
+  $work = Join-Path $env:TEMP ('spa-open-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+  New-Item -ItemType Directory -Path $work | Out-Null
+  git -c core.autocrlf=false -C $repo archive --format=zip -o "$work.zip" $sha
+  if ($LASTEXITCODE -ne 0) { Write-Host '止めました: 版の取り出しに失敗しました。この画面をClaudeに貼ってください。' -ForegroundColor Red; return }
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  try {
+    [System.IO.Compression.ZipFile]::ExtractToDirectory("$work.zip", $work, [System.Text.Encoding]::UTF8)
+    $zip = [System.IO.Compression.ZipFile]::Open("$work.zip", 'Read', [System.Text.Encoding]::UTF8)
+    $missing = @($zip.Entries | Where-Object { $_.Name -and -not (Test-Path -LiteralPath (Join-Path $work $_.FullName)) }).Count
+    $zip.Dispose()
+  } catch { Write-Host "止めました: 版の展開に失敗しました（$($_.Exception.Message)）。この画面をClaudeに貼ってください。" -ForegroundColor Red; return }
+  if ($missing -ne 0) { Write-Host "止めました: 展開できなかったファイルが $missing 個あります。この画面をClaudeに貼ってください。" -ForegroundColor Red; return }
+  Copy-Item (Join-Path $repo '.vercel') -Destination $work -Recurse
+  Write-Host "3/5 置き場: $work"
+
+  Write-Host '4/5 Vercel へ公開します（数分かかります）...'
+  $out = @(npx.cmd --yes vercel@48.10.10 deploy --cwd $work --prod --skip-domain -b NEXT_PUBLIC_SUPPORT_PLAN_A=open -y)
+  $code = $LASTEXITCODE
+  $u = $null
+  foreach ($line in $out) { if ("$line" -match '(https://)?([A-Za-z0-9.-]+\.vercel\.app)') { $u = 'https://' + $Matches[2] } }
+  if ($code -ne 0 -or -not $u) { Write-Host '公開で止まったか、URL が読めませんでした。この画面をそのままClaudeに貼ってください。' -ForegroundColor Red; return }
+  Write-Host "    試行版の URL: $u （公開のリポジトリや SNS には書かない）" -ForegroundColor Green
+
+  Write-Host '5/5 確かめます（AI は呼ばないので1日30回の枠は減りません）...'
+  $json = '{"documentType":"supportPlanA","interviewNotes":"（架空の面談・動作確認）本人は週5日の勤務を続けたいと話した。"}'
+  function Get-Final($url, $method = 'Get', $body = $null) {
+    $s = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+    try {
+      if ($body) { $r = Invoke-WebRequest -Uri $url -Method $method -WebSession $s -UseBasicParsing -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) }
+      else { $r = Invoke-WebRequest -Uri $url -Method $method -WebSession $s -UseBasicParsing }
+      [pscustomobject]@{ Code = [int]$r.StatusCode; Host = $r.BaseResponse.ResponseUri.Host; Path = $r.BaseResponse.ResponseUri.AbsolutePath; Body = [string]$r.Content }
+    } catch {
+      $c = 0; if ($_.Exception.Response) { $c = [int]$_.Exception.Response.StatusCode }
+      [pscustomobject]@{ Code = $c; Host = ''; Path = ''; Body = [string]$_.Exception.Message }
+    }
+  }
+  function Show($ok, $label, $r) {
+    if ($ok) { Write-Host "OK  $label" -ForegroundColor Green } else { Write-Host "NG  $label  (code=$($r.Code) host=$($r.Host) path=$($r.Path))" -ForegroundColor Red }
+    return $ok
+  }
+  $all = $true
+  $r = Get-Final "$u/support-plan-a"
+  $all = (Show ($r.Code -eq 200 -and $r.Path -eq '/support-plan-a' -and $r.Body.Contains('試行版（ログインなし）')) '試しの版: 計画書の画面がログインなしで開き、「架空のデータだけで」の注意が出る' $r) -and $all
+  if ($r.Code -eq 401 -or $r.Host -like '*vercel.com') { Write-Host '    → Vercel の「デプロイの保護」がかかっていて、外の人は開けない状態です' -ForegroundColor Yellow }
+  $r = Get-Final "$u/clients"
+  $all = (Show ($r.Path -eq '/support-plan-a') '試しの版: CareNote の画面へ来た人は計画書の画面へ送られる' $r) -and $all
+  $r = Get-Final "$u/api/clients"
+  $all = (Show (($r.Path -like '/sign-in*') -or $r.Code -eq 401) '試しの版: CareNote の名簿の道はログインが要るまま' $r) -and $all
+  $r = Get-Final "$u/api/preview" 'Post' $json
+  $all = (Show ($r.Code -eq 200 -and $r.Path -eq '/api/preview' -and $r.Body.Contains('"fields"')) '試しの版: ログインなしで「送る前の確認」が動く（AI は呼ばない）' $r) -and $all
+  $big = '{"documentType":"supportPlanA","interviewNotes":"' + ('a' * 70000) + '"}'
+  $r = Get-Final "$u/api/preview" 'Post' $big
+  $all = (Show ($r.Code -eq 413) '試しの版: 上限を超える長さの文は、黒塗りの前に断る（413）' $r) -and $all
+  $r = $null
+  try { $x = Invoke-WebRequest -Uri "$u/api/preview" -Method Post -UseBasicParsing -Headers @{ Origin = 'https://evil.example' } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($json)); $r = [pscustomobject]@{ Code = [int]$x.StatusCode; Host = ''; Path = '' } }
+  catch { $c = 0; if ($_.Exception.Response) { $c = [int]$_.Exception.Response.StatusCode }; $r = [pscustomobject]@{ Code = $c; Host = ''; Path = '' } }
+  $all = (Show ($r.Code -eq 403) '試しの版: 別のサイトからの頼みは断る（403）' $r) -and $all
   $r = Get-Final "$prod/support-plan-a"
   $all = (Show ($r.Path -like '/sign-in*') '本番: 計画書の画面はログインが要るまま（今までどおり）' $r) -and $all
   $r = Get-Final "$prod/api/preview" 'Post' $json
@@ -92,11 +187,14 @@
 
 ## 3. 出てくる行の読み方
 
-- `1/5`〜`5/5` が順に出て、最後に緑の「全部 OK です」が出れば完了。ブラウザで試行版の画面が開く。
+- `1/5`〜`5/5` が順に出て、8つの確かめがすべて緑の「OK」になり、最後に「全部 OK です」が出れば完了。ブラウザで試行版の画面が開く。
 - 赤い「止めました」「NG」が出たら、そこで止まっている。画面の文字をそのまま Claude に貼る。
 - 試行版の URL（`https://carenote-….vercel.app`）は**公開のリポジトリ・SNS・資料の配布版に書かない**。carenote-ai は公開のリポジトリで、
   URL が広まると知らない人が AI を使い、残高（CareNote 本番と共用）が減る。回数の上限（1日30回）は目安の歯止め（README §3）。
-  人に渡すのは営業の場で直接。前の URL も、新しく公開した後もしばらく動くので、同じように扱う。
+  人に渡すのは営業の場で直接。
+- **前の試行版は、消すまでずっと動く**（同じ鍵で・回数の記憶もデプロイごとに別なので、残る数だけ1日の枠が増える）。新しく出して
+  「全部 OK」になったら、前の試行版の URL を Claude に伝える。Claude が消す命令（`vercel@48.10.10 remove <URL> --safe --yes`。
+  `--safe` は本番の名前が付いたデプロイを消さない印）を作るので、吉本さんが PowerShell で実行する（消す操作は吉本さんの確認のうえ）。
 
 ## 4. してはいけないこと
 
@@ -116,4 +214,5 @@
 | 公開した URL をそのまま使って6点を確かめる | Claude の開発環境からは `vercel.app` に届かず、外から確かめられない。確かめは本番の側（今までどおりログインが要るか）も含める |
 
 ---
+*2026-10-08 / 独立審査の直し: 公開の道具の版を 48.10.10 に固定（小5）・前の試行版を消す手順（小6）・確かめに「長すぎる文は 413」「別のサイトは 403」の2点を足した・作業用の枝から出す枠（2b）を足した*
 *2026-10-05 新設 / 試行版（e8f2bcf）を吉本さんの PC から公開して6点とも OK だった枠を、`main` の最新を出す形にして残した*

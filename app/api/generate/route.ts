@@ -7,16 +7,17 @@ import {
   resolveScope,
   SCOPE_ERROR_MESSAGE,
 } from "@/lib/db/clients";
-import { GenerateRequestError, generateFromBody } from "@/lib/generation/dispatch";
+import { assertInputSize, GenerateRequestError, generateFromBody } from "@/lib/generation/dispatch";
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
 import { maskRequestBody } from "@/lib/privacy/maskBody";
 import { createPiiVault, restoreDeep } from "@/lib/privacy/vault";
 import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
-import { isSupportPlanAOpen } from "@/lib/supportPlan/edition";
+import { isOpenPilotAt } from "@/lib/supportPlan/edition";
 import {
   clientIpOf,
   GUEST_PLAN_DAILY_LIMIT,
   GUEST_PLAN_HOURLY_PER_IP,
+  guestRequestProblem,
   isGuestPlanRequest,
   newGuestQuotaStore,
   releaseGuestTurn,
@@ -37,8 +38,15 @@ const guestPlans = newGuestQuotaStore();
  */
 export async function POST(req: NextRequest) {
   const { userId, orgId } = await auth();
-  if (!userId && !isSupportPlanAOpen()) {
+  // 本番の名前（carenote-ai.vercel.app など）では、印が open でもログインなしにしない（edition.ts の isOpenPilotAt）
+  const open = isOpenPilotAt(req.nextUrl.hostname);
+  if (!userId && !open) {
     return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  }
+  // ゲストは、試行版の画面そのものからの JSON の頼みだけ（別のサイトに来た人のブラウザを使わせない）
+  if (!userId) {
+    const problem = guestRequestProblem(req.headers, "json");
+    if (problem) return NextResponse.json({ error: problem.error }, { status: problem.status });
   }
 
   let scope: DataScope | null = null;
@@ -54,9 +62,19 @@ export async function POST(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
   let body: Record<string, unknown> = parsed;
   // ログインしていない人に許すのは、試行版の計画書づくりだけ（CareNote の書類はログインが要る）
-  const guest = !scope && isGuestPlanRequest(userId, body.documentType);
+  const guest = !scope && isGuestPlanRequest(userId, body.documentType, open);
   if (!scope && !guest) {
     return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  }
+  // 大きさは黒塗りの**前**に調べる。黒塗りは文の長さに応じて時間がかかるので、上限を超えた文を黒塗りに通すと
+  // それだけで計算の枠を使える（独立審査 2026-10-08 重大1）。上限は AI へ送る時と同じ（dispatch.ts）
+  try {
+    assertInputSize(body);
+  } catch (e) {
+    if (e instanceof GenerateRequestError) {
+      return NextResponse.json({ error: e.message }, { status: e.status });
+    }
+    throw e;
   }
 
   // 黒塗り（SPEC §7・docs/specs/call-pipeline.md §2.1）: 名簿置換→型置換→自己点検を maskPii で
@@ -98,6 +116,7 @@ export async function POST(req: NextRequest) {
       daily: GUEST_PLAN_DAILY_LIMIT,
       perIpHourly: GUEST_PLAN_HOURLY_PER_IP,
       label: "原案づくり",
+      dailyText: `${GUEST_PLAN_DAILY_LIMIT}回`,
     });
     if (!turn.ok) return NextResponse.json({ error: turn.error }, { status: 429 });
   }

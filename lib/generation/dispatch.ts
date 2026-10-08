@@ -31,7 +31,7 @@ const MAX_FIELD_CHARS = 40_000;
 const MAX_TOTAL_CHARS = 60_000;
 
 /** body 内の全文字列フィールドの長さを検査し、上限超過なら 413 を投げる。 */
-function assertInputSize(body: Record<string, unknown>): void {
+export function assertInputSize(body: Record<string, unknown>): void {
   let total = 0;
   for (const value of Object.values(body)) {
     if (typeof value !== "string") continue;

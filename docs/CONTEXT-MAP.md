@@ -418,8 +418,10 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - **ログインなしの試行版（印 open）** `middleware.ts` が「/」・`/support-plan-a`・`/api/preview`・`/api/generate`・`/api/transcribe` だけを
   ログインなしで通し、CareNote の画面へ来た人は計画書の画面へ送る（CareNote の API はログインが要るまま）。3つの道は
   `lib/supportPlan/guestAccess.ts` でログインしていない人を絞る: 計画書づくり（documentType `supportPlanA`）だけ・名簿は読まない・
-  原案づくりは全員で1日30回／同じ IP から1時間10回・文字起こしは1日240回／同じ IP から1時間30回（サーバーの実体ごとの記憶＝目安の歯止め）。
-  IP は Vercel が上書きする `x-forwarded-for` の先頭。外枠は「架空のデータだけで」の注意を出す。
+  原案づくりは全員で1日30回／同じ IP から1時間10回・文字起こしは1回3MB・1日 約20時間分／同じ IP から1時間30回（サーバーの実体ごとの記憶＝目安の歯止め）。
+  IP は Vercel が上書きする `x-forwarded-for` の先頭（IPv6 は前の64ビット）。文の長さは黒塗りの前に断る（413）。別のサイトからの頼みは 403。
+  本番の名前（`edition.ts` の `isOpenPilotAt`）では開かない・GitHub からのビルドに印があれば `next.config.ts` が止める。外枠は「架空のデータだけで」の注意を出す。
+  公開の手順は `docs/specs/support-plan-a/DEPLOY.md`（吉本さんが PowerShell に貼る枠）。
 - **画面** `app/support-plan-a/layout.tsx`（CareNote の外枠 Rail・TopBar を使わない専用の外枠: 「個別支援計画（就労A型）」＋ Clerk の UserButton）→
   `page.tsx` → `components/supportPlan/SupportPlanAWorkbench.tsx`（クライアントの部品。何も保存しない）。
   - 入力欄 → 1章の名簿の値（`rosterOf`）・AI への「利用者の基本情報」の文（`clientInfoOf`）・様式の外の値（`metaOf`）: `lib/supportPlan/standalone.ts`
@@ -456,7 +458,8 @@ main へはまだ入っていない。ハーネスの変更なので PR＋独立
 - ビルド時の印（`NEXT_PUBLIC_*`）で出し分ける画面・振り分けを足した・変えたとき（例: §3「就労A型 個別支援計画（単独の公開先）」）
 
 ---
-*最終更新: 2026-10-05 / 試行版の公開手順 `specs/support-plan-a/DEPLOY.md` を §3 の就労A型の節から指す（枝 `feat/support-plan-a`）*
+*最終更新: 2026-10-08 / 独立審査の直し（黒塗りのメールの型の長さの上限・黒塗りの前の大きさの検査・別サイトの拒否・本番の名前の歯止め・ビルドの歯止め・ゲストの音声の上限）を §3 に追記*
+*2026-10-05 / 試行版の公開手順 `specs/support-plan-a/DEPLOY.md` を §3 の就労A型の節から指す（枝 `feat/support-plan-a`）*
 *2026-10-05 / ログインなしの試行版（印 `open`・middleware の道の開け閉め・`lib/supportPlan/guestAccess.ts` のゲストの受け付けと回数の上限）を §3 に追記（枝 `feat/support-plan-a`）*
 *2026-10-03 / 就労A型の個別支援計画書を単独で公開する版（印 `NEXT_PUBLIC_SUPPORT_PLAN_A=on`・`/support-plan-a`・振り分け・API の流れ）を §3 に追記（枝 `feat/support-plan-a`）*
 *2026-09-24 / 枝 `redesign/a-restyle`（つくると共通部品の A案の見た目・動きと文字は変えない・送る前の画面の緑の帯と赤い枠は残す）を取り込んだ（今夜の本番公開用）*
