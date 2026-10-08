@@ -7,7 +7,6 @@ import {
   resolveScope,
   SCOPE_ERROR_MESSAGE,
 } from "@/lib/db/clients";
-import { hitRateLimit, type RateState } from "@/lib/extensionAuth";
 import { assertInputSize, GenerateRequestError } from "@/lib/generation/dispatch";
 import { findNameCandidates, type NameCandidate } from "@/lib/privacy/candidates";
 import { PiiLeakError } from "@/lib/privacy/leakCheck";
@@ -17,14 +16,15 @@ import { REQUEST_PARSE_ERROR_MESSAGE, readJsonObject } from "@/lib/requestBody";
 import { isOpenPilotAt } from "@/lib/supportPlan/edition";
 import {
   clientIpOf,
-  GUEST_PLAN_FIELDS,
-  GUEST_PREVIEW_HOURLY_PER_IP,
   guestRequestProblem,
   isGuestPlanRequest,
+  newGuestMaskGate,
+  pickGuestPlanFields,
+  takeGuestMaskTurn,
 } from "@/lib/supportPlan/guestAccess";
 
-/** ログインなしの試行版で、ログインしていない人の「送る前の確認」を IP ごとに数える置き場（サーバーの実体ごとの記憶） */
-const guestPreviews = new Map<string, RateState>();
+/** ログインなしの試行版で、ログインしていない人の黒塗りを数える置き場（サーバーの実体ごとの記憶） */
+const guestMasks = newGuestMaskGate();
 
 /**
  * 送る前に見る（docs/specs/call-pipeline.md 第2段）。
@@ -67,30 +67,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const body = await readJsonObject(req);
-  if (!body) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
-  // ログインしていない人に許すのは、ログインなしの試行版の計画書づくりだけ（lib/supportPlan/guestAccess.ts）。
-  // AI は呼ばないので回数は数えない（数えるのは /api/generate）。
-  if (!scope && !isGuestPlanRequest(userId, body.documentType, open)) {
+  const parsed = await readJsonObject(req);
+  if (!parsed) return NextResponse.json({ error: REQUEST_PARSE_ERROR_MESSAGE }, { status: 400 });
+  // ログインしていない人に許すのは、ログインなしの試行版の計画書づくりだけ（lib/supportPlan/guestAccess.ts）
+  if (!scope && !isGuestPlanRequest(userId, parsed.documentType, open)) {
     return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
   }
-  if (!scope) {
-    // ゲストは使う欄だけを残し、同じ IP からの回数も絞る（AI は呼ばないが、黒塗りの計算を何回でも使わせない ── 再審査 中1・重大A）
-    for (const k of Object.keys(body)) if (!GUEST_PLAN_FIELDS.includes(k)) delete body[k];
-    const rate = hitRateLimit(guestPreviews, clientIpOf(req.headers), Date.now(), {
-      limit: GUEST_PREVIEW_HOURLY_PER_IP,
-      windowMs: 60 * 60 * 1000,
-    });
-    if (rate.limited) {
-      return NextResponse.json(
-        {
-          error:
-            "短い時間に続けて送る前の確認が使われたため、少し止めています。1時間ほど空けてから、もう一度お試しください。",
-        },
-        { status: 429 },
-      );
-    }
-  }
+  // ゲストは使う欄だけを残す（中身の無い欄を大量に並べて黒塗りの計算を使わせない ── 再審査 中1）
+  const body = scope ? parsed : pickGuestPlanFields(parsed);
   // 大きさは黒塗りの**前**に調べる（/api/generate と同じ上限。黒塗りは長さに応じて時間がかかるので、
   // 上限の無い文を通すと計算の枠を使い切れた ── 独立審査 2026-10-08 重大1）
   try {
@@ -100,6 +84,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: e.message }, { status: e.status });
     }
     throw e;
+  }
+  // ゲストの黒塗りは、黒塗りの**前**に回数を数える（AI は呼ばないが計算を使う ── 3回目 重大1）
+  if (!scope) {
+    const turn = takeGuestMaskTurn(guestMasks, clientIpOf(req.headers), Date.now());
+    if (!turn.ok) return NextResponse.json({ error: turn.error }, { status: 429 });
   }
 
   // 名簿が読めなければ確認画面も出さない（実名が残った文章を「送っていい」と見せないため）。

@@ -33,8 +33,13 @@ export const GUEST_AUDIO_MAX_BYTES = SEGMENT_MAX_BYTES + 512 * 1024;
  * 「約20時間分」は画面の録音（32kbps）での見込み。もっと低い音質のファイルなら、同じ大きさでより長く送れる（再審査 小5 ── 承知のうえ）。
  */
 export const GUEST_TRANSCRIBE_DAILY_BYTES = 240 * estimateBytes(SEGMENT_MAX_MS);
-/** 送る前の確認の、同じ IP アドレスからの1時間の上限（AI は呼ばないが、黒塗りの計算を何回でも使わせない ── 再審査 重大A の3） */
-export const GUEST_PREVIEW_HOURLY_PER_IP = 60;
+/**
+ * ゲストに黒塗り（送る前の確認・原案づくりの両方）を使わせる回数の上限。黒塗りは AI を呼ばないが計算を使うので、
+ * **黒塗りの前に**数える（独立審査 2026-10-08 3回目 重大1: 原案づくりは AI の回数しか数えておらず、重い文の黒塗りを何回でも走らせられた）。
+ * 同じ IP から1時間60回、このサーバーの実体で全員あわせて1分30回（IP を変えられても総量を抑える）。
+ */
+export const GUEST_MASK_HOURLY_PER_IP = 60;
+export const GUEST_MASK_PER_MINUTE_TOTAL = 30;
 /** ゲストの原案づくりで受け取る欄（それ以外は黒塗りの前に捨てる ── 欄の数で計算を使わせない・再審査 中1） */
 export const GUEST_PLAN_FIELDS: readonly string[] = [
   "documentType",
@@ -140,6 +145,49 @@ export function isGuestPlanRequest(
   open: boolean,
 ): boolean {
   return open && !userId && documentType === "supportPlanA";
+}
+
+/** ゲストの黒塗りの回数の置き場（ルートごとに1つ持つ。サーバーの実体ごとの記憶） */
+export interface GuestMaskGate {
+  perIp: Map<string, RateState>;
+  /** 全員あわせた1分ごとの数（分の番号で数え直す。時計が戻っても前の分の数を持ち越さない） */
+  minute: { key: number; used: number };
+}
+
+export function newGuestMaskGate(): GuestMaskGate {
+  return { perIp: new Map(), minute: { key: -1, used: 0 } };
+}
+
+/**
+ * ゲストの黒塗り1回を数える（黒塗りの**前**に呼ぶ）。上限に届いていれば数えずに、画面にそのまま出せる日本語の文を返す。
+ * 先に全体の1分の枠を見る（全体で止まっているときに、その人の1時間の枠まで減らさない）。
+ */
+export function takeGuestMaskTurn(
+  gate: GuestMaskGate,
+  ip: string,
+  now: number,
+): { ok: true } | { ok: false; error: string } {
+  const key = Math.floor(now / 60_000);
+  if (gate.minute.key !== key) gate.minute = { key, used: 0 };
+  if (gate.minute.used >= GUEST_MASK_PER_MINUTE_TOTAL) {
+    return {
+      ok: false,
+      error: "いま試行版が混み合っています。1分ほど待ってから、もう一度お試しください。",
+    };
+  }
+  const rate = hitRateLimit(gate.perIp, ip, now, {
+    limit: GUEST_MASK_HOURLY_PER_IP,
+    windowMs: HOUR_MS,
+  });
+  if (rate.limited) {
+    return {
+      ok: false,
+      error:
+        "短い時間に続けて使われたため、少し止めています。1時間ほど空けてから、もう一度お試しください。",
+    };
+  }
+  gate.minute.used += 1;
+  return { ok: true };
 }
 
 /** ゲストの回数の置き場（ルートごとに1つ持つ。サーバーの実体ごとの記憶） */

@@ -120,7 +120,7 @@
   $sha = $pin
   git -C $repo cat-file -e ($sha + ':lib/supportPlan/guestAccess.ts') 2>$null
   if ($LASTEXITCODE -ne 0) { Write-Host "止めました: $branch にまだログインなしの試行版が入っていません（Pull Request が入ってから貼ってください）。" -ForegroundColor Red; return }
-  Write-Host "2/5 公開する版: $($sha.Substring(0, 7))（$branch の最新・$(git -C $repo log -1 --format=%ci $sha)）"
+  Write-Host "2/5 公開する版: $($sha.Substring(0, 7))（審査を通した版・$(git -C $repo log -1 --format=%ci $sha)）"
 
   $work = Join-Path $env:TEMP ('spa-open-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
   New-Item -ItemType Directory -Path $work | Out-Null

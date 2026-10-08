@@ -136,6 +136,8 @@ describe("ログインなしの試行版（印 open）", () => {
   let ipSeq = 0;
   /** ログインしていない人の頼み（IP は毎回変える ── 同じ IP の1時間の上限に先に当たらないため） */
   async function asGuest(path: string, body: unknown, ip = `198.51.100.${++ipSeq % 250}`) {
+    // 時計を止めている試験では、1回ごとに2.5秒進める（全員あわせた「1分30回」に先に当たらず、見たい上限で止まるように）
+    if (vi.isFakeTimers()) vi.setSystemTime(Date.now() + 2_500);
     const { auth } = await import("@clerk/nextjs/server");
     vi.mocked(auth).mockResolvedValueOnce({ userId: null, orgId: null } as never);
     const req = post(path, body);
@@ -283,12 +285,56 @@ describe("ログインなしの試行版（印 open）", () => {
   });
 
   it("送る前の確認も、同じ IP からは1時間60回で止める（AI は呼ばないが、黒塗りの計算を何回でも使わせない）", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-02-01T03:00:00Z"));
     for (let i = 0; i < 60; i++) {
       expect((await preview(await asGuest("/api/preview", PLAN, "203.0.113.77"))).status).toBe(200);
     }
     const over = await preview(await asGuest("/api/preview", PLAN, "203.0.113.77"));
     expect(over.status).toBe(429);
     expect((await preview(await asGuest("/api/preview", PLAN, "203.0.113.78"))).status).toBe(200);
+  });
+
+  it("原案づくりも、黒塗りの**前**に同じ IP から1時間60回で止める（漏れ検査で止まる文も数える ── 3回目 重大1）", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-02-02T03:00:00Z"));
+    // 漏れ検査で 422 になる文（AI の回数には数えられない）でも、黒塗りの回数には数える
+    const leak = { documentType: "supportPlanA", interviewNotes: "番号は1234567890123です。" };
+    for (let i = 0; i < 60; i++) {
+      expect((await generate(await asGuest("/api/generate", leak, "203.0.113.88"))).status).toBe(
+        422,
+      );
+    }
+    vi.mocked(maskRequestBody).mockClear();
+    const over = await generate(await asGuest("/api/generate", leak, "203.0.113.88"));
+    expect(over.status).toBe(429);
+    expect(vi.mocked(maskRequestBody)).not.toHaveBeenCalled();
+    expect(ai.generateFromBody).not.toHaveBeenCalled();
+  });
+
+  it("全員あわせて1分30回を超えると、IP が違っても黒塗りの前に 429（IP を変えて総量を増やせない）", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-02-03T03:00:00Z"));
+    // 同じ1分の中で（時計を進めず）別々の IP から送る
+    const at = Date.now();
+    for (let i = 0; i < 30; i++) {
+      vi.setSystemTime(at);
+      const req = post("/api/preview", PLAN);
+      req.headers.set("x-forwarded-for", `192.0.2.${i}`);
+      const { auth } = await import("@clerk/nextjs/server");
+      vi.mocked(auth).mockResolvedValueOnce({ userId: null, orgId: null } as never);
+      expect((await preview(req)).status).toBe(200);
+    }
+    vi.mocked(maskRequestBody).mockClear();
+    vi.setSystemTime(at);
+    const req = post("/api/preview", PLAN);
+    req.headers.set("x-forwarded-for", "192.0.2.200");
+    const { auth } = await import("@clerk/nextjs/server");
+    vi.mocked(auth).mockResolvedValueOnce({ userId: null, orgId: null } as never);
+    const over = await preview(req);
+    expect(over.status).toBe(429);
+    expect((await over.json()).error).toContain("混み合って");
+    expect(vi.mocked(maskRequestBody)).not.toHaveBeenCalled();
   });
 
   it("別のサイトからの頼みは 403、JSON でない頼みは 415（別のサイトに来た人のブラウザを使わせない）", async () => {

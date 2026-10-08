@@ -19,9 +19,11 @@ import {
   GUEST_PLAN_HOURLY_PER_IP,
   guestRequestProblem,
   isGuestPlanRequest,
+  newGuestMaskGate,
   newGuestQuotaStore,
   pickGuestPlanFields,
   releaseGuestTurn,
+  takeGuestMaskTurn,
   takeGuestTurn,
 } from "@/lib/supportPlan/guestAccess";
 
@@ -30,6 +32,8 @@ export const maxDuration = 300;
 
 /** ログインなしの試行版で、ログインしていない人の原案づくりを数える置き場（lib/supportPlan/guestAccess.ts） */
 const guestPlans = newGuestQuotaStore();
+/** ログインしていない人の黒塗りを数える置き場（黒塗りの前に数える ── 3回目 重大1） */
+const guestMasks = newGuestMaskGate();
 
 /**
  * Webアプリ（Clerkログイン）からの生成リクエスト。
@@ -78,6 +82,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: e.message }, { status: e.status });
     }
     throw e;
+  }
+  // ゲストの黒塗りは、黒塗りの**前**に回数を数える（AI の回数は黒塗りの後でしか数えないので、それだけだと
+  // 重い文の黒塗りや、漏れ検査で止まる文を何回でも走らせられた ── 独立審査 2026-10-08 3回目 重大1）
+  if (guest) {
+    const turn = takeGuestMaskTurn(guestMasks, clientIpOf(req.headers), Date.now());
+    if (!turn.ok) return NextResponse.json({ error: turn.error }, { status: 429 });
   }
 
   // 黒塗り（SPEC §7・docs/specs/call-pipeline.md §2.1）: 名簿置換→型置換→自己点検を maskPii で

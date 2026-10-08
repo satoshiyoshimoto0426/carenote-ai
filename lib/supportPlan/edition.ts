@@ -67,6 +67,7 @@ export const PRODUCTION_HOSTS: readonly string[] = [
  * 「本番の名前を除く」形だと、知らない別名・末尾の点つきの名前などで開いてしまう余地が残る）。
  * - 試行版は `vercel deploy --prod --skip-domain` の、デプロイごとの URL（carenote-<英数字8〜12字>-satoshiyoshimoto0426s-projects.vercel.app）で使う。
  *   本番の別名（carenote-ai…）は「carenote-」の後が英数字だけではないので当たらない。末尾の点つきなど形の違う名前も当たらない（閉じる側）。
+ *   このプロジェクトのデプロイごとの URL は、本番・プレビューも含めて全部この形に当たる。開くかどうかは印（open）で決まる（3回目 小5）。
  * - 手元での動作確認（localhost・127.0.0.1）。
  * 試行版に覚えやすい別名を付けるときは、ここに名指しで足す（足さなければログインが要るまま＝止まる側）。
  */

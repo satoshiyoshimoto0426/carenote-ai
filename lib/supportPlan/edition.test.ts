@@ -62,7 +62,7 @@ describe("単独で公開する版の印", () => {
 });
 
 describe("ログインなしの道は、開いてよい名前（試行版のデプロイごとの URL）でだけ開く（独立審査 2026-10-08 中3・再審査 小1）", () => {
-  const PILOT = "carenote-xq96d2x2f-satoshiyoshimoto0426s-projects.vercel.app";
+  const PILOT = "carenote-abcd1234e-satoshiyoshimoto0426s-projects.vercel.app";
 
   it("試行版のデプロイごとの URL（大文字でも）と、手元の確認（localhost）では開く", () => {
     expect(isOpenPilotAt(PILOT, "open")).toBe(true);
@@ -80,7 +80,7 @@ describe("ログインなしの道は、開いてよい名前（試行版のデ�
       "carenote-ai-git-feat-supp-0d6b39-satoshiyoshimoto0426s-projects.vercel.app",
       `evil-${PILOT}`,
       `${PILOT}.evil.example`,
-      "carenote-xq96d2x2f-someone-else.vercel.app",
+      "carenote-abcd1234e-someone-else.vercel.app",
     ]) {
       expect(isOpenPilotAt(host, "open"), host).toBe(false);
     }

@@ -2,15 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   clientIpOf,
   GUEST_AUDIO_MAX_BYTES,
+  GUEST_MASK_HOURLY_PER_IP,
+  GUEST_MASK_PER_MINUTE_TOTAL,
   GUEST_PLAN_DAILY_LIMIT,
   GUEST_PLAN_HOURLY_PER_IP,
   GUEST_TRANSCRIBE_DAILY_BYTES,
   guestRequestProblem,
   ipv6Prefix,
   isGuestPlanRequest,
+  newGuestMaskGate,
   newGuestQuotaStore,
   pickGuestPlanFields,
   releaseGuestTurn,
+  takeGuestMaskTurn,
   takeGuestTurn,
   tokyoDay,
 } from "./guestAccess";
@@ -238,5 +242,46 @@ describe("再審査（2026-10-08）の小さな直し", () => {
   it("ゲストの1回の音声の上限は、区切りの3MBに余裕を足したもので、ログインした人の4MBより小さい", () => {
     expect(GUEST_AUDIO_MAX_BYTES).toBeGreaterThan(3 * 1024 * 1024);
     expect(GUEST_AUDIO_MAX_BYTES).toBeLessThan(4 * 1024 * 1024);
+  });
+});
+
+describe("黒塗りの回数（黒塗りの前に数える ── 3回目 重大1）", () => {
+  it("全員あわせて1分の上限で止め、次の分には数え直す", () => {
+    const gate = newGuestMaskGate();
+    const t = Date.parse("2026-10-08T03:00:10Z");
+    for (let i = 0; i < GUEST_MASK_PER_MINUTE_TOTAL; i++) {
+      expect(takeGuestMaskTurn(gate, `10.1.0.${i}`, t).ok).toBe(true);
+    }
+    const over = takeGuestMaskTurn(gate, "10.1.9.9", t);
+    expect(over.ok).toBe(false);
+    expect(over.ok ? "" : over.error).toContain("混み合って");
+    expect(takeGuestMaskTurn(gate, "10.1.9.9", t + 60_000).ok).toBe(true);
+  });
+
+  it("全体で止めたときは、その人の1時間の枠を減らさない", () => {
+    const gate = newGuestMaskGate();
+    const t = Date.parse("2026-10-08T03:00:10Z");
+    for (let i = 0; i < GUEST_MASK_PER_MINUTE_TOTAL; i++) takeGuestMaskTurn(gate, `10.2.0.${i}`, t);
+    takeGuestMaskTurn(gate, "10.2.9.9", t);
+    expect(gate.perIp.has("10.2.9.9")).toBe(false);
+  });
+
+  it("同じ IP からは1時間の上限で止める（分をまたいでも）", () => {
+    const gate = newGuestMaskGate();
+    const t = Date.parse("2026-10-08T03:00:10Z");
+    for (let i = 0; i < GUEST_MASK_HOURLY_PER_IP; i++) {
+      expect(takeGuestMaskTurn(gate, "10.3.0.1", t + i * 10_000).ok).toBe(true);
+    }
+    const over = takeGuestMaskTurn(gate, "10.3.0.1", t + GUEST_MASK_HOURLY_PER_IP * 10_000);
+    expect(over.ok).toBe(false);
+    expect(over.ok ? "" : over.error).toContain("1時間");
+  });
+
+  it("時計が戻っても、前の分の数を持ち越さない", () => {
+    const gate = newGuestMaskGate();
+    const later = Date.parse("2030-01-01T00:00:00Z");
+    for (let i = 0; i < GUEST_MASK_PER_MINUTE_TOTAL; i++)
+      takeGuestMaskTurn(gate, `10.4.0.${i}`, later);
+    expect(takeGuestMaskTurn(gate, "10.4.9.9", Date.parse("2026-10-08T03:00:00Z")).ok).toBe(true);
   });
 });
