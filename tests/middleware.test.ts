@@ -25,7 +25,10 @@ const { default: middleware } = await import("@/middleware");
 const run = middleware as unknown as Handler;
 
 /** ログインしていない人（signedIn=false）／している人の頼みを通し、通したか・どこへ送ったかを返す */
-async function visit(path: string, signedIn = false, host = "pilot.example") {
+/** 試行版のデプロイごとの URL の形（edition.ts の「開いてよい名前」） */
+const PILOT_HOST = "carenote-abcd1234e-satoshiyoshimoto0426s-projects.vercel.app";
+
+async function visit(path: string, signedIn = false, host = PILOT_HOST) {
   const auth = vi.fn(async () => ({ userId: signedIn ? "u1" : null }));
   const res = await run(auth, new NextRequest(`https://${host}${path}`));
   const location = res?.headers.get("location") ?? null;
@@ -94,6 +97,20 @@ describe("ログインなしの試行版（印 open）", () => {
     expect(closed.length).toBeGreaterThan(10);
     for (const p of closed) {
       expect(await visit(p), p).toEqual({ passed: false, location: "/sign-in" });
+    }
+  });
+
+  it("試行版のデプロイごとの URL でない名前（知らない別名など）でも開かない", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    for (const host of [
+      "pilot.example",
+      `${PILOT_HOST}.`,
+      "carenote-ai-satoshiyoshimoto0426s-projects.vercel.app",
+    ]) {
+      expect(await visit("/api/generate", false, host), host).toEqual({
+        passed: false,
+        location: "/sign-in",
+      });
     }
   });
 

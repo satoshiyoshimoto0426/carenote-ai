@@ -30,8 +30,20 @@ function str(body: Record<string, unknown>, key: string): string {
 const MAX_FIELD_CHARS = 40_000;
 const MAX_TOTAL_CHARS = 60_000;
 
-/** body 内の全文字列フィールドの長さを検査し、上限超過なら 413 を投げる。 */
+/**
+ * 一番上の段の欄の数の上限。書類の欄はどれも十数個までなので50で足りる。黒塗りは一番上の段の文字列を欄の名前を問わず
+ * 全部通すので、中身の無い欄を何十万個も並べると字数の上限に当たらないまま計算を使えた（独立審査 2026-10-08 再審査 中1）。
+ */
+const MAX_FIELDS = 50;
+
+/**
+ * body 内の全文字列フィールドの長さと、欄の数を検査し、上限超過なら 413 を投げる。
+ * /api/generate・/api/preview は黒塗りの**前**にも呼ぶ（黒塗りは長さに応じて時間がかかるため ── 独立審査 2026-10-08 重大1）。
+ */
 export function assertInputSize(body: Record<string, unknown>): void {
+  if (Object.keys(body).length > MAX_FIELDS) {
+    throw new GenerateRequestError(413, "入力の欄が多すぎます。画面から操作してください。");
+  }
   let total = 0;
   for (const value of Object.values(body)) {
     if (typeof value !== "string") continue;

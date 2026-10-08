@@ -1,6 +1,7 @@
 import { UserButton } from "@clerk/nextjs";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { isSupportPlanAEdition, isSupportPlanAOpen } from "@/lib/supportPlan/edition";
+import { isOpenPilotAt, isSupportPlanAEdition } from "@/lib/supportPlan/edition";
 
 /**
  * 就労A型の個別支援計画書の画面だけの外枠（段階2・docs/specs/support-plan-a/README.md）。
@@ -17,15 +18,18 @@ import { isSupportPlanAEdition, isSupportPlanAOpen } from "@/lib/supportPlan/edi
  *   置き換わらないため・独立審査 2026-10-04 中2）。ログインしていなければ UserButton は何も出さない。
  * テスト: app/support-plan-a/layout.test.tsx。
  */
-export default function SupportPlanALayout({ children }: { children: React.ReactNode }) {
+export default async function SupportPlanALayout({ children }: { children: React.ReactNode }) {
   if (!isSupportPlanAEdition()) notFound();
+  // 「ログインなし」の注意は、実際にログインなしで開いている名前のときだけ出す（本番の名前では出さない ── 再審査 小6）
+  const host = ((await headers()).get("host") ?? "").split(":")[0];
+  const open = isOpenPilotAt(host);
   return (
     <div className="min-h-dvh bg-[var(--paper)]">
       <header className="flex h-[var(--topbar-h)] items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--card)] px-4 md:px-8">
         <p className="text-[14.5px] font-bold text-[var(--ink)]">個別支援計画（就労A型）</p>
         <UserButton />
       </header>
-      {isSupportPlanAOpen() ? (
+      {open ? (
         <p
           role="note"
           className="border-b border-[var(--amber-line)] bg-[var(--amber-soft)] px-4 py-2 text-[13px] leading-[1.7] text-[var(--ink)] md:px-8"

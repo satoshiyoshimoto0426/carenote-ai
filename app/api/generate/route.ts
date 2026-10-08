@@ -20,6 +20,7 @@ import {
   guestRequestProblem,
   isGuestPlanRequest,
   newGuestQuotaStore,
+  pickGuestPlanFields,
   releaseGuestTurn,
   takeGuestTurn,
 } from "@/lib/supportPlan/guestAccess";
@@ -66,6 +67,8 @@ export async function POST(req: NextRequest) {
   if (!scope && !guest) {
     return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
   }
+  // ゲストは使う欄だけを残す（中身の無い欄を大量に並べて黒塗りの計算を使わせない ── 再審査 中1）
+  if (guest) body = pickGuestPlanFields(body);
   // 大きさは黒塗りの**前**に調べる。黒塗りは文の長さに応じて時間がかかるので、上限を超えた文を黒塗りに通すと
   // それだけで計算の枠を使える（独立審査 2026-10-08 重大1）。上限は AI へ送る時と同じ（dispatch.ts）
   try {

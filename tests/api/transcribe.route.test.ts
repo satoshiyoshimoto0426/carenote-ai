@@ -141,7 +141,7 @@ describe("回数の数え方", () => {
 /**
  * ログインなしの試行版（印 NEXT_PUBLIC_SUPPORT_PLAN_A=open ── 2026-10-05 吉本さんの決定）。
  * 計画書の画面の録音は、ログインしていない人でも文字にする。そのかわり IP アドレスごとに1時間30回・
- * 全員で1日240回までに絞る（音声を外へ出す回数と費用の歯止め ── lib/supportPlan/guestAccess.ts）。
+ * 全員で1日 約20時間分（音声の大きさの合計）までに絞る（音声を外へ出す回数と費用の歯止め ── lib/supportPlan/guestAccess.ts）。
  */
 describe("ログインなしの試行版（印 open）", () => {
   function postFrom(ip: string) {
@@ -169,15 +169,19 @@ describe("ログインなしの試行版（印 open）", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("1回の音声は画面の録音の1区切り（3MB）までで、それを超えると外へ送らずに 413", async () => {
+  it("1回の音声は画面の録音の1区切り（3MB＋余裕）までで、それを超えると外へ送らずに 413", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
     clerk.auth.mockResolvedValue({ userId: null, orgId: null });
-    const big = post("call.mp3", 3.5 * 1024 * 1024);
+    const { GUEST_AUDIO_MAX_BYTES } = await import("@/lib/supportPlan/guestAccess");
+    const ok = post("call.mp3", GUEST_AUDIO_MAX_BYTES);
+    ok.headers.set("x-forwarded-for", "198.51.100.39");
+    expect((await POST(ok)).status).toBe(200);
+    const big = post("call.mp3", GUEST_AUDIO_MAX_BYTES + 1);
     big.headers.set("x-forwarded-for", "198.51.100.40");
     const res = await POST(big);
     expect(res.status).toBe(413);
     expect((await res.json()).error).toContain("MB");
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("別のサイトからの頼みは 403（外へ送らない）", async () => {

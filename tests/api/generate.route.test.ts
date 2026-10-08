@@ -25,6 +25,13 @@ vi.mock("@/lib/generation/dispatch", async (importOriginal) => {
   return { ...orig, generateFromBody: ai.generateFromBody };
 });
 
+// 黒塗りが呼ばれたかを見るため、本物を包んだ見張りにする（中身は本物のまま）
+vi.mock("@/lib/privacy/maskBody", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/lib/privacy/maskBody")>();
+  return { ...orig, maskRequestBody: vi.fn(orig.maskRequestBody) };
+});
+const { maskRequestBody } = await import("@/lib/privacy/maskBody");
+
 const { AliasLoadError } = await import("@/lib/db/clients");
 const { POST: generate } = await import("@/app/api/generate/route");
 const { POST: preview } = await import("@/app/api/preview/route");
@@ -251,10 +258,37 @@ describe("ログインなしの試行版（印 open）", () => {
       const started = performance.now();
       const res = await route(await asGuest(path, huge));
       expect(res.status).toBe(413);
-      // 黒塗りに通していれば数十秒かかる長さ。すぐ返ること＝黒塗りの前で止めていること
       expect(performance.now() - started).toBeLessThan(2_000);
     }
+    // 黒塗りの前で止めていること（型が速くなった今は、時間では見分けられない ── 再審査 中2(a)）
+    expect(vi.mocked(maskRequestBody)).not.toHaveBeenCalled();
     expect(ai.generateFromBody).not.toHaveBeenCalled();
+  });
+
+  it("ゲストは使う欄（documentType・clientInfo・interviewNotes）だけが黒塗りと AI に渡る（欄の数で計算を使わせない）", async () => {
+    const extra = { ...PLAN, clientInfo: "28歳", supportNotes: "別の欄", junk: "x" };
+    expect((await generate(await asGuest("/api/generate", extra))).status).toBe(200);
+    const sent = ai.generateFromBody.mock.calls[0][0] as Record<string, unknown>;
+    expect(Object.keys(sent).sort()).toEqual(["clientInfo", "documentType", "interviewNotes"]);
+    const res = await preview(await asGuest("/api/preview", extra));
+    expect(Object.keys((await res.json()).fields).sort()).toEqual(["clientInfo", "interviewNotes"]);
+  });
+
+  it("欄が多すぎる頼み（51個以上）は、ログインしていても黒塗りの前に 413", async () => {
+    const many = Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`f${i}`, ""]));
+    const res = await generate(post("/api/generate", { ...MEMO, ...many }));
+    expect(res.status).toBe(413);
+    expect(vi.mocked(maskRequestBody)).not.toHaveBeenCalled();
+    expect(ai.generateFromBody).not.toHaveBeenCalled();
+  });
+
+  it("送る前の確認も、同じ IP からは1時間60回で止める（AI は呼ばないが、黒塗りの計算を何回でも使わせない）", async () => {
+    for (let i = 0; i < 60; i++) {
+      expect((await preview(await asGuest("/api/preview", PLAN, "203.0.113.77"))).status).toBe(200);
+    }
+    const over = await preview(await asGuest("/api/preview", PLAN, "203.0.113.77"));
+    expect(over.status).toBe(429);
+    expect((await preview(await asGuest("/api/preview", PLAN, "203.0.113.78"))).status).toBe(200);
   });
 
   it("別のサイトからの頼みは 403、JSON でない頼みは 415（別のサイトに来た人のブラウザを使わせない）", async () => {

@@ -5,6 +5,7 @@ import {
   isOpenPilotAt,
   isSupportPlanAEdition,
   isSupportPlanAOpen,
+  PILOT_BUILD_MARKER,
   PRODUCTION_HOSTS,
   pilotFlagBuildError,
   SUPPORT_PLAN_A_PATH,
@@ -60,56 +61,81 @@ describe("単独で公開する版の印", () => {
   });
 });
 
-describe("本番の名前では、印が open でもログインなしにしない（独立審査 2026-10-08 中3）", () => {
+describe("ログインなしの道は、開いてよい名前（試行版のデプロイごとの URL）でだけ開く（独立審査 2026-10-08 中3・再審査 小1）", () => {
   const PILOT = "carenote-xq96d2x2f-satoshiyoshimoto0426s-projects.vercel.app";
 
-  it("試行版のデプロイの URL では開く", () => {
-    expect(isOpenPilotAt(PILOT, "open", "carenote-ai.vercel.app")).toBe(true);
+  it("試行版のデプロイごとの URL（大文字でも）と、手元の確認（localhost）では開く", () => {
+    expect(isOpenPilotAt(PILOT, "open")).toBe(true);
+    expect(isOpenPilotAt(PILOT.toUpperCase(), "open")).toBe(true);
+    expect(isOpenPilotAt("localhost", "open")).toBe(true);
+    expect(isOpenPilotAt("127.0.0.1", "open")).toBe(true);
   });
 
-  it("本番の名前（一覧の3つ・大文字でも）では開かない", () => {
-    for (const host of [...PRODUCTION_HOSTS, "CareNote-AI.vercel.app"]) {
-      expect(isOpenPilotAt(host, "open", undefined)).toBe(false);
+  it("本番の名前（一覧の3つ）・知らない別名・末尾の点つき・よく似た偽の名前では開かない", () => {
+    for (const host of [
+      ...PRODUCTION_HOSTS,
+      "carenote-ai.vercel.app.",
+      `${PILOT}.`,
+      "my-carenote.example.jp",
+      "carenote-ai-git-feat-supp-0d6b39-satoshiyoshimoto0426s-projects.vercel.app",
+      `evil-${PILOT}`,
+      `${PILOT}.evil.example`,
+      "carenote-xq96d2x2f-someone-else.vercel.app",
+    ]) {
+      expect(isOpenPilotAt(host, "open"), host).toBe(false);
     }
     expect(PRODUCTION_HOSTS).toContain("carenote-ai.vercel.app");
   });
 
-  it("Vercel が渡す本番の名前（https:// つきでも）では開かない", () => {
-    expect(isOpenPilotAt("my-carenote.example.jp", "open", "my-carenote.example.jp")).toBe(false);
-    expect(isOpenPilotAt("my-carenote.example.jp", "open", "https://my-carenote.example.jp")).toBe(
-      false,
-    );
-  });
-
   it("印が open でなければ、どこでも開かない", () => {
     for (const v of [undefined, "", "on", "standalone"]) {
-      expect(isOpenPilotAt(PILOT, v, undefined)).toBe(false);
+      expect(isOpenPilotAt(PILOT, v)).toBe(false);
+      expect(isOpenPilotAt("localhost", v)).toBe(false);
     }
   });
 });
 
-describe("ビルドの歯止め（GitHub からのビルドに計画書の印が入ったら止める）", () => {
-  it("印があり、GitHub からのビルド（VERCEL_GIT_COMMIT_SHA あり）なら、止める理由を返す", () => {
+describe("ビルドの歯止め（試行版の出し方でないビルドに計画書の印が入ったら止める）", () => {
+  it("印があるのに目印（SUPPORT_PLAN_A_PILOT_BUILD=1）が無ければ止める ── 設定に頼らず止める側に倒れる（再審査 中4）", () => {
     for (const v of ["open", "on", "standalone"]) {
-      const err = pilotFlagBuildError({
-        NEXT_PUBLIC_SUPPORT_PLAN_A: v,
-        VERCEL_GIT_COMMIT_SHA: "abc123",
-      });
-      expect(err).toContain("ビルドを止めました");
+      const err = pilotFlagBuildError({ NEXT_PUBLIC_SUPPORT_PLAN_A: v });
+      expect(err, v).toContain("ビルドを止めました");
     }
+    expect(
+      pilotFlagBuildError({ NEXT_PUBLIC_SUPPORT_PLAN_A: "open", [PILOT_BUILD_MARKER]: "yes" }),
+    ).not.toBeNull();
   });
 
-  it("試行版の出し方（.git の無い置き場から CLI・SHA なし）と、印の無い本番のビルドは止めない", () => {
-    expect(pilotFlagBuildError({ NEXT_PUBLIC_SUPPORT_PLAN_A: "open" })).toBeNull();
+  it("目印があっても、GitHub からのビルド（VERCEL_GIT_COMMIT_SHA あり）なら止める", () => {
+    const err = pilotFlagBuildError({
+      NEXT_PUBLIC_SUPPORT_PLAN_A: "open",
+      [PILOT_BUILD_MARKER]: "1",
+      VERCEL_GIT_COMMIT_SHA: "abc123",
+    });
+    expect(err).toContain("ビルドを止めました");
+  });
+
+  it("試行版の出し方（目印あり・SHA なし）と、印の無いビルドは止めない", () => {
+    expect(
+      pilotFlagBuildError({ NEXT_PUBLIC_SUPPORT_PLAN_A: "open", [PILOT_BUILD_MARKER]: "1" }),
+    ).toBeNull();
     expect(pilotFlagBuildError({ VERCEL_GIT_COMMIT_SHA: "abc123" })).toBeNull();
+    expect(pilotFlagBuildError({})).toBeNull();
     expect(
       pilotFlagBuildError({ NEXT_PUBLIC_SUPPORT_PLAN_A: "", VERCEL_GIT_COMMIT_SHA: "abc123" }),
     ).toBeNull();
   });
 
-  it("next.config.ts がこの歯止めを呼んでいる（外すとビルドで止まらなくなる）", () => {
+  it("next.config.ts がこの歯止めを呼び、公開の手順書の枠が目印を付けている（どちらかを外すと試行版が出せない／止まらない）", () => {
     const config = readFileSync(join(process.cwd(), "next.config.ts"), "utf8");
     expect(config).toContain("pilotFlagBuildError(process.env)");
-    expect(config).toMatch(/if \(pilotFlagError\) throw new Error\(pilotFlagError\)/);
+    expect(config).toContain("if (pilotFlagError) throw new Error(pilotFlagError)");
+    const deploy = readFileSync(
+      join(process.cwd(), "docs", "specs", "support-plan-a", "DEPLOY.md"),
+      "utf8",
+    );
+    const deployLines = deploy.split("\n").filter((l) => l.includes(" deploy --cwd "));
+    expect(deployLines.length).toBeGreaterThan(0);
+    for (const l of deployLines) expect(l).toContain(`-b ${PILOT_BUILD_MARKER}=1`);
   });
 });

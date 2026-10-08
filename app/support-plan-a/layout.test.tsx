@@ -22,6 +22,11 @@ const notFound = vi.hoisted(() =>
 
 vi.mock("next/navigation", () => ({ notFound }));
 
+/** 画面を開いた名前（host）。既定は試行版のデプロイごとの URL の形 */
+const PILOT_HOST = "carenote-abcd1234e-satoshiyoshimoto0426s-projects.vercel.app";
+const request = vi.hoisted(() => ({ host: "" }));
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ host: request.host }) }));
+
 vi.mock("@clerk/nextjs", () => ({
   UserButton: () => createElement("div", { "data-user-button": "" }),
 }));
@@ -31,22 +36,23 @@ vi.mock("@/components/supportPlan/SupportPlanAWorkbench", () => ({
   default: () => createElement("div", { id: "workbench" }, "計画書の作業台"),
 }));
 
-const renderLayout = () =>
+const renderLayout = async () =>
   renderToStaticMarkup(
-    createElement(SupportPlanALayout, null, createElement("p", { id: "page" }, "ページの中身")),
+    await SupportPlanALayout({ children: createElement("p", { id: "page" }, "ページの中身") }),
   );
 
 beforeEach(() => {
   notFound.mockClear();
+  request.host = PILOT_HOST;
 });
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
 describe("計画書の画面の外枠（印が on の版）", () => {
-  it("上に画面の名前と、ログアウトのためのアカウントのボタンを出し、その下に中身を出す", () => {
+  it("上に画面の名前と、ログアウトのためのアカウントのボタンを出し、その下に中身を出す", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "on");
-    const els = elementsOf(renderLayout());
+    const els = elementsOf(await renderLayout());
     const header = els.find((el) => el.tagName === "header");
     expect(header && isReachable(header) ? textOf(header) : "").toContain(
       "個別支援計画（就労A型）",
@@ -60,9 +66,9 @@ describe("計画書の画面の外枠（印が on の版）", () => {
     expect(notFound).not.toHaveBeenCalled();
   });
 
-  it("CareNote の外枠の部品（ナビ・名簿の共有状態・送り先の表示）は入れない", () => {
+  it("CareNote の外枠の部品（ナビ・名簿の共有状態・送り先の表示）は入れない", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "on");
-    const html = renderLayout();
+    const html = await renderLayout();
     for (const shell of [
       "rail-item",
       'aria-label="メイン"',
@@ -75,9 +81,9 @@ describe("計画書の画面の外枠（印が on の版）", () => {
 });
 
 describe("ログインなしの試行版（印 open）", () => {
-  it("上の帯の下に「架空のデータだけで」の注意を出す（名簿が無く名前が自動で置き換わらないため）", () => {
+  it("上の帯の下に「架空のデータだけで」の注意を出す（名簿が無く名前が自動で置き換わらないため）", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
-    const notes = elementsOf(renderLayout()).filter(
+    const notes = elementsOf(await renderLayout()).filter(
       (el) => attrOf(el, "role") === "note" && isReachable(el),
     );
     expect(notes).toHaveLength(1);
@@ -85,17 +91,24 @@ describe("ログインなしの試行版（印 open）", () => {
     expect(textOf(notes[0])).toContain("ログインなし");
   });
 
-  it("ログインが要る版（on）では、その注意は出さない", () => {
+  it("ログインが要る版（on）では、その注意は出さない", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "on");
-    const notes = elementsOf(renderLayout()).filter((el) => attrOf(el, "role") === "note");
+    const notes = elementsOf(await renderLayout()).filter((el) => attrOf(el, "role") === "note");
+    expect(notes).toHaveLength(0);
+  });
+
+  it("本番の名前で開いたとき（ログインが要る）は、印が open でも「ログインなし」の注意を出さない", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "open");
+    request.host = "carenote-ai.vercel.app";
+    const notes = elementsOf(await renderLayout()).filter((el) => attrOf(el, "role") === "note");
     expect(notes).toHaveLength(0);
   });
 });
 
 describe("印が無い今の CareNote 本番", () => {
-  it("外枠ごと 404 にする（画面の名前も出さない）", () => {
+  it("外枠ごと 404 にする（画面の名前も出さない）", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPPORT_PLAN_A", "");
-    expect(renderLayout).toThrow("NEXT_NOT_FOUND");
+    await expect(renderLayout()).rejects.toThrow("NEXT_NOT_FOUND");
     expect(notFound).toHaveBeenCalledTimes(1);
   });
 

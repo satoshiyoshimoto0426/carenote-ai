@@ -1,7 +1,7 @@
 # 就労A型の計画書 ── ログインなしの試行版を公開する手順（PowerShell に貼るだけ）
 
 > だれが: 吉本さん。下の枠を**まるごと**コピーして Windows PowerShell に貼り、Enter を押すだけ（書き換える所は無い）。
-> 枠の中で「置き場づくり → Vercel への公開 → 6点の確認 → ブラウザで開く」まで進む。
+> 枠の中で「置き場づくり → Vercel への公開 → 8点の確認 → ブラウザで開く」まで進む。
 > なぜ吉本さんの PC で: Claude の `vercel deploy --prod` はアプリの安全装置が止める。Claude のクラウドの開発環境は
 > `vercel.app` に届かない（2026-10-05 確認）。
 > 仕様（印の値・道の開け閉め・回数の上限）の正本は [`README.md`](README.md) §3・§4。
@@ -46,7 +46,7 @@
   Write-Host "3/5 置き場: $work"
 
   Write-Host '4/5 Vercel へ公開します（数分かかります）...'
-  $out = @(npx.cmd --yes vercel@48.10.10 deploy --cwd $work --prod --skip-domain -b NEXT_PUBLIC_SUPPORT_PLAN_A=open -y)
+  $out = @(npx.cmd --yes vercel@48.10.10 deploy --cwd $work --prod --skip-domain -b NEXT_PUBLIC_SUPPORT_PLAN_A=open -b SUPPORT_PLAN_A_PILOT_BUILD=1 -y)
   $code = $LASTEXITCODE
   $u = $null
   foreach ($line in $out) { if ("$line" -match '(https://)?([A-Za-z0-9.-]+\.vercel\.app)') { $u = 'https://' + $Matches[2] } }
@@ -99,7 +99,8 @@
 ### 2b. （急ぎ）main に入る前の直しを出す枠 ── 作業用の枝 `feat/support-plan-a` の最新を出す
 
 独立審査で見つかった直し（2026-10-08 の重大1など）のように、Pull Request が main に入るのを待てないときだけ使う。
-上の枠との違いは1行目の `$branch` だけ（書き換える所は無い）。main に入ったら、上の枠に戻る。
+上の枠との違いは、1行目の `$branch` と、**審査を通った版（`$pin`）に固定して出す**こと（枝に審査の後から足された記録は出さない）。
+書き換える所は無い。main に入ったら、上の枠に戻る。
 
 ```powershell
 & {
@@ -112,7 +113,11 @@
 
   git -C $repo fetch origin $branch
   if ($LASTEXITCODE -ne 0) { Write-Host '止めました: GitHub から最新を取れませんでした。この画面をClaudeに貼ってください。' -ForegroundColor Red; return }
-  $sha = "$(git -C $repo rev-parse $ref)".Trim()
+  # 審査を通った版に固定する（枝のその時の最新ではなく ── 独立審査 2026-10-08 再審査 中3）。新しく審査を通したら、Claude がこの行を直す
+  $pin = 'PINNED_SHA_PLACEHOLDER'
+  git -C $repo merge-base --is-ancestor $pin $ref 2>$null
+  if ($LASTEXITCODE -ne 0) { Write-Host "止めました: 審査を通った版（$($pin.Substring(0, 7))）が $branch に見つかりません。この画面をClaudeに貼ってください。" -ForegroundColor Red; return }
+  $sha = $pin
   git -C $repo cat-file -e ($sha + ':lib/supportPlan/guestAccess.ts') 2>$null
   if ($LASTEXITCODE -ne 0) { Write-Host "止めました: $branch にまだログインなしの試行版が入っていません（Pull Request が入ってから貼ってください）。" -ForegroundColor Red; return }
   Write-Host "2/5 公開する版: $($sha.Substring(0, 7))（$branch の最新・$(git -C $repo log -1 --format=%ci $sha)）"
@@ -133,7 +138,7 @@
   Write-Host "3/5 置き場: $work"
 
   Write-Host '4/5 Vercel へ公開します（数分かかります）...'
-  $out = @(npx.cmd --yes vercel@48.10.10 deploy --cwd $work --prod --skip-domain -b NEXT_PUBLIC_SUPPORT_PLAN_A=open -y)
+  $out = @(npx.cmd --yes vercel@48.10.10 deploy --cwd $work --prod --skip-domain -b NEXT_PUBLIC_SUPPORT_PLAN_A=open -b SUPPORT_PLAN_A_PILOT_BUILD=1 -y)
   $code = $LASTEXITCODE
   $u = $null
   foreach ($line in $out) { if ("$line" -match '(https://)?([A-Za-z0-9.-]+\.vercel\.app)') { $u = 'https://' + $Matches[2] } }
@@ -202,7 +207,8 @@
 ## 4. してはいけないこと
 
 - Vercel の管理画面で、試行版のデプロイ（「Production Staged」）を **Promote**・**Instant Rollback の行き先**に選ぶ ── 本番の URL
-  （carenote-ai.vercel.app）がログインなしの計画書だけの版に変わる。
+  （carenote-ai.vercel.app）が計画書だけの版に変わり、CareNote の画面が使えなくなる（本番の名前ではログインなしにはならない
+  ── `lib/supportPlan/edition.ts` の `isOpenPilotAt` が、許した名前でだけ開くため）。
 - 印 `NEXT_PUBLIC_SUPPORT_PLAN_A` を Vercel のプロジェクト設定の環境の値に入れる ── 次に `main` へ push したとき本番がその版になる。
   印は枠の中の `-b`（このデプロイだけのビルドの値）で付ける。
 
@@ -210,12 +216,14 @@
 
 | 枠の中の形 | なぜ |
 |---|---|
+| `-b SUPPORT_PLAN_A_PILOT_BUILD=1` の目印を付ける | 印があるのに目印の無いビルド（GitHub からの本番の自動公開など）は、`next.config.ts` がビルドを止める（印をプロジェクトの環境の値に入れてしまった事故で本番が計画書の版になるのを防ぐ・独立審査 2026-10-08 再審査 中4） |
 | `.git` の無い置き場を作り、そこから公開する | Vercel の Hobby は、作者のメールが GitHub に登録されていない記録からの公開を「Deployment Blocked」で差し止める（2026-10-04 に2回） |
 | `git archive` は **zip** で書き出し、UTF-8 として展開する | Windows の `tar.exe` は `git archive` の tar の日本語のファイル名（`public/manual/CareNote-AI-操作マニュアル.pdf`）を化かし、「Invalid empty pathname」で止まる（2026-10-05）。zip は名前に UTF-8 の印が付く。PowerShell の `|` で tar を渡す形も、中身を文字として扱うので使わない |
 | `core.autocrlf=false` で取り出す | この PC の Git は `core.autocrlf=true`（CLAUDE.md「既知の落とし穴」）。公開する中身の改行を repo と同じ LF にそろえる |
 | 書き換える所が無い完成形にする | 置き場の名前を `<置き場>` の印のまま書いた手順を、そのまま貼って「指定されたファイルが見つかりません」で止まった（2026-10-05） |
-| 公開した URL をそのまま使って6点を確かめる | Claude の開発環境からは `vercel.app` に届かず、外から確かめられない。確かめは本番の側（今までどおりログインが要るか）も含める |
+| 公開した URL をそのまま使って8点を確かめる | Claude の開発環境からは `vercel.app` に届かず、外から確かめられない。確かめは本番の側（今までどおりログインが要るか）も含める |
 
 ---
+*2026-10-08 / 再審査の直し: 目印 SUPPORT_PLAN_A_PILOT_BUILD=1 を付けた・2b は審査を通った版（$pin）に固定・Promote したときの結果を今の作りに直した・6点→8点*
 *2026-10-08 / 独立審査の直し: 公開の道具の版を 48.10.10 に固定（小5）・前の試行版を消す手順（小6）・確かめに「長すぎる文は 413」「別のサイトは 403」の2点を足した・作業用の枝から出す枠（2b）を足した*
 *2026-10-05 新設 / 試行版（e8f2bcf）を吉本さんの PC から公開して6点とも OK だった枠を、`main` の最新を出す形にして残した*

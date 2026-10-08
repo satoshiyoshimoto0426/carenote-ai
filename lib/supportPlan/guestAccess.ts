@@ -22,16 +22,25 @@ export const GUEST_PLAN_DAILY_LIMIT = 30;
 /** 原案づくりの、同じ IP アドレスからの1時間の上限（1人に1日分を使い切られないため） */
 export const GUEST_PLAN_HOURLY_PER_IP = 10;
 /**
- * ゲストの文字起こしで、1回に受け付ける音声の大きさの上限。画面の録音は5分か3MBで区切るので（lib/recording/config.ts）、
- * 画面から来る区切りはこれを超えない。ログインしている人の上限（4MB）より小さくし、1回で長い音声を外へ出させない
- * （独立審査 2026-10-08 中1）。
+ * ゲストの文字起こしで、1回に受け付ける音声の大きさの上限。画面の録音は5分か3MBで区切る（lib/recording/config.ts）。
+ * 区切りは1秒ごとに見て「3MB以上になったら」切るので、3MBを少し超えうる ── その分の余裕（512KB）を足す
+ * （独立審査 2026-10-08 再審査 小4）。ログインしている人の上限（4MB）より小さくし、1回で長い音声を外へ出させない（中1）。
  */
-export const GUEST_AUDIO_MAX_BYTES = SEGMENT_MAX_BYTES;
+export const GUEST_AUDIO_MAX_BYTES = SEGMENT_MAX_BYTES + 512 * 1024;
 /**
  * ゲストの文字起こしの1日の上限を、回数ではなく**音声の大きさの合計**で数える（独立審査 2026-10-08 中1:
- * 回数だけだと、1回を大きくすれば想定の何倍も外へ送れた）。5分の区切り240本ぶん（32kbps の見込みで約20時間・約288MB）。
+ * 回数だけだと、1回を大きくすれば想定の何倍も外へ送れた）。5分の区切り240本ぶん（約288MB）。
+ * 「約20時間分」は画面の録音（32kbps）での見込み。もっと低い音質のファイルなら、同じ大きさでより長く送れる（再審査 小5 ── 承知のうえ）。
  */
 export const GUEST_TRANSCRIBE_DAILY_BYTES = 240 * estimateBytes(SEGMENT_MAX_MS);
+/** 送る前の確認の、同じ IP アドレスからの1時間の上限（AI は呼ばないが、黒塗りの計算を何回でも使わせない ── 再審査 重大A の3） */
+export const GUEST_PREVIEW_HOURLY_PER_IP = 60;
+/** ゲストの原案づくりで受け取る欄（それ以外は黒塗りの前に捨てる ── 欄の数で計算を使わせない・再審査 中1） */
+export const GUEST_PLAN_FIELDS: readonly string[] = [
+  "documentType",
+  "clientInfo",
+  "interviewNotes",
+];
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -43,10 +52,13 @@ export function tokyoDay(now: number): string {
 /**
  * IPv6 の住所を、前の64ビット（家や事業所に配られる1区画）にまとめる。IPv6 の利用者は区画の中で住所を
  * 自由に変えられるので、そのまま数えると「同じ IP から1時間」の上限が効かない（独立審査 2026-10-08 小4）。
+ * IPv4 を埋め込んだ形（::ffff:203.0.113.5）は、その IPv4 として数える（まとめると全員が1つの数え先になる ── 再審査 小3）。
  * IPv4 や読めない形は、そのまま返す。
  */
 export function ipv6Prefix(ip: string): string {
   if (!ip.includes(":")) return ip;
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (mapped) return mapped[1];
   const parts = ip.split("::");
   if (parts.length > 2) return ip;
   const left = parts[0] ? parts[0].split(":") : [];
@@ -101,13 +113,20 @@ export function guestRequestProblem(
       error: "この画面の外からは使えません。試行版の画面から操作してください。",
     };
   }
-  if (
-    expect === "json" &&
-    !headers.get("content-type")?.toLowerCase().includes("application/json")
-  ) {
+  // 「;」より前だけを見て完全一致で比べる（text/plain; x=application/json のような、事前の確かめなしに送れる形を通さない ── 再審査 小2）
+  const mediaType = (headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+  if (expect === "json" && mediaType !== "application/json") {
     return { status: 415, error: "送り方が正しくありません。試行版の画面から操作してください。" };
   }
   return null;
+}
+
+/**
+ * ゲストの原案づくりの本文から、受け取る欄（GUEST_PLAN_FIELDS）だけを取り出す。黒塗りは一番上の段の文字列を
+ * 欄の名前を問わず全部通すので、中身の無い欄を何十万個も並べると、それだけで計算を使えた（再審査 中1）。
+ */
+export function pickGuestPlanFields(body: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(GUEST_PLAN_FIELDS.filter((k) => k in body).map((k) => [k, body[k]]));
 }
 
 /**

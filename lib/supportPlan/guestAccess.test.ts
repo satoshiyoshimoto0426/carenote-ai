@@ -9,6 +9,7 @@ import {
   ipv6Prefix,
   isGuestPlanRequest,
   newGuestQuotaStore,
+  pickGuestPlanFields,
   releaseGuestTurn,
   takeGuestTurn,
   tokyoDay,
@@ -206,5 +207,36 @@ describe("ゲストの頼みは、試行版の画面そのものからだけ受�
       "content-type": "multipart/form-data; boundary=x",
     });
     expect(guestRequestProblem(form, "form")).toBeNull();
+  });
+});
+
+describe("再審査（2026-10-08）の小さな直し", () => {
+  it("content-type は「;」より前の完全一致で見る（text/plain; x=application/json は 415）", () => {
+    const h = new Headers({
+      host: "pilot.example",
+      "content-type": "text/plain; x=application/json",
+    });
+    expect(guestRequestProblem(h, "json")?.status).toBe(415);
+    const ok = new Headers({
+      host: "pilot.example",
+      "content-type": "Application/JSON; charset=utf-8",
+    });
+    expect(guestRequestProblem(ok, "json")).toBeNull();
+  });
+
+  it("IPv4 を埋め込んだ IPv6（::ffff:a.b.c.d）は、その IPv4 として数える（全員が1つにまとまらない）", () => {
+    expect(ipv6Prefix("::ffff:203.0.113.5")).toBe("203.0.113.5");
+    expect(ipv6Prefix("::FFFF:198.51.100.7")).toBe("198.51.100.7");
+  });
+
+  it("ゲストの本文からは、使う欄だけを取り出す（無い欄は足さない）", () => {
+    expect(
+      pickGuestPlanFields({ documentType: "supportPlanA", interviewNotes: "x", junk: "y", f1: "" }),
+    ).toEqual({ documentType: "supportPlanA", interviewNotes: "x" });
+  });
+
+  it("ゲストの1回の音声の上限は、区切りの3MBに余裕を足したもので、ログインした人の4MBより小さい", () => {
+    expect(GUEST_AUDIO_MAX_BYTES).toBeGreaterThan(3 * 1024 * 1024);
+    expect(GUEST_AUDIO_MAX_BYTES).toBeLessThan(4 * 1024 * 1024);
   });
 });
