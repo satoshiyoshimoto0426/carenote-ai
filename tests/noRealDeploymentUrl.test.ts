@@ -17,7 +17,7 @@ describe("公開のリポジトリに、本物のデプロイの URL を載せ�
   it("記録されているファイルに、架空のもの以外のデプロイの URL が無い", () => {
     const files = execSync("git ls-files", { encoding: "utf8" })
       .split("\n")
-      .filter((f) => f && /\.(ts|tsx|js|mjs|cjs|json|md|html|txt|yml|yaml|ps1|css)$/.test(f))
+      .filter((f) => f && /\.(ts|tsx|js|mjs|cjs|json|md|html|txt|yml|yaml|ps1|css|py)$/.test(f))
       .filter((f) => existsSync(f));
     expect(files.length).toBeGreaterThan(100);
     const hits: string[] = [];

@@ -118,6 +118,7 @@
 | 様式の値・描画・印刷用ページ | `lib/supportPlan/format.ts`・`components/supportPlan/{SupportPlanDocument.tsx,printCss.ts,printHtml.ts}` | `format.test.ts`・`SupportPlanDocument.test.tsx`・`printHtml.test.ts` |
 | AI の指示・JSON の決まり | `lib/rules/supportPlanA.ts`・`lib/generation/supportPlanA{,Prompt}.ts`・`dispatch.ts`（documentType `supportPlanA`） | `supportPlanA.test.ts`・`dispatch.test.ts`・本物の API の試験 `scripts/supportPlanAGeneration.itest.ts`（手動・課金あり） |
 | 操作動画の台本 | [`VIDEO-SCRIPT.md`](VIDEO-SCRIPT.md)・`tools/shoot-plans.mjs` の `spa1` | `lib/manual/supportPlanVideoScript.test.ts` |
+| 使い方マニュアル（試行に参加する職員向けの PDF） | `manual/manual.html`（図は `manual/img/`＝録画の架空の利用者 K-014）・PDF にする道具 `manual/render_manual.py`（試行版の URL は `--url` で PDF にだけ差し込む。リポジトリには書かない） | `tests/noRealDeploymentUrl.test.ts`（URL を書いていないかの見張り） |
 
 ## 6. まだ決めていないこと・次の段階
 
