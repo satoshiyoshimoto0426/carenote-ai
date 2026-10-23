@@ -52,6 +52,7 @@ const FIELD_LABELS: Record<string, string> = {
   monitoringNotes: "最新の状況・モニタリングメモ",
   meetingNotes: "サービス担当者会議のメモ",
   supportNotes: "支援の対応メモ",
+  interviewNotes: "面談の文字起こし・メモ",
 };
 
 /** 画面に出す欄の順。赤い言葉の通し番号もこの順に振る。 */
@@ -73,13 +74,18 @@ interface Props {
   onConfirm: () => void;
   primaryClass: string;
   secondaryClass: string;
+  /** 送っている間のボタンの文言（省くと CareNote の書類の目安「30秒〜1分ほど」）。速いモデルを使う画面は短い目安を渡す */
+  loadingLabel?: string;
 }
+
+/** 送っている間のボタンの既定の文言（CareNote の書類 ── 画面の使い方の説明 lib/manual/content.ts と同じ言葉） */
+export const DEFAULT_LOADING_LABEL = "AIが作成中です…（30秒〜1分ほど）";
 
 /**
  * 送る前に見る画面（黒塗りで消せなかった名前を、職員が目で止める最後の関門）。
  * onBack =「戻って直す」、onConfirm =「この内容でAIに送る」（全文を開いていない欄があれば一度だけ知らせてから）。
  * primaryClass / secondaryClass はボタンの見た目（呼ぶ側の btnPrimary / btnSecondary）。
- * 使う側 = app/(dashboard)/create/page.tsx。赤い言葉の組み立ては lib/privacy/previewNav.ts、
+ * 使う側 = app/(dashboard)/create/page.tsx・components/supportPlan/SupportPlanAWorkbench.tsx（就労A型の計画書。loadingLabel で短い目安を渡す）。赤い言葉の組み立ては lib/privacy/previewNav.ts、
  * 既定の見た目の検査は PreSendPreview.test.tsx（安全テストの一覧 tools/safety-tests.json に名指し）。
  */
 export default function PreSendPreview({
@@ -89,6 +95,7 @@ export default function PreSendPreview({
   onConfirm,
   primaryClass,
   secondaryClass,
+  loadingLabel = DEFAULT_LOADING_LABEL,
 }: Props) {
   // /api/preview が返した順ではなく、画面の並び順に揃える（番号と見た目を一致させる）
   const order = useMemo(
@@ -285,7 +292,7 @@ export default function PreSendPreview({
           disabled={loading}
           className={`${primaryClass} ml-auto`}
         >
-          {loading ? "AIが作成中です…（30秒〜1分ほど）" : "この内容でAIに送る"}
+          {loading ? loadingLabel : "この内容でAIに送る"}
         </button>
       </div>
     </div>

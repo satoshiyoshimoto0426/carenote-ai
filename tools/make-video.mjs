@@ -11,7 +11,8 @@
  *   台本 = docs/MANUAL-VIDEO-SPEC.md（字幕の文はここから）
  *   出力 = <作業フォルダ>/chN.mp4（字幕焼き込み）と chN.vtt（実尺に合わせた字幕）
  *
- * 使い方: node tools/make-video.mjs <作業フォルダ> <章のslug 例 ch2>
+ * 使い方: node tools/make-video.mjs <作業フォルダ> <章のslug 例 ch2> [--script=<台本>]
+ *   就労A型の計画書は --script=docs/specs/support-plan-a/VIDEO-SCRIPT.md（章は spa1）。
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -19,8 +20,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseVideoScript } from "../lib/manual/videoScript.ts";
 
-const DIR = process.argv[2];
-const SLUG = process.argv[3];
+const ARGS = process.argv.slice(2);
+const scriptArg = ARGS.find((a) => a.startsWith("--script="))?.slice("--script=".length);
+const [DIR, SLUG] = ARGS.filter((a) => !a.startsWith("--script="));
 if (!DIR || !SLUG) {
   console.error("使い方: node tools/make-video.mjs <作業フォルダ> <章のslug 例 ch2>");
   process.exit(1);
@@ -28,7 +30,10 @@ if (!DIR || !SLUG) {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const chapter = parseVideoScript(
-  readFileSync(join(ROOT, "docs", "MANUAL-VIDEO-SPEC.md"), "utf8"),
+  readFileSync(
+    scriptArg ? join(ROOT, scriptArg) : join(ROOT, "docs", "MANUAL-VIDEO-SPEC.md"),
+    "utf8",
+  ),
 ).find((c) => c.slug === SLUG);
 if (!chapter) {
   console.error(`台本に ${SLUG} が見つかりません`);

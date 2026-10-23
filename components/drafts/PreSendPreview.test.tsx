@@ -177,3 +177,37 @@ function navOf(html: string): MarkupElement {
   expect(navs).toHaveLength(1);
   return navs[0];
 }
+
+describe("送っている間のボタンの文言", () => {
+  function sending(loadingLabel?: string): string {
+    return renderToStaticMarkup(
+      <PreSendPreview
+        data={{
+          fields: { meetingNotes: "面談のメモ。" },
+          findings: { names: 0, patterns: [] },
+          candidates: {},
+        }}
+        loading={true}
+        onBack={() => {}}
+        onConfirm={() => {}}
+        primaryClass="p"
+        secondaryClass="s"
+        loadingLabel={loadingLabel}
+      />,
+    );
+  }
+  const buttons = (html: string) =>
+    elementsOf(html)
+      .filter((el) => el.tagName === "button" && isReachable(el))
+      .map((el) => textOf(el));
+
+  it("省くと、CareNote の書類の目安（30秒〜1分ほど）を出す ── 使い方の説明と同じ言葉", () => {
+    expect(buttons(sending())).toContain("AIが作成中です…（30秒〜1分ほど）");
+  });
+
+  it("渡せば、その目安を出す（就労A型の計画書は速いモデルなので短い目安 ── 2026-10-23）", () => {
+    const shown = buttons(sending("AIが作成中です…（15〜30秒ほど）"));
+    expect(shown).toContain("AIが作成中です…（15〜30秒ほど）");
+    expect(shown.join("")).not.toContain("30秒〜1分");
+  });
+});

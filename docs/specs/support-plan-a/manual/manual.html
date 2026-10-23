@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>個別支援計画書 使い方マニュアル</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  試行に参加する職員向けの使い方マニュアル。1つの元から2つの形を作る（どちらも同じフォルダの render_manual.py）:
+    ・PDF（A4・配布用）── Paged.js でページに組む。Paged.js の読み込みと「画面で読む版だけの見た目」の除去は render_manual.py が行う。
+    ・画面で読む版（claude.ai の Artifact で仲間に見せる ── 2026-10-23 吉本さんの依頼）── スマホの幅でも横にはみ出さない1段組み。
+  試行版の URL は、公開のリポジトリに書かない決まり（DEPLOY.md §3・tests/noRealDeploymentUrl.test.ts）なので、
+  本文には差し込み口（PILOT_URL を二重の波かっこで囲んだもの）だけを置き、render_manual.py の --url で差し込む。
+  図（img/）は録画 docs/specs/support-plan-a/video/silent.mp4（架空の利用者 K-014）から取り出した本物の画面。
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+:root{--navy:#1a3a5c;--label:#e7ecf1;--line:#cfcfcf;--ink:#1a1a1a;--muted:#5b6470;--green:#0f5c45;--amber:#fbf1de;--amber-line:#e6c98f;--red:#b3261e}
+@page{size:A4;margin:16mm 16mm 16mm 16mm;
+  @top-left{content:"個別支援計画書（原案）をつくる　使い方マニュアル";font-size:8pt;color:#8a929c}
+  @top-right{content:"試行版 1.4";font-size:8pt;color:#8a929c}
+  @bottom-center{content:counter(page) " / " counter(pages);font-size:8pt;color:#8a929c}}
+@page:first{@top-left{content:none}@top-right{content:none}}
+*{box-sizing:border-box}
+body{font-family:"Noto Sans JP",sans-serif;color:var(--ink);font-size:10pt;line-height:1.75;margin:0}
+h1{font-size:20pt;line-height:1.4;color:var(--navy);margin:0 0 2mm}
+h2{font-size:13pt;color:#fff;background:var(--navy);padding:1.4mm 4mm;margin:5.5mm 0 3mm;break-after:avoid}
+h3{font-size:11pt;color:var(--navy);border-bottom:1.5px solid var(--navy);padding-bottom:1mm;margin:5mm 0 2.5mm;break-after:avoid}
+p{margin:0 0 2.5mm}
+ul,ol{margin:0 0 3mm;padding-left:5.5mm}
+li{margin-bottom:1mm}
+.kicker{font-size:9.5pt;color:var(--muted);margin-bottom:1mm}
+.meta{font-size:9pt;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:3mm;margin-bottom:4mm}
+.lead{font-size:10.5pt}
+.btn{display:inline-block;background:var(--green);color:#fff;border-radius:3px;padding:0 2mm;font-size:9pt;line-height:1.6;white-space:nowrap}
+.btn.sub{background:#fff;color:var(--ink);border:1px solid #b9c0c8}
+.flow{display:grid;grid-template-columns:repeat(6,1fr);gap:2mm;margin:3mm 0 2mm}
+.flow div{border:1px solid var(--navy);border-radius:3px;padding:2mm 1.5mm;text-align:center;font-size:8.8pt;line-height:1.5;background:#fff}
+.flow b{display:block;font-size:13pt;color:var(--navy);line-height:1.2}
+.flow .ai{background:var(--label)}
+.note{font-size:9pt;color:var(--muted)}
+.promise{border:1.5px solid var(--amber-line);background:var(--amber);padding:3mm 4mm;margin:4mm 0;break-inside:avoid}
+.promise h4{margin:0 0 1.5mm;font-size:11pt}
+.promise ol{margin:0}
+.shot{border:1px solid var(--line);width:100%;display:block;margin:2mm 0 1mm}
+.cap{font-size:8.5pt;color:var(--muted);margin-bottom:3mm}
+.fig{break-inside:avoid}
+table{border-collapse:collapse;width:100%;margin:2mm 0 3mm;font-size:9.3pt;line-height:1.6}
+th,td{border:1px solid var(--line);padding:1.6mm 2.4mm;vertical-align:top;text-align:left}
+th{background:var(--label);font-weight:500;white-space:nowrap}
+tr{break-inside:avoid}
+.two{display:grid;grid-template-columns:1fr 46mm;gap:5mm;align-items:start}
+.tip{border-left:3px solid var(--navy);background:#f5f7f9;padding:2mm 3.5mm;margin:3mm 0;break-inside:avoid}
+.tip b{color:var(--navy)}
+.warn{border-left:3px solid var(--red);background:#fbefee;padding:2mm 3.5mm;margin:3mm 0;break-inside:avoid}
+.check li{list-style:none;margin-left:-5.5mm}
+.check li::before{content:"□ ";color:var(--navy)}
+</style>
+<style id="screen-only">
+/* 画面で読む版だけの見た目（PDF にするときは render_manual.py がこの style ごと外す）。
+   紙のマニュアルの見た目のまま読ませるため、あえて明るい1色の配色だけにする（画面の写真も明るい配色のため）。
+   A4 の寸法（pt・mm）の文字を画面向けの大きさに直し、狭い画面では横並びを縦に積む。 */
+body{background:#e9edf1;color:#1a1a1a;font-size:16px;line-height:1.8;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:28px 56px}
+.sheet{max-width:780px;margin:0 auto;background:#fff;border:1px solid #d5dce3;padding:40px clamp(18px, 5vw, 52px) 48px}
+h1{font-size:clamp(25px, 4.6vw, 32px);text-wrap:balance}
+h2{font-size:20px;text-wrap:balance}
+h3{font-size:17px}
+.kicker{font-size:14px}
+.meta{font-size:13.5px}
+.lead{font-size:17px}
+.note,.cap{font-size:14px}
+.btn{font-size:14px}
+.promise h4{font-size:17px}
+table{font-size:15px}
+.flow div{font-size:13.5px}
+.flow b{font-size:20px}
+a{color:var(--navy);overflow-wrap:anywhere}
+p,li,td,th{overflow-wrap:break-word}
+.two>*{min-width:0}
+@media (max-width:640px){
+  body{background:#fff;padding-block:12px 40px}
+  .sheet{border:0;padding:0}
+  .flow{grid-template-columns:repeat(3, 1fr)}
+  .two{grid-template-columns:1fr}
+  .two .fig{max-width:300px}
+  .shot{width:100% !important}
+  th{white-space:normal}
+}
+@media (max-width:380px){.flow{grid-template-columns:repeat(2, 1fr)}}
+</style>
+</head>
+<body>
+<main class="sheet" lang="ja">
+
+<div class="kicker">就労継続支援A型 ／ 試行版</div>
+<h1>個別支援計画書（原案）をつくる<br>使い方マニュアル</h1>
+<div class="meta">版 1.4（2026年10月23日）　対象：試行に参加する職員の方　所要時間の目安：面談の時間＋約5分<br>図の画面はすべて架空の利用者（K-014）です。問い合わせは事業所の管理者へ。</div>
+
+<p class="lead">面談の録音（または文字起こし）から、事業所の様式（1〜10章）どおりの<b>個別支援計画書の原案</b>を15〜30秒ほどで作る画面です。原案は、サービス管理責任者が確かめて、足りない所を書き足して仕上げます。</p>
+
+<h2>全体の流れ</h2>
+<div class="flow">
+  <div><b>1</b>計画の情報を入れる</div>
+  <div><b>2</b>本人に説明して同意を得る</div>
+  <div><b>3</b>面談する<br>（録音か貼り付け）</div>
+  <div><b>4</b>送る前の文章を確かめる</div>
+  <div class="ai"><b>5</b>AI が原案を作る<br>（15〜30秒）</div>
+  <div><b>6</b>確かめて PDF に保存</div>
+</div>
+<p class="note">AI に文章を送るのは、5 の1回だけです。面談の途中で送ることはありません。</p>
+
+<div class="promise">
+  <h4>試行中の4つの約束</h4>
+  <ol>
+    <li><b>架空の利用者・架空の面談だけで試してください。</b>本物の利用者の情報は入れません。</li>
+    <li><b>氏名・受給者証番号は、どの欄にも入れません。</b>利用者はコード（例「K-014」）で表します。</li>
+    <li><b>この画面は何も保存しません。</b>残すときは「印刷・PDFに保存」で PDF にします。</li>
+    <li><b>できるのは原案（下書き）です。</b>会議での検討、本人への説明と同意（署名）、交付は、これまでどおりサービス管理責任者が行います。</li>
+  </ol>
+</div>
+
+<h2>はじめる前に</h2>
+<h3>用意するもの</h3>
+<ul>
+  <li>パソコンと Google Chrome（ほかのブラウザでは、まだ確かめていません）</li>
+  <li>インターネットにつながる環境</li>
+  <li>録音する場合は、パソコンのマイク</li>
+</ul>
+<h3>開き方</h3>
+<ol>
+  <li>管理者から案内された URL を Chrome で開きます。<br><span class="note">試行用の URL：<a href="{{PILOT_URL}}">{{PILOT_URL}}</a>（直しを入れると変わることがあります）</span></li>
+  <li>すぐに「個別支援計画書（原案）をつくる」の画面が開きます。<b>ログインはいりません。</b></li>
+  <li>画面の上に「試行版（ログインなし）です。架空の利用者・架空の面談だけで…」の黄色い帯が出ます。この約束を必ず守ってください。</li>
+</ol>
+<p class="note">試行版は、みんなで同じ画面を使います。この画面は何も保存しないので、同時に使っても、ほかの人の入力は見えません。AI が原案を作れるのは、全員で1日30回までです（日本時間の0時で数え直します）。</p>
+<p class="note">操作の流れは、操作動画（約3分・声と字幕つき）でも見られます。動画は管理者が配ります。</p>
+
+<h2>手順1　計画の情報を入れる</h2>
+<div class="fig"><img class="shot" src="img/c01.png" style="width:78%" alt="計画の情報の欄と、右の面談の進め方"><div class="cap">図1　画面のいちばん上。左が入力の欄、右が「面談の進め方」</div></div>
+<table>
+  <tr><th>利用者コード（必須）</th><td>英数字とハイフン（-）だけ、20字まで。例「K-014」。<b>氏名は入れません。</b></td></tr>
+  <tr><th>表紙の呼び名（任意）</th><td>計画書の表紙に出る呼び名です。空なら「利用者」＋コードの英字になります（K-014 なら「利用者K」）。</td></tr>
+  <tr><th>計画番号（任意）</th><td>空なら、計画書では手書きの欄になります。</td></tr>
+  <tr><th>計画期間</th><td>はじめから「来月1日〜6か月後」が入っています。必要なときだけ直します。終わりの月が、評価と次の見直しの月になります。</td></tr>
+  <tr><th>作成日</th><td>はじめから今日の日付が入っています。</td></tr>
+  <tr><th>家族が面談に同席した</th><td>同席したときだけチェックします。チェックが無いと、家族の意向は「要確認」になります。</td></tr>
+</table>
+
+<h3>分かっている基本情報を入れる（任意）</h3>
+<div class="two">
+  <div>
+    <p>「分かっている基本情報を入れる」を押すと、欄が開きます。</p>
+    <p>年齢・性別・障害種別・障害等級・手帳・契約形態・入所年月日・通所歴・勤務日数・勤務時間・時給・月平均賃金を入れられます。</p>
+    <p><b>入れた欄は、面談の話より優先して</b>計画書に載ります。分からない欄は空のままで構いません（計画書では「要記入」になります）。</p>
+  </div>
+  <div class="fig"><img class="shot" src="img/c04.png" alt="基本情報の欄"><div class="cap">図2　基本情報の欄（例を見ながら入れられます）</div></div>
+</div>
+
+<h2>手順2　本人に説明して同意を得る</h2>
+<p>面談の前に、本人（同席の家族も）に次の3つを説明し、同意を得てから「② 本人への説明と同意」にチェックを入れます。</p>
+<ul>
+  <li>面談を録音して文字にすること</li>
+  <li>計画書の原案づくりに AI を使うこと</li>
+  <li>原案はサービス管理責任者が確かめて仕上げること</li>
+</ul>
+<p class="note">チェックを入れるまで、録音も「面談を終える」もできません。</p>
+
+<h2>手順3　面談する</h2>
+<div class="fig"><img class="shot" src="img/c06.png" style="width:62%" alt="同意のチェックと、録音の枠、文字起こしの欄"><div class="cap">図3　② 同意のチェックと、③ 面談の録音の枠・文字起こしの欄</div></div>
+<h3>録音する場合</h3>
+<ol>
+  <li>「その場にいる全員に、記録を作るために録音することを伝えました」にチェックします。</li>
+  <li><span class="btn sub">録音を始める</span> を押します。はじめて使うときは、ブラウザがマイクを使ってよいか聞いてくるので「許可」を押します。</li>
+  <li>5分ごとに区切って文字になり、下の「面談の文字起こし・メモ」の欄に足されていきます。<b>音声は保存されません。</b>最後の区切りが文字になるまで、10秒ほどかかります。</li>
+  <li>雑談になったら一時停止します。</li>
+</ol>
+<h3>文字起こしを貼り付ける場合</h3>
+<p>ほかで起こした文字起こしや、メモを打ち直したものを、欄に貼り付けても使えます。欄の文字は手で直せます。</p>
+
+<div class="two">
+  <div>
+    <h3>右の「面談の進め方」</h3>
+    <p>計画書に要る10の話題が、様式の順に並んでいます。話に出ると●になり、まだの話題には聞き方の例が出ます。</p>
+    <p class="note">これは目安です。言葉が出たかどうかだけを、パソコンの中で見ています。十分に聞けたかまでは判定しません。</p>
+    <div class="tip"><b>面談のコツ</b>
+      <ul>
+        <li>本人の言葉は、計画書の「意向」に「」でそのまま残ります。本人の言葉で話してもらいましょう。</li>
+        <li>回数・時間・頻度（例：1時間を超えると集中が切れる、月に2〜3回遅刻する）は、数で聞くと目標が具体的になります。</li>
+        <li>話に出なかったことを AI は作りません。空いた所は「要記入」になります。</li>
+      </ul>
+    </div>
+  </div>
+  <div class="fig"><img class="shot" src="img/c07.png" alt="面談の進め方の一覧"><div class="cap">図4　話に出た話題は●になる</div></div>
+</div>
+
+<h2>手順4　送る前の文章を確かめる</h2>
+<ol>
+  <li>面談が終わったら、画面の下の <span class="btn">面談を終える（送る前の確認へ）</span> を押します。<b>この時点では、まだ AI に送っていません。</b></li>
+  <li>「これがAIに送られる文章です」の画面が出ます。上から読み、次の2つを確かめます。
+    <ul>
+      <li>電話番号などが〔電話番号1〕のような札に置き換わっているか</li>
+      <li>赤い文字の言葉（人の名前や施設名かもしれない言葉）が残っていないか</li>
+    </ul>
+  </li>
+</ol>
+<div class="fig"><img class="shot" src="img/c09.png" style="width:66%" alt="AIに送る前の確認の画面"><div class="cap">図5　送る前の確認の画面。下の右に「この内容でAIに送る」、左に「戻って直す」</div></div>
+<div class="warn"><b>試行版の注意：</b>この画面には利用者の名簿が無いため、<b>人の名前は自動では置き換わりません。</b>名前が残っていたら <span class="btn sub">戻って直す</span> を押し、欄の中で「K様」などの記号に書き換えてから、もう一度「面談を終える」を押します。</div>
+
+<h2>手順5　AI が原案を作る</h2>
+<p>確かめたら <span class="btn">この内容でAIに送る</span> を押します。<b>15〜30秒ほど</b>で原案ができます（面談が長いと少し延びます）。その間、画面を閉じないでください。</p>
+
+<h2>手順6　原案を確かめて PDF に保存する</h2>
+<div class="fig"><img class="shot" src="img/c11.png" style="width:72%" alt="できあがった原案と、右の要記入の一覧"><div class="cap">図6　左が様式どおりの原案（表紙・目次・1〜10章）、右が「要記入」の一覧と「AI からの確認のお願い」</div></div>
+<table style="break-inside:avoid">
+  <tr><th>左の原案</th><td>事業所の様式どおりの原案です。枠の中をスクロールして読みます。</td></tr>
+  <tr><th>要記入（○件）</th><td>面談で話に出なかった欄と、手書きにする欄（計画番号・生年月日・担当者など）です。サービス管理責任者が記入します。</td></tr>
+  <tr><th>AI からの確認のお願い</th><td>黄色の帯です。記録と照らして確かめてほしい点が出ます（例：遅刻の回数は記録と合っているか）。</td></tr>
+</table>
+<h3>PDF に保存する</h3>
+<div class="fig"><img class="shot" src="img/c12.png" style="width:72%" alt="印刷・PDFに保存のボタン"></div>
+<ol>
+  <li><span class="btn">印刷・PDFに保存</span> を押します。</li>
+  <li>印刷の画面で、送り先を「PDF に保存」にして「保存」を押します。紙に印刷して、手書きで仕上げることもできます。</li>
+</ol>
+<h3>ほかのボタン</h3>
+<ul>
+  <li><span class="btn sub">面談の文字起こしに戻る</span>　文字起こしを直して、原案を作り直せます（もう一度 AI に送ります）。</li>
+  <li><span class="btn sub">最初からやり直す</span>　入力と原案が、すべて消えます。</li>
+</ul>
+<div class="warn">原案の中の<b>目次の行は押さないでください</b>。表示が消えることがあります。消えたときは「面談の文字起こしに戻る」から作り直します。</div>
+
+<h2>困ったとき</h2>
+<table>
+  <tr><th>こんなとき</th><th>どうする</th></tr>
+  <tr><td>赤い帯「利用者コードを入れてください」「利用者コードは英数字とハイフン（-）だけ…」</td><td>コードを「K-014」のような形にします。氏名は入れません。</td></tr>
+  <tr><td>「本人への説明と同意のチェックを入れてください。」</td><td>手順2のチェックを入れます。</td></tr>
+  <tr><td>「面談の文字起こし・メモがありません。」</td><td>録音するか、文字起こしを貼り付けます。</td></tr>
+  <tr><td>「計画期間の終わりが始まりより前になっています。」</td><td>計画期間の日付を直します。</td></tr>
+  <tr><td>「個人情報の置換に失敗したため送信を中止しました」</td><td>名前や番号が残っています。「戻って直す」で記号に書き換えます。</td></tr>
+  <tr><td>「入力が大きすぎます」「入力全体が大きすぎます」</td><td>文字起こしの要らない所（雑談など）を消して、もう一度押します。</td></tr>
+  <tr><td>「通信に失敗しました」</td><td>インターネットにつながっているか確かめて、もう一度押します。</td></tr>
+  <tr><td>「時間内に終わりませんでした（504）」</td><td>少し待って、もう一度押します。</td></tr>
+  <tr><td>「今日の試行で使える原案づくりの上限（30回）に達しました」<br>（録音では「文字起こしの上限（約20時間分）」）</td><td>その日はもう使えません。翌日（日本時間の0時より後）にもう一度試します。</td></tr>
+  <tr><td>「短い時間に続けて…使われたため、少し止めています」</td><td>同じ場所から続けて使いすぎました。1時間ほど空けてから押します。</td></tr>
+  <tr><td>「いま試行版が混み合っています」</td><td>1分ほど待ってから、もう一度押します。</td></tr>
+  <tr><td>「AI会社（Anthropic）の利用枠が不足しています」</td><td>管理者に連絡します。</td></tr>
+  <tr><td>「録音を始める」が押せない</td><td>手順2の同意と、録音の前のチェックを入れます。マイクを「許可」したかも確かめます。</td></tr>
+  <tr><td>原案の枠が真っ白のまま／「印刷・PDFに保存」で印刷の画面が出ない</td><td>1分ほど待ってから押します。それでも出ないときは、職場のネットワークが外部の部品の読み込みを止めている可能性があります。別のネットワークで試すか、管理者に連絡します。</td></tr>
+  <tr><td>画面を閉じた・再読み込みした</td><td>入力と原案は消えます（保存しないため）。閉じる前に、ブラウザが確かめる画面を出します。</td></tr>
+</table>
+
+<h2>試してみたら教えてください</h2>
+<p>次の点の感想を、管理者に伝えてください。今後の直しに使います。</p>
+<ul class="check">
+  <li>原案の中身は、仕上げの下書きとして使えそうか</li>
+  <li>「要記入」が多すぎないか、足りない話題はないか</li>
+  <li>言葉づかい（本人の言葉の残し方・文の終わり方）は、様式に合っているか</li>
+  <li>原案ができるまでの待ち時間は、気にならない長さか</li>
+  <li>操作で迷った所、分かりにくかった言葉</li>
+</ul>
+</main>
+</body>
+</html>
