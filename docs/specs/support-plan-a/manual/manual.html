@@ -2,11 +2,14 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>個別支援計画書（原案）をつくる 使い方マニュアル</title>
+<title>個別支援計画書 使い方マニュアル</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <!--
-  試行に参加する職員向けの使い方マニュアル（A4・PDF にして配る）。PDF にする道具は同じフォルダの render_manual.py。
+  試行に参加する職員向けの使い方マニュアル。1つの元から2つの形を作る（どちらも同じフォルダの render_manual.py）:
+    ・PDF（A4・配布用）── Paged.js でページに組む。Paged.js の読み込みと「画面で読む版だけの見た目」の除去は render_manual.py が行う。
+    ・画面で読む版（claude.ai の Artifact で仲間に見せる ── 2026-10-23 吉本さんの依頼）── スマホの幅でも横にはみ出さない1段組み。
   試行版の URL は、公開のリポジトリに書かない決まり（DEPLOY.md §3・tests/noRealDeploymentUrl.test.ts）なので、
-  ここには差し込み口 {{PILOT_URL}} だけを置き、PDF にするときに render_manual.py の --url で差し込む。
+  本文には差し込み口（PILOT_URL を二重の波かっこで囲んだもの）だけを置き、render_manual.py の --url で差し込む。
   図（img/）は録画 docs/specs/support-plan-a/video/silent.mp4（架空の利用者 K-014）から取り出した本物の画面。
 -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap">
@@ -52,10 +55,41 @@ tr{break-inside:avoid}
 .check li{list-style:none;margin-left:-5.5mm}
 .check li::before{content:"□ ";color:var(--navy)}
 </style>
-<script>window.PagedConfig = { auto: true, after: () => { document.documentElement.dataset.paged = "done"; } };</script>
-<script src="https://cdn.jsdelivr.net/npm/pagedjs@0.4.3/dist/paged.polyfill.min.js"></script>
+<style id="screen-only">
+/* 画面で読む版だけの見た目（PDF にするときは render_manual.py がこの style ごと外す）。
+   紙のマニュアルの見た目のまま読ませるため、あえて明るい1色の配色だけにする（画面の写真も明るい配色のため）。
+   A4 の寸法（pt・mm）の文字を画面向けの大きさに直し、狭い画面では横並びを縦に積む。 */
+body{background:#e9edf1;color:#1a1a1a;font-size:16px;line-height:1.8;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:28px 56px}
+.sheet{max-width:780px;margin:0 auto;background:#fff;border:1px solid #d5dce3;padding:40px clamp(18px, 5vw, 52px) 48px}
+h1{font-size:clamp(25px, 4.6vw, 32px);text-wrap:balance}
+h2{font-size:20px;text-wrap:balance}
+h3{font-size:17px}
+.kicker{font-size:14px}
+.meta{font-size:13.5px}
+.lead{font-size:17px}
+.note,.cap{font-size:14px}
+.btn{font-size:14px}
+.promise h4{font-size:17px}
+table{font-size:15px}
+.flow div{font-size:13.5px}
+.flow b{font-size:20px}
+a{color:var(--navy);overflow-wrap:anywhere}
+p,li,td,th{overflow-wrap:break-word}
+.two>*{min-width:0}
+@media (max-width:640px){
+  body{background:#fff;padding-block:12px 40px}
+  .sheet{border:0;padding:0}
+  .flow{grid-template-columns:repeat(3, 1fr)}
+  .two{grid-template-columns:1fr}
+  .two .fig{max-width:300px}
+  .shot{width:100% !important}
+  th{white-space:normal}
+}
+@media (max-width:380px){.flow{grid-template-columns:repeat(2, 1fr)}}
+</style>
 </head>
 <body>
+<main class="sheet" lang="ja">
 
 <div class="kicker">就労継続支援A型 ／ 試行版</div>
 <h1>個別支援計画書（原案）をつくる<br>使い方マニュアル</h1>
@@ -93,7 +127,7 @@ tr{break-inside:avoid}
 </ul>
 <h3>開き方</h3>
 <ol>
-  <li>管理者から案内された URL を Chrome で開きます。<br><span class="note">試行用の URL：{{PILOT_URL}}（直しを入れると変わることがあります）</span></li>
+  <li>管理者から案内された URL を Chrome で開きます。<br><span class="note">試行用の URL：<a href="{{PILOT_URL}}">{{PILOT_URL}}</a>（直しを入れると変わることがあります）</span></li>
   <li>すぐに「個別支援計画書（原案）をつくる」の画面が開きます。<b>ログインはいりません。</b></li>
   <li>画面の上に「試行版（ログインなし）です。架空の利用者・架空の面談だけで…」の黄色い帯が出ます。この約束を必ず守ってください。</li>
 </ol>
@@ -223,5 +257,6 @@ tr{break-inside:avoid}
   <li>原案ができるまでの待ち時間は、気にならない長さか</li>
   <li>操作で迷った所、分かりにくかった言葉</li>
 </ul>
+</main>
 </body>
 </html>
