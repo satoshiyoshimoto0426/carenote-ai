@@ -125,7 +125,7 @@ export default function SupportPlanAWorkbench() {
     setStep("preview");
   };
 
-  /** 確認のあと AI へ送り、原案を作る（約30秒〜1分） */
+  /** 確認のあと AI へ送り、原案を作る（約15〜30秒 ── lib/generation/supportPlanA.ts の SUPPORT_PLAN_A_MODEL） */
   const generate = async () => {
     setLoading(true);
     setError(null);
@@ -404,10 +404,11 @@ export default function SupportPlanAWorkbench() {
             onConfirm={generate}
             primaryClass={btnPrimary}
             secondaryClass={btnSecondary}
+            loadingLabel="AIが作成中です…（15〜30秒ほど）"
           />
           {loading ? (
             <p role="status" className="mt-4 text-[13.5px] text-[var(--muted)]">
-              原案を作っています（30秒〜1分ほど）。画面を閉じずにお待ちください。
+              原案を作っています（15〜30秒ほど）。画面を閉じずにお待ちください。
             </p>
           ) : null}
         </section>

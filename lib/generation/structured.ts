@@ -13,6 +13,13 @@ interface StructuredDraftRequest {
   userMessage: string;
   /** 出力を保証する JSON Schema（全 object に additionalProperties:false 必須） */
   schema: Record<string, unknown>;
+  /**
+   * 帳票ごとにモデルを替えるとき（省くと CLAUDE_MODEL ── lib/anthropic.ts）。
+   * 例: 就労A型の計画書は、面談のデモで待たせないため速いモデルにする（lib/generation/supportPlanA.ts）。
+   */
+  model?: string;
+  /** 考える量（省くとモデルの既定）。low ほど速く、費用も少ない */
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
 }
 
 /**
@@ -24,7 +31,7 @@ export async function generateStructuredDraft<T>(req: StructuredDraftRequest): P
   const client = getAnthropic();
 
   const response = await client.messages.create({
-    model: CLAUDE_MODEL,
+    model: req.model ?? CLAUDE_MODEL,
     max_tokens: 16000,
     thinking: { type: "adaptive" },
     system: [
@@ -35,7 +42,10 @@ export async function generateStructuredDraft<T>(req: StructuredDraftRequest): P
       },
     ],
     messages: [{ role: "user", content: req.userMessage }],
-    output_config: { format: { type: "json_schema", schema: req.schema } },
+    output_config: {
+      format: { type: "json_schema", schema: req.schema },
+      ...(req.effort ? { effort: req.effort } : {}),
+    },
   });
 
   if (response.stop_reason === "refusal") {
