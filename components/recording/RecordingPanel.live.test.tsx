@@ -55,12 +55,22 @@ class FakeRecorder {
     this.starts += 1;
     this.state = "recording";
   }
+  /**
+   * 本物と同じく、stop() を呼んだ時点では state だけが inactive になり、最後のかたまりと止まった知らせは
+   * **あとから**届く（ブラウザの仕様。本物の Chrome で記録: stop → 0.1秒後に最後の data → onstop）。
+   * 以前はその場で届けていたため、「終えた直後に片付けて、それまで録った音声を捨てる」壊れ方が試験で見えなかった
+   * （2026-10-26 試行版で営業の方が報告・30秒録って送られたのは最後の1秒の断片だけだった）。
+   */
   stop() {
     this.stops += 1;
     this.state = "inactive";
-    if (!FakeRecorder.silent) this.ondataavailable?.({ data: new Blob(["x".repeat(1000)]) });
-    this.onstop?.();
+    setTimeout(() => {
+      if (!FakeRecorder.silent) this.ondataavailable?.({ data: new Blob(["x".repeat(1000)]) });
+      this.onstop?.();
+    }, FakeRecorder.STOP_DELAY_MS);
   }
+  /** 止めてから知らせが届くまで（本物の Chrome の記録で約0.1秒） */
+  static STOP_DELAY_MS = 100;
   pause() {
     this.state = "paused";
   }
@@ -165,6 +175,44 @@ async function advanceMinutes(minutes: number) {
 
 const text = () => container.textContent ?? "";
 
+/** 画面のボタンを文字で探して押す。 */
+async function press(label: string) {
+  const button = [...container.querySelectorAll("button")].find((b) => b.textContent === label);
+  if (!button) throw new Error(`「${label}」が見つかりません`);
+  await act(async () => {
+    button.click();
+  });
+  await flush();
+}
+
+/** 送られた音声を受け取って、文字を返す偽の通信。 */
+function recordSends(sent: Blob[]) {
+  return (async (_url: string, init: RequestInit) => {
+    const file = (init.body as FormData).get("file");
+    if (file instanceof Blob) sent.push(file);
+    return new Response(JSON.stringify({ text: "本人から相談。" }), { status: 200 });
+  }) as unknown as typeof fetch;
+}
+
+/** 1秒ごとに 4000 バイトの音を、seconds 秒ぶん流し込む。 */
+async function speak(rec: FakeRecorder, seconds: number) {
+  for (let i = 0; i < seconds; i++) {
+    await act(async () => {
+      rec.feed(4000);
+      vi.advanceTimersByTime(1000);
+    });
+  }
+}
+
+/** 止まった知らせ（あとから届く）を出し切る。 */
+async function deliverStop() {
+  await act(async () => {
+    vi.advanceTimersByTime(FakeRecorder.STOP_DELAY_MS + 50);
+  });
+  await flush();
+  await flush();
+}
+
 describe("動かして確かめる: 録音パネル", () => {
   it("「録音を止めました」と出たら、録音もマイクも本当に止まっている", async () => {
     // 毎回 500 で失敗させる → 3本諦めたところで止まるはず
@@ -219,6 +267,85 @@ describe("動かして確かめる: 録音パネル", () => {
     const gaps = at.slice(1).map((t, i) => t - at[i]);
     // 0ミリ秒の連打をしていない（審査では 0, 0, 0 だった）
     expect(Math.max(...gaps)).toBeGreaterThan(0);
+  });
+
+  it("短い録音を「録音を終える」で止めると、録った音声がまるごと1本で送られる（最後の1秒だけにならない）", async () => {
+    const sent: Blob[] = [];
+    const rec = await startRecording(recordSends(sent));
+    await speak(rec, 30);
+
+    await press("録音を終える");
+    await deliverStop();
+
+    // 2026-10-26 の壊れ方: 終えた直後に片付けて30秒ぶんを捨て、最後の1秒（1000バイト）だけを送っていた
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.size).toBe(30 * 4000 + 1000);
+    expect(text()).not.toMatch(/本目が文字になりませんでした/);
+    // 送り終えたら、マイクを離して待機に戻る
+    expect(streams[0]?.tracks[0]?.stopped).toBeGreaterThan(0);
+    expect(text()).toContain("録音を始める");
+  });
+
+  it("一時停止してから終えても、それまでの音声がまるごと送られる", async () => {
+    const sent: Blob[] = [];
+    const rec = await startRecording(recordSends(sent));
+    await speak(rec, 20);
+    await press("一時停止");
+
+    await press("録音を終える");
+    await deliverStop();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.size).toBe(20 * 4000 + 1000);
+    expect(text()).toContain("録音を始める");
+  });
+
+  it("止まりきるまでは「録音を始める」に戻らない（止めている途中で次の録音を始めさせない）", async () => {
+    const rec = await startRecording(recordSends([]));
+    await speak(rec, 5);
+
+    await press("録音を終える");
+    // まだ止まった知らせが届いていない
+    expect(text()).not.toContain("録音を始める");
+    await deliverStop();
+    expect(text()).toContain("録音を始める");
+  });
+
+  it("区切りを作り直している途中で終えても、その区切りが送られ、録音は始め直さない", async () => {
+    const sent: Blob[] = [];
+    const rec = await startRecording(recordSends(sent));
+    // 5分目で区切りの作り直しが始まる（止まった知らせはまだ届いていない）
+    await speak(rec, 300);
+    expect(rec.stops).toBe(1);
+    expect(rec.state).toBe("inactive");
+
+    await press("録音を終える");
+    await deliverStop();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.size).toBe(300 * 4000 + 1000);
+    expect(rec.starts).toBe(1); // 終えたあとで始め直していない
+    expect(streams[0]?.tracks[0]?.stopped).toBeGreaterThan(0);
+    expect(text()).toContain("録音を始める");
+  });
+
+  it("録音の部品が自分で止まっていた（マイクが外れた等）ときも、録れていた分を送って待機に戻る", async () => {
+    const sent: Blob[] = [];
+    const rec = await startRecording(recordSends(sent));
+    await speak(rec, 10);
+    // ブラウザが自分で録音を止めた（最後のかたまりを渡して止まる）
+    await act(async () => {
+      rec.state = "inactive";
+      rec.ondataavailable?.({ data: new Blob(["x".repeat(1000)]) });
+      rec.onstop?.();
+    });
+
+    await press("録音を終える");
+    await deliverStop();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.size).toBe(10 * 4000 + 1000);
+    expect(text()).toContain("録音を始める");
   });
 
   it("うまくいけば、文字が呼び出し側へ渡る", async () => {
