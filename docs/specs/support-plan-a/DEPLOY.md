@@ -114,7 +114,7 @@
   git -C $repo fetch origin $branch
   if ($LASTEXITCODE -ne 0) { Write-Host '止めました: GitHub から最新を取れませんでした。この画面をClaudeに貼ってください。' -ForegroundColor Red; return }
   # 審査を通った版に固定する（枝のその時の最新ではなく ── 独立審査 2026-10-08 再審査 中3）。新しく審査を通したら、Claude がこの行を直す
-  $pin = 'f726489b404e6aeb5410bf5c5a29e5249d2314d9'
+  $pin = '08af80fdee1563ece01a2258211ba8eebaf5135b'
   git -C $repo merge-base --is-ancestor $pin $ref 2>$null
   if ($LASTEXITCODE -ne 0) { Write-Host "止めました: 審査を通った版（$($pin.Substring(0, 7))）が $branch に見つかりません。この画面をClaudeに貼ってください。" -ForegroundColor Red; return }
   $sha = $pin
@@ -224,6 +224,7 @@
 | 公開した URL をそのまま使って8点を確かめる | Claude の開発環境からは `vercel.app` に届かず、外から確かめられない。確かめは本番の側（今までどおりログインが要るか）も含める |
 
 ---
+*2026-10-26 / 2b の固定を 08af80f に（録音を終えると音声を捨てていた不具合の直し c6bf0eb を含む。f726489 からの差はこの直しとマニュアル・記録だけ。ログインなしの守りは変えていない）*
 *2026-10-08 / 再審査の直し: 目印 SUPPORT_PLAN_A_PILOT_BUILD=1 を付けた・2b は審査を通った版（$pin）に固定・Promote したときの結果を今の作りに直した・6点→8点*
 *2026-10-08 / 独立審査の直し: 公開の道具の版を 48.10.10 に固定（小5）・前の試行版を消す手順（小6）・確かめに「長すぎる文は 413」「別のサイトは 403」の2点を足した・作業用の枝から出す枠（2b）を足した*
 *2026-10-05 新設 / 試行版（e8f2bcf）を吉本さんの PC から公開して6点とも OK だった枠を、`main` の最新を出す形にして残した*
