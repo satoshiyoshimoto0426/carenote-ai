@@ -29,6 +29,20 @@ const LEAK_MEMO =
   "担当の佐々木さんと、他事業所の宮本ケアマネに相談した。" +
   "本人の入浴が週1回に減っており、夜間の転倒が心配との連絡があった。";
 
+/**
+ * 就労A型の面談の例（架空の利用者 K-014）。実在の方の情報は入れない。
+ * 右の「面談の進め方」の印が半分ほど付く内容にする（全部は付かない ── 目安の見え方を映すため）。
+ */
+const SPA_INTERVIEW =
+  "職員：最近の仕事はどうですか。\n" +
+  "本人：ラベル貼りは得意です。きれいに並ぶとうれしいです。検品も続けたいです。\n" +
+  "職員：難しいと感じることはありますか。\n" +
+  "本人：途中で話しかけられると、手順が分からなくなります。メモで伝えてもらえると助かります。\n" +
+  "職員：体調はどうですか。\n" +
+  "本人：朝が少しつらいです。通院は月1回で、主治医の先生にも話しています。\n" +
+  "職員：半年後にできるようになっていたいことは。\n" +
+  "本人：一人で検品の作業を最後までできるようになりたいです。";
+
 const PERSONA = {
   clientInfo: "85歳 女性 要介護2 独居。長女が週1回訪問。",
   personality: "人づきあいが好きで、近所の方とよく話す。頼まれごとを断れない。",
@@ -272,6 +286,60 @@ export const PLANS = {
     { wait: 1200 },
     { shoot: 14 },
   ],
+
+  /**
+   * 就労A型の個別支援計画書（単独の画面 /support-plan-a）。台本は docs/specs/support-plan-a/VIDEO-SCRIPT.md
+   * （本体マニュアルとは別の動画）。撮る先は .env.local の SHOOT_BASE（単独で公開した URL）。
+   * 録音そのものはマイクが要るので撮らない ── 録音の枠を映し、文字起こしは架空の面談（SPA_INTERVIEW）を貼り付ける。
+   * 場面10→11 の間で本物の AI が1回動く（30秒〜1分）。
+   */
+  spa1: [
+    { login: true },
+    { go: "/support-plan-a" },
+    { wait: 1500 },
+    { shoot: 1 },
+    { fill: "#sp-code", value: "K-014" },
+    { scrollTo: "#sp-code" },
+    { shoot: 2 },
+    { scrollTo: "#sp-created" },
+    { shoot: 3 },
+    { clickIncludes: "分かっている基本情報を入れる" },
+    { wait: 500 },
+    {
+      fillAll: {
+        "sp-age": "28歳",
+        "sp-disabilityType": "発達障害（自閉スペクトラム症）",
+        "sp-workDays": "週4回（月・火・木・金）",
+        "sp-hourlyWage": "1,250円",
+      },
+    },
+    { scrollTo: "#sp-age" },
+    { shoot: 4 },
+    { check: "#sp-agree" },
+    { scrollTo: "#sp-agree" },
+    { shoot: 5 },
+    { scrollTo: "#sp-interview", block: "start" },
+    { shoot: 6 },
+    { fill: "#sp-notes", value: SPA_INTERVIEW },
+    { scrollTo: "#sp-notes" },
+    { wait: 500 },
+    { shoot: 7 },
+    { scrollTo: "#sp-finish" },
+    { shoot: 8 },
+    { click: "面談を終える（送る前の確認へ）" },
+    { waitFor: "これがAIに送られる文章です", timeout: 30000 },
+    { wait: 800 },
+    { shoot: 9 },
+    { clickIncludes: "この内容でAIに送る" },
+    { optional: [{ clickIncludes: "このまま送る" }] },
+    { wait: 1500 },
+    { shoot: 10 },
+    { waitFor: "原案（様式どおり）", timeout: 180000 },
+    { wait: 6000 },
+    { shoot: 11 },
+    { scrollTo: "#sp-result", block: "start" },
+    { shoot: 12 },
+  ],
 };
 
-export { LEAK_MEMO, MEMO, PERSONA };
+export { LEAK_MEMO, MEMO, PERSONA, SPA_INTERVIEW };

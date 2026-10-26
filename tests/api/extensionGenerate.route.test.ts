@@ -13,6 +13,13 @@ vi.mock("@/lib/generation/dispatch", async (importOriginal) => {
 const TOKEN = "abcdefghijklmnopqrstuvwxyz";
 process.env.CARENOTE_EXTENSION_TOKENS = `cm01:${TOKEN}`;
 
+// 黒塗りが呼ばれたかを見るため、本物を包んだ見張りにする（中身は本物のまま）
+vi.mock("@/lib/privacy/maskBody", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/lib/privacy/maskBody")>();
+  return { ...orig, maskRequestBody: vi.fn(orig.maskRequestBody) };
+});
+const { maskRequestBody } = await import("@/lib/privacy/maskBody");
+
 const { POST } = await import("@/app/api/extension/generate/route");
 
 function post(body: unknown, token = TOKEN) {
@@ -28,6 +35,18 @@ beforeEach(() => {
 });
 
 describe("POST /api/extension/generate", () => {
+  it("長すぎる文・欄が多すぎる頼みは、黒塗りの**前**に 413（黒塗りの計算を使わせない ── 2026-10-08 3回目 小3）", async () => {
+    for (const body of [
+      { documentType: "supportLog", supportNotes: "a".repeat(50_000) },
+      Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`f${i}`, ""])),
+    ]) {
+      const res = await POST(post(body));
+      expect(res.status).toBe(413);
+    }
+    expect(vi.mocked(maskRequestBody)).not.toHaveBeenCalled();
+    expect(ai.generateFromBody).not.toHaveBeenCalled();
+  });
+
   it("トークンが違えば 401", async () => {
     const res = await POST(post({ assessmentNotes: "x" }, "wrong-token-wrong-token"));
     expect(res.status).toBe(401);

@@ -1,0 +1,54 @@
+{
+  "note": "silent.mp4 の場面の始まり（秒）。台本 docs/specs/support-plan-a/VIDEO-SCRIPT.md の場面番号と対応。録画 2026-10-04（画面は f4638ec 以降の段階2の仕様）・架空の利用者 K-014・ログインと AI の結果は録画用の見本に差し替え",
+  "end": 193.64,
+  "scenes": [
+    {
+      "index": 1,
+      "start": 1.63
+    },
+    {
+      "index": 2,
+      "start": 13.63
+    },
+    {
+      "index": 3,
+      "start": 25.63
+    },
+    {
+      "index": 4,
+      "start": 39.63
+    },
+    {
+      "index": 5,
+      "start": 55.63
+    },
+    {
+      "index": 6,
+      "start": 70.65
+    },
+    {
+      "index": 7,
+      "start": 86.67
+    },
+    {
+      "index": 8,
+      "start": 106.67
+    },
+    {
+      "index": 9,
+      "start": 120.67
+    },
+    {
+      "index": 10,
+      "start": 138.69
+    },
+    {
+      "index": 11,
+      "start": 152.69
+    },
+    {
+      "index": 12,
+      "start": 178.62
+    }
+  ]
+}

@@ -63,7 +63,8 @@ interface Props {
   disabled?: boolean;
 }
 
-type Phase = "idle" | "recording" | "paused" | "finishing";
+/** stopping = 「録音を終える」を押した後、録音の部品が本当に止まるのを待っている間（finish の説明を参照） */
+type Phase = "idle" | "recording" | "paused" | "stopping" | "finishing";
 
 const mmss = (ms: number) => {
   const total = Math.floor(ms / 1000);
@@ -87,6 +88,8 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
   const startedAt = useRef(0);
   const sending = useRef(false);
   const stopping = useRef(false);
+  /** 区切りの作り直し（rotate）で止めていて、止まった知らせがまだ届いていない */
+  const rotating = useRef(false);
   /** 最後に音が届いた時刻（マイクが外れた・OSでミュートされたのを早く気づくため） */
   const lastDataAt = useRef(0);
   const [silent, setSilent] = useState(false);
@@ -126,16 +129,32 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
     });
   }, [type]);
 
+  /** 最後の区切りを確定し、マイクを離して「送る段階」へ進む。録音の部品が止まった**後**にだけ呼ぶ。 */
+  const closeLast = useCallback(() => {
+    closeSegment();
+    for (const track of stream.current?.getTracks() ?? []) track.stop();
+    stream.current = null;
+    recorder.current = null;
+    setPhase("finishing");
+  }, [closeSegment]);
+
   /** 録音を止めずに区切りだけ作り直す（止めて始め直さないと、単独で送れる音声にならない）。 */
   const rotate = useCallback(() => {
     const rec = recorder.current;
     if (!rec || rec.state === "inactive") return;
     rec.onstop = () => {
+      rotating.current = false;
+      // 止まるのを待つ間に「録音を終える」が押されたら、始め直さずにここで終える
+      if (stopping.current) {
+        closeLast();
+        return;
+      }
       closeSegment();
-      if (!stopping.current && recorder.current) recorder.current.start(1000);
+      if (recorder.current) recorder.current.start(1000);
     };
+    rotating.current = true;
     rec.stop();
-  }, [closeSegment]);
+  }, [closeSegment, closeLast]);
 
   /** 録音を始める。 */
   const start = async () => {
@@ -180,24 +199,36 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
     setPhase("recording");
   };
 
-  /** 録音を終える。最後の区切りも送ってから、マイクを離す。 */
+  /**
+   * 録音を終える。最後の区切りも送ってから、マイクを離す。
+   *
+   * 「送る段階（finishing）」へ進むのは、録音の部品が**本当に止まって**最後の区切りを確定した後（closeLast）。
+   * stop() を呼んだ時点では、最後のかたまりも止まった知らせもまだ届いていない（ブラウザの仕様で、あとから届く）。
+   * 以前はすぐ finishing にしていたため、送る区切りがまだ0本と見た下の「さばき終えたら待機に戻す」が片付け（releaseAll）を走らせ、
+   * それまで録った音声を捨てていた（2026-10-26 試行版で営業の方が報告。30秒録って送られたのは最後の1秒の断片だけで、
+   * 見出しの無い音声として文字起こしサービスに 400 で断られた。本番の CareNote の録音も同じ部品）。
+   * 試験: RecordingPanel.live.test.tsx（偽の MediaRecorder も、止まった知らせを本物と同じくあとから届ける）。
+   */
   const finish = useCallback(
     (reason?: string) => {
       stopping.current = true;
+      if (reason) setQueue((q) => reduceQueue(q, { type: "stop", reason }));
       const rec = recorder.current;
-      if (rec && rec.state !== "inactive") {
-        rec.onstop = () => {
-          closeSegment();
-          for (const track of stream.current?.getTracks() ?? []) track.stop();
-          stream.current = null;
-          recorder.current = null;
-        };
+      if (!rec || (rec.state === "inactive" && !rotating.current)) {
+        // 録音の部品がもう止まっている（マイクが外れて自分で止まった等）。待つ知らせが無いので、ここで終える
+        if (rec) closeLast();
+        else setPhase("finishing");
+        return;
+      }
+      // 先に stopping にしてから止める（止まった知らせがその場で届くブラウザでも、closeLast の finishing が後に勝つ）
+      setPhase("stopping");
+      // 区切りの作り直しで止めている途中なら、その onstop が closeLast を呼ぶ（rotate を参照）
+      if (rec.state !== "inactive") {
+        rec.onstop = closeLast;
         rec.stop();
       }
-      setPhase("finishing");
-      if (reason) setQueue((q) => reduceQueue(q, { type: "stop", reason }));
     },
-    [closeSegment],
+    [closeLast],
   );
 
   /** 時間で区切る／全体の上限で止める。 */
@@ -366,7 +397,7 @@ export default function RecordingPanel({ onTranscript, disabled = false }: Props
         </p>
       )}
 
-      {phase === "finishing" && (
+      {(phase === "stopping" || phase === "finishing") && (
         <p className="mt-2 text-xs text-[var(--muted)]">
           残りを文字にしています… <span className="tnum">{p.done}</span>/
           <span className="tnum">{p.total}</span>

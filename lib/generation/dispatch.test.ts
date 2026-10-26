@@ -32,6 +32,12 @@ describe("generateFromBody: 必須チェック（上限内）は従来どおり 
     });
   });
 
+  it("supportPlanA（就労A型の個別支援計画書）で面談の文字起こしが空なら 400", async () => {
+    await expect(
+      generateFromBody({ documentType: "supportPlanA", interviewNotes: "   " }),
+    ).rejects.toMatchObject({ status: 400, message: "面談の文字起こし・メモを入力してください。" });
+  });
+
   it("不明な documentType は 400", async () => {
     await expect(
       generateFromBody({ documentType: "unknown", assessmentNotes: "テスト" }),

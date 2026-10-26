@@ -33,7 +33,9 @@ if (!OUT) {
   process.exit(1);
 }
 const only = process.argv.slice(3);
-const slugs = only.length ? only : Object.keys(PLANS);
+// 章を指定しなければ、本体マニュアルの章（chN）だけを撮る。就労A型の計画書（spaN）は撮る先が違う
+// （SHOOT_BASE）ので、名指ししたときだけ撮る。
+const slugs = only.length ? only : Object.keys(PLANS).filter((s) => s.startsWith("ch"));
 
 const env = Object.fromEntries(
   readFileSync(join(ROOT, ".env.local"), "utf8")
@@ -44,7 +46,11 @@ const env = Object.fromEntries(
       l.slice(l.indexOf("=") + 1).replace(/^["']|["']$/g, ""),
     ]),
 );
-const BASE = "https://carenote-ai.vercel.app";
+/**
+ * 撮る先。既定は CareNote の本番。就労A型の計画書を単独で公開した先を撮るときは、
+ * .env.local の SHOOT_BASE にその URL（例 https://carenote-keikaku.vercel.app）を入れる。
+ */
+const BASE = (env.SHOOT_BASE || "https://carenote-ai.vercel.app").replace(/\/$/, "");
 const W = 1280;
 const H = 720;
 
@@ -133,6 +139,35 @@ async function runStep(cdp, step, ctx) {
     throw new Error(
       `「${step.waitFor}」が出ませんでした（${(step.timeout ?? 60000) / 1000}秒待ちました）`,
     );
+  }
+  if (step.check) {
+    // チェックボックスに印を付ける（すでに付いていれば何もしない）
+    const ok = await evaluate(
+      cdp,
+      `(() => {
+        const el = document.querySelector(${JSON.stringify(step.check)});
+        if (!el) return false;
+        el.scrollIntoView({ block: "center" });
+        if (!el.checked) el.click();
+        return true;
+      })()`,
+    );
+    if (!ok) throw new Error(`チェックボックスが見つかりません: ${step.check}`);
+    return;
+  }
+  if (step.scrollTo) {
+    // その要素が画面の真ん中に来るまで動かす（長い画面の下の方を撮るとき）
+    const ok = await evaluate(
+      cdp,
+      `(() => {
+        const el = document.querySelector(${JSON.stringify(step.scrollTo)});
+        if (!el) return false;
+        el.scrollIntoView({ block: ${JSON.stringify(step.block ?? "center")} });
+        return true;
+      })()`,
+    );
+    if (!ok) throw new Error(`要素が見つかりません: ${step.scrollTo}`);
+    return wait(600);
   }
   if (step.fill) return fill(cdp, step.fill, step.value);
   if (step.fillAll) {
